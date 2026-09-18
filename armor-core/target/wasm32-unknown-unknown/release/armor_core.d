@@ -1,0 +1,1 @@
+D:\VSCode\Hackclub\Armor3D\armor-core\target\wasm32-unknown-unknown\release\armor_core.wasm: D:\VSCode\Hackclub\Armor3D\armor-core\src\geo.rs D:\VSCode\Hackclub\Armor3D\armor-core\src\ipc.rs D:\VSCode\Hackclub\Armor3D\armor-core\src\lib.rs D:\VSCode\Hackclub\Armor3D\armor-core\src\math.rs D:\VSCode\Hackclub\Armor3D\armor-core\src\render.rs

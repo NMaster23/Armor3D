@@ -1,0 +1,14 @@
+D:\VSCode\Hackclub\Armor3D\armor-core\target\debug\deps\winit-fbe2580086ca1ee6.d: C:\Users\nihaa\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\winit-0.31.0-beta.3\src\lib.rs C:\Users\nihaa\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\winit-0.31.0-beta.3\src\event_loop.rs C:\Users\nihaa\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\winit-0.31.0-beta.3\src\os_error.rs C:\Users\nihaa\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\winit-0.31.0-beta.3\src\platform_impl\mod.rs C:\Users\nihaa\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\winit-0.31.0-beta.3\src\platform\mod.rs C:\Users\nihaa\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\winit-0.31.0-beta.3\src\platform\scancode.rs C:\Users\nihaa\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\winit-0.31.0-beta.3\src\../docs/res/coordinate-systems-desktop.svg C:\Users\nihaa\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\winit-0.31.0-beta.3\src\../docs/res/coordinate-systems-mobile.svg
+
+D:\VSCode\Hackclub\Armor3D\armor-core\target\debug\deps\libwinit-fbe2580086ca1ee6.rmeta: C:\Users\nihaa\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\winit-0.31.0-beta.3\src\lib.rs C:\Users\nihaa\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\winit-0.31.0-beta.3\src\event_loop.rs C:\Users\nihaa\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\winit-0.31.0-beta.3\src\os_error.rs C:\Users\nihaa\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\winit-0.31.0-beta.3\src\platform_impl\mod.rs C:\Users\nihaa\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\winit-0.31.0-beta.3\src\platform\mod.rs C:\Users\nihaa\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\winit-0.31.0-beta.3\src\platform\scancode.rs C:\Users\nihaa\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\winit-0.31.0-beta.3\src\../docs/res/coordinate-systems-desktop.svg C:\Users\nihaa\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\winit-0.31.0-beta.3\src\../docs/res/coordinate-systems-mobile.svg
+
+C:\Users\nihaa\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\winit-0.31.0-beta.3\src\lib.rs:
+C:\Users\nihaa\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\winit-0.31.0-beta.3\src\event_loop.rs:
+C:\Users\nihaa\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\winit-0.31.0-beta.3\src\os_error.rs:
+C:\Users\nihaa\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\winit-0.31.0-beta.3\src\platform_impl\mod.rs:
+C:\Users\nihaa\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\winit-0.31.0-beta.3\src\platform\mod.rs:
+C:\Users\nihaa\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\winit-0.31.0-beta.3\src\platform\scancode.rs:
+C:\Users\nihaa\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\winit-0.31.0-beta.3\src\../docs/res/coordinate-systems-desktop.svg:
+C:\Users\nihaa\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\winit-0.31.0-beta.3\src\../docs/res/coordinate-systems-mobile.svg:
+
+# env-dep:CARGO_PKG_VERSION=0.31.0-beta.3
