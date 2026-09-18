@@ -1,0 +1,1 @@
+D:\VSCode\Hackclub\Armor3D\armor-core\target\debug\armor-core.exe: D:\VSCode\Hackclub\Armor3D\armor-core\src\geo.rs D:\VSCode\Hackclub\Armor3D\armor-core\src\ipc.rs D:\VSCode\Hackclub\Armor3D\armor-core\src\main.rs D:\VSCode\Hackclub\Armor3D\armor-core\src\math.rs D:\VSCode\Hackclub\Armor3D\armor-core\src\render.rs
