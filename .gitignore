@@ -1,2 +1,6 @@
 /armor-core/target
 /armor-core/target
+*.pdb
+*.pdb
+/armor-core/target
+armor-core/target/debug/deps/armor_core.pdb

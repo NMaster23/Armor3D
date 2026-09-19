@@ -13,6 +13,8 @@ pollster = "1.0.1"
 wasm-bindgen = "0.2.128"
 wasm-bindgen-futures = "0.4.78"
 console_log = "1.1.0"
+bytemuck = { version = "1.25.2", features = [ "derive" ] }
+
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 console_error_panic_hook = "0.1.6"
