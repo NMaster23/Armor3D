@@ -14,6 +14,7 @@ wasm-bindgen = "0.2.128"
 wasm-bindgen-futures = "0.4.78"
 console_log = "1.1.0"
 bytemuck = { version = "1.25.2", features = [ "derive" ] }
+cgmath = "0.18.0"
 
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
