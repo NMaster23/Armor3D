@@ -2,6 +2,7 @@ import customtkinter as ctk
 from ctypes import windll
 from tkinter import Canvas
 import sys
+from PIL import Image, ImageEnhance, ImageTk, ImageDraw
 from pathlib import Path
 import os
 ctk.set_appearance_mode('dark')
@@ -210,6 +211,22 @@ def drag_sidebar(event):
     update_shadow(window_width, canvas.winfo_height(), 16)
     resize_cmd_boxes(window_width)
 resize_handle.bind("<B1-Motion>", drag_sidebar)
+
+icon = Image.open(getpath("Assets/polylinez.png")).convert("RGBA")
+bounds = icon.getbbox()
+if bounds:
+    icon = icon.crop(bounds)
+icon.thumbnail((30, 30), Image.Resampling.LANCZOS)
+polylinenormal = ImageTk.PhotoImage(icon)
+polyline_hover = ImageTk.PhotoImage(ImageEnhance.Brightness(icon).enhance(0.6))
+polyline_square = canvas.create_rectangle(8, 103, 52, 147, fill='', outline='')
+polyline_icon = canvas.create_image(30, 125, image=polylinenormal)
+def polyline_motion(event):
+    hovering = 8 <= event.x<= 52 and 103 <= event.y <= 147
+    canvas.itemconfig(polyline_square, fill="#393D40"if hovering else  "", outline="#596066" if hovering else "")
+    canvas.itemconfig(polyline_icon, image=polyline_hover if hovering else polylinenormal)
+canvas.bind("<Motion>", polyline_motion)
+
 
 app.mainloop()
 
