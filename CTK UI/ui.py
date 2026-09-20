@@ -216,11 +216,13 @@ def openanalyzemenu():
     analyze_menu.place(x=100, y=20)
 def analyze_enter(event):
     global analyzehoverjob
+    canvas.itemconfig(analyze, fill="#F0AA60")
     if analyzehoverjob is not None:
         app.after_cancel(analyzehoverjob)
     analyzehoverjob = app.after(500, openanalyzemenu)
 def analyzeleave(event):
     global analyzehoverjob
+    canvas.itemconfig(analyze, fill="#F5E8D2")
     if analyzehoverjob is not None:
         app.after_cancel(analyzehoverjob)
         analyzehoverjob = None
