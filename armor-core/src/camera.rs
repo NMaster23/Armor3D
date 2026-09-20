@@ -1,6 +1,7 @@
+use cgmath::InnerSpace;
 use std::thread::sleep;
-use winit::keyboard::KeyCode;
 use winit::event::{MouseScrollDelta, WindowEvent};
+use winit::keyboard::KeyCode;
 
 pub struct Camera {
     pub eye: cgmath::Point3<f32>,
@@ -15,7 +16,12 @@ pub struct Camera {
 impl Camera {
     fn build_view_projection_matrix(&self) -> cgmath::Matrix4<f32> {
         let view = cgmath::Matrix4::look_at_rh(self.eye, self.target, self.up);
-        let proj = cgmath::perspective(cgmath::Deg(self.fov_y), self.aspect, self.z_near, self.z_far);
+        let proj = cgmath::perspective(
+            cgmath::Deg(self.fov_y),
+            self.aspect,
+            self.z_near,
+            self.z_far,
+        );
         return OPENGL_TO_WGPU_MATRIX * proj * view;
     }
 }
@@ -49,6 +55,7 @@ impl CameraUniform {
 
 pub struct CameraController {
     speed: f32,
+    scroll: f32,
     is_forward_pressed: bool,
     is_backward_pressed: bool,
     is_left_pressed: bool,
@@ -59,13 +66,19 @@ impl CameraController {
     pub(crate) fn new(speed: f32) -> Self {
         Self {
             speed,
+            scroll: 0.0,
             is_forward_pressed: false,
             is_backward_pressed: false,
             is_left_pressed: false,
             is_right_pressed: false,
         }
     }
-
+    pub(crate) fn handle_scroll(&mut self, delta: &MouseScrollDelta) {
+        self.scroll = match delta {
+            MouseScrollDelta::LineDelta(_, y) => *y * 0.5,
+            MouseScrollDelta::PixelDelta(pos) => pos.y as f32 * 0.01,
+        };
+    }
     pub(crate) fn handle_key(&mut self, code: KeyCode, is_pressed: bool) -> bool {
         match code {
             KeyCode::KeyW | KeyCode::ArrowUp => {
@@ -89,7 +102,6 @@ impl CameraController {
     }
 
     pub(crate) fn update_camera(&self, camera: &mut Camera) {
-        use cgmath::InnerSpace;
         let forward = camera.target - camera.eye;
         let forward_norm = forward.normalize();
         let forward_mag = forward.magnitude();
@@ -99,7 +111,9 @@ impl CameraController {
         if self.is_backward_pressed {
             camera.eye -= forward_norm * self.speed;
         }
-
+        if self.scroll.abs() > 0.0 {
+            camera.eye += forward_norm * self.scroll * self.speed;
+        }
         let right = forward_norm.cross(camera.up);
         let forward = camera.target - camera.eye;
         let forward_mag = forward.magnitude();
