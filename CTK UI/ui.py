@@ -287,6 +287,22 @@ def rectangle_motion(event):
     canvas.itemconfig(rectangle_icon,  image=rectangle_hover if hovering else rectangle_normal)
 canvas.bind("<Motion>", rectangle_motion, add="+")
 
+text_image = Image.open(getpath("Assets/text.png")).convert("RGBA")
+bounds = text_image.getbbox()
+if bounds:
+    text_image = text_image.crop(bounds)
+text_image.thumbnail((30, 30), Image.Resampling.LANCZOS)
+text_normal = ImageTk.PhotoImage(text_image)
+text_hover = ImageTk.PhotoImage(ImageEnhance.Brightness(text_image).enhance(0.6))
+text_square = canvas.create_rectangle(53, 193, 97, 237, fill="", outline="")
+text_icon = canvas.create_image(75, 215, image=text_normal)
+def text_motion(event):
+    hovering = 53 <= event.x <= 97 and 193 <= event.y <= 237
+    canvas.itemconfig(text_square, fill="#393D40" if hovering else "", outline="#596066" if hovering else "")
+    canvas.itemconfig(text_icon, image=text_hover if hovering else text_normal)
+canvas.bind("<Motion>", text_motion, add="+")
+
+
 
 
 
