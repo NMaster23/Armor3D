@@ -14,13 +14,14 @@ use crate::render::State;
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-struct Vertex {
+pub struct Vertex {
     position: [f32; 3],
-    color: [f32; 3],
+    coords: [f32; 3],
+    color: [f32; 4],
 }
 
 impl Vertex {
-    fn desc() -> wgpu::VertexBufferLayout<'static> {
+    pub fn desc() -> wgpu::VertexBufferLayout<'static> {
         wgpu::VertexBufferLayout {
             array_stride: std::mem::size_of::<Vertex>() as wgpu::BufferAddress,
             step_mode: wgpu::VertexStepMode::Vertex,
@@ -34,24 +35,29 @@ impl Vertex {
                     offset: std::mem::size_of::<[f32; 3]>() as wgpu::BufferAddress,
                     shader_location: 1,
                     format: wgpu::VertexFormat::Float32x3,
-                }
+                },
+                wgpu::VertexAttribute {
+                    offset: (std::mem::size_of::<[f32; 3]>() * 2) as wgpu::BufferAddress, // Offset 24
+                    shader_location: 2,
+                    format: wgpu::VertexFormat::Float32x4,
+                },
             ]
         }
     }
 }
 
-const VERTICES: &[Vertex] = &[
-    Vertex { position: [-0.0868241, 0.49240386, 0.0], color: [0.5, 0.0, 0.5] }, // A
-    Vertex { position: [-0.49513406, 0.06958647, 0.0], color: [0.5, 0.0, 0.5] }, // B
-    Vertex { position: [-0.21918549, -0.44939706, 0.0], color: [0.5, 0.0, 0.5] }, // C
-    Vertex { position: [0.35966998, -0.3473291, 0.0], color: [0.5, 0.0, 0.5] }, // D
-    Vertex { position: [0.44147372, 0.2347359, 0.0], color: [0.5, 0.0, 0.5] }, // E
+pub const COLOR: [f32; 4] = [200.0 / 255.0, 200.0 / 255.0, 200.0 / 255.0, 1.0];
+
+pub const VERTICES: &[Vertex] = &[
+    Vertex { position: [-1.0, -1.0, 0.0], coords: [0.0, 1.0, 0.0], color: COLOR },
+    Vertex { position: [ 1.0, -1.0, 0.0], coords: [1.0, 1.0, 0.0], color: COLOR },
+    Vertex { position: [-1.0,  1.0, 0.0], coords: [0.0, 0.0, 0.0], color: COLOR },
+    Vertex { position: [ 1.0,  1.0, 0.0], coords: [1.0, 0.0, 0.0], color: COLOR },
 ];
 
-const INDICES: &[u16] = &[
-    0, 1, 4,
-    1, 2, 4,
-    2, 3, 4,
+pub const INDICES: &[u16] = &[
+    0, 1, 2,
+    2, 1, 3
 ];
 
 pub fn main() -> anyhow::Result<()> {
