@@ -1,16 +1,17 @@
-mod render;
-mod math;
+mod camera;
 mod geo;
 mod ipc;
-mod camera;
+mod math;
+mod render;
 
+use crate::camera::Camera;
+use crate::render::State;
 use std::sync::Arc;
 use winit::application::ApplicationHandler;
-use winit::event::{KeyEvent, WindowEvent};
+use winit::event::{KeyEvent, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::Window;
-use crate::render::State;
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -41,24 +42,57 @@ impl Vertex {
                     shader_location: 2,
                     format: wgpu::VertexFormat::Float32x4,
                 },
-            ]
+            ],
         }
     }
 }
 
 pub const COLOR: [f32; 4] = [200.0 / 255.0, 200.0 / 255.0, 200.0 / 255.0, 1.0];
 
-pub const VERTICES: &[Vertex] = &[
-    Vertex { position: [-1.0, -1.0, 0.0], coords: [0.0, 1.0, 0.0], color: COLOR },
-    Vertex { position: [ 1.0, -1.0, 0.0], coords: [1.0, 1.0, 0.0], color: COLOR },
-    Vertex { position: [-1.0,  1.0, 0.0], coords: [0.0, 0.0, 0.0], color: COLOR },
-    Vertex { position: [ 1.0,  1.0, 0.0], coords: [1.0, 0.0, 0.0], color: COLOR },
+pub const GRAPH_VERTICES: &[Vertex] = &[
+    Vertex {
+        position: [-1000.0, -1000.0, 1.0],
+        coords: [0.0, 1.0, 0.0],
+        color: COLOR,
+    },
+    Vertex {
+        position: [1000.0, -1000.0, 1.0],
+        coords: [1.0, 1.0, 0.0],
+        color: COLOR,
+    },
+    Vertex {
+        position: [-1000.0, 1000.0, 1.0],
+        coords: [0.0, 0.0, 0.0],
+        color: COLOR,
+    },
+    Vertex {
+        position: [1000.0, 1000.0, 1.0],
+        coords: [1.0, 0.0, 0.0],
+        color: COLOR,
+    },
+    Vertex {
+        position: [-1000.0, 0.0, -1000.0],
+        coords: [0.0, 1.0, 0.0],
+        color: COLOR,
+    },
+    Vertex {
+        position: [1000.0, 0.0, -1000.0],
+        coords: [1.0, 1.0, 0.0],
+        color: COLOR,
+    },
+    Vertex {
+        position: [-1000.0, 0.0, 1000.0],
+        coords: [0.0, 0.0, 0.0],
+        color: COLOR,
+    },
+    Vertex {
+        position: [1000.0, 0.0, 1000.0],
+        coords: [1.0, 0.0, 0.0],
+        color: COLOR,
+    },
 ];
 
-pub const INDICES: &[u16] = &[
-    0, 1, 2,
-    2, 1, 3
-];
+pub const GRAPH_INDICES: &[u16] = &[0, 1, 2, 2, 1, 3, 4, 5, 6, 6, 5, 7];
 
 pub fn main() -> anyhow::Result<()> {
     #[cfg(not(target_arch = "wasm32"))]
@@ -133,13 +167,15 @@ impl ApplicationHandler<State> for App {
         {
             if let Some(proxy) = self.proxy.take() {
                 wasm_bindgen_futures::spawn_local(async move {
-                    assert!(proxy
-                        .send_event(
-                            State::new(window)
-                                .await
-                                .expect("Unable to create canvas!!!")
-                        )
-                        .is_ok())
+                    assert!(
+                        proxy
+                            .send_event(
+                                State::new(window)
+                                    .await
+                                    .expect("Unable to create canvas!!!")
+                            )
+                            .is_ok()
+                    )
                 });
             }
         }
@@ -172,25 +208,33 @@ impl ApplicationHandler<State> for App {
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::Resized(size) => state.resize(size.width, size.height),
-            WindowEvent::RedrawRequested => {
-                match state.render() {
-                    Ok(_) => {}
-                    Err(e) => {
-                        log::error!("{:?}", e);
-                        eprintln!("{:?}", e);
-                        event_loop.exit();
-                    }
+            WindowEvent::RedrawRequested => match state.render() {
+                Ok(_) => {}
+                Err(e) => {
+                    log::error!("{:?}", e);
+                    eprintln!("{:?}", e);
+                    event_loop.exit();
                 }
-            }
+            },
             WindowEvent::KeyboardInput {
                 event:
-                KeyEvent {
-                    physical_key: PhysicalKey::Code(code),
-                    state: key_state,
-                    ..
-                },
+                    KeyEvent {
+                        physical_key: PhysicalKey::Code(code),
+                        state: key_state,
+                        ..
+                    },
                 ..
             } => state.handle_key(event_loop, code, key_state.is_pressed()),
+            WindowEvent::MouseWheel {
+                device_id,
+                delta,
+                phase,
+            } => {
+                state
+                    .camera_controller
+                    .handle_scroll(&mut state.camera, &delta);
+                state.window.request_redraw();
+            }
             _ => {}
         }
     }
