@@ -1,4 +1,6 @@
+use std::thread::sleep;
 use winit::keyboard::KeyCode;
+use winit::event::{MouseScrollDelta, WindowEvent};
 
 pub struct Camera {
     pub eye: cgmath::Point3<f32>,

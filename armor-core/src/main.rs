@@ -6,7 +6,7 @@ mod camera;
 
 use std::sync::Arc;
 use winit::application::ApplicationHandler;
-use winit::event::{KeyEvent, WindowEvent};
+use winit::event::{KeyEvent, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::Window;
@@ -49,10 +49,10 @@ impl Vertex {
 pub const COLOR: [f32; 4] = [200.0 / 255.0, 200.0 / 255.0, 200.0 / 255.0, 1.0];
 
 pub const VERTICES: &[Vertex] = &[
-    Vertex { position: [-1.0, -1.0, 0.0], coords: [0.0, 1.0, 0.0], color: COLOR },
-    Vertex { position: [ 1.0, -1.0, 0.0], coords: [1.0, 1.0, 0.0], color: COLOR },
-    Vertex { position: [-1.0,  1.0, 0.0], coords: [0.0, 0.0, 0.0], color: COLOR },
-    Vertex { position: [ 1.0,  1.0, 0.0], coords: [1.0, 0.0, 0.0], color: COLOR },
+    Vertex { position: [-1000.0, -1000.0, 1.0], coords: [0.0, 1.0, 0.0], color: COLOR },
+    Vertex { position: [ 1000.0, -1000.0, 1.0], coords: [1.0, 1.0, 0.0], color: COLOR },
+    Vertex { position: [-1000.0,  1000.0, 1.0], coords: [0.0, 0.0, 0.0], color: COLOR },
+    Vertex { position: [ 1000.0,  1000.0, 1.0], coords: [1.0, 0.0, 0.0], color: COLOR },
 ];
 
 pub const INDICES: &[u16] = &[
