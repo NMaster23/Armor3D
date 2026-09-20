@@ -138,6 +138,7 @@ def open_file_menu():
     global file_hover_job
     file_hover_job = None
     filemenu.place(x=8, y=20)
+    analyze_menu.place_forget()
 def cancelfilehover(event=None):
     global file_hover_job
     if file_hover_job is not None:
@@ -157,7 +158,7 @@ fileclosejob = None
 def pointeronfilemenu(event):
     x=  event.x_root- app.winfo_rootx()
     y = event.y_root - app.winfo_rooty()
-    return (8 <= x <= 45 and 0 <= y <= 20) or (8 <+ x <= 170 and 20 <= y <= 158)
+    return (8 <= x <= 45 and 0 <= y <= 20) or (8 <= x <= 170 and 20 <= y <= 158)
 def cancelfileclose():
     global fileclosejob
     if fileclosejob is not None:
@@ -192,8 +193,53 @@ canvas.tag_bind(importz, "<Enter>", lambda event: canvas.itemconfig(importz, fil
 canvas.tag_bind(importz, "<Leave>", lambda event: canvas.itemconfig(importz, fill='#F5E8D2'))
 
 analyze = canvas.create_text(120, 8, text='Analyze', font=("Lexend", 8), fill='#F5E8D2')
-canvas.tag_bind(analyze, "<Enter>", lambda event: canvas.itemconfig(analyze, fill='#F0AA60'))
-canvas.tag_bind(analyze, "<Leave>", lambda event: canvas.itemconfig(analyze, fill='#F5E8D2'))
+analyze_menu = Canvas(app, width=160, height=72, bg="#3B332A", highlightthickness=1, highlightbackground="#A66B3E")
+analyze_rows = []
+for i, name in enumerate(("Distance", "Angle")):
+    y = 4 + i *32
+    box = analyze_menu.create_rectangle(4, y, 155, y +30, fill='', outline='')
+    label = analyze_menu.create_text(12, y+15, text=name, anchor='w', fill='#F5E8D2', font=("Iceland", 12))
+    analyze_rows.append((box, label))
+def analyzemenumotion(event):
+    hovered = (event.y-4) //32
+    for i, (box, label) in enumerate(analyze_rows):
+        active = i == hovered and 4 <= event.x <= 155
+        analyze_menu.itemconfig(box, fill='#67442F' if active else "")
+        analyze_menu.itemconfig(label, fill='#F0AA60' if active else "#F5E8D2")
+analyze_menu.bind("<Motion>", analyzemenumotion)
+analyzehoverjob = None
+analyzeclosejob = None
+def openanalyzemenu():
+    global analyzehoverjob
+    analyzehoverjob = None
+    filemenu.place_forget()
+    analyze_menu.place(x=100, y=20)
+def analyze_enter(event):
+    global analyzehoverjob
+    if analyzehoverjob is not None:
+        app.after_cancel(analyzehoverjob)
+    analyzehoverjob = app.after(500, openanalyzemenu)
+def analyzeleave(event):
+    global analyzehoverjob
+    if analyzehoverjob is not None:
+        app.after_cancel(analyzehoverjob)
+        analyzehoverjob = None
+def analyzepointermotion(event):
+    global analyzeclosejob
+    if not analyze_menu.winfo_manager():
+        return
+    x = event.x_root - app.winfo_rootx()
+    y= event.y_root - app.winfo_rooty()
+    nearby = (94 <= x <= 148 and 0 <= y <= 20) or (100 <= x <= 260 and 20 <= y <= 94)
+    if nearby:
+        if analyzeclosejob is not None:
+            app.after_cancel(analyzeclosejob)
+            analyzeclosejob = None
+    elif analyzeclosejob is None:
+        analyzeclosejob = app.after(180, analyze_menu.place_forget)
+canvas.tag_bind(analyze, "<Enter>", analyze_enter, add="+")
+canvas.tag_bind(analyze, "<Leave>", analyzeleave, add="+")
+app.bind_all("<Motion>", analyzepointermotion, add="+")
 
 tools = canvas.create_text(170, 8, text="Tools", font=("Lexend", 8), fill='#F5E8D2')
 canvas.tag_bind(tools, "<Enter>", lambda event: canvas.itemconfig(tools, fill='#F0AA60'))
