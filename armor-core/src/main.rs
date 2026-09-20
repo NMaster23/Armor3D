@@ -4,6 +4,7 @@ mod ipc;
 mod math;
 mod render;
 
+use crate::camera::Camera;
 use crate::render::State;
 use std::sync::Arc;
 use winit::application::ApplicationHandler;
@@ -229,7 +230,9 @@ impl ApplicationHandler<State> for App {
                 delta,
                 phase,
             } => {
-                state.camera_controller.handle_scroll(&delta);
+                state
+                    .camera_controller
+                    .handle_scroll(&mut state.camera, &delta);
                 state.window.request_redraw();
             }
             _ => {}

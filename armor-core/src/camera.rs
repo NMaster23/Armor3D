@@ -1,6 +1,5 @@
 use cgmath::InnerSpace;
-use std::thread::sleep;
-use winit::event::{MouseScrollDelta, WindowEvent};
+use winit::event::MouseScrollDelta;
 use winit::keyboard::KeyCode;
 
 pub struct Camera {

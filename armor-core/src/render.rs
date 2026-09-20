@@ -11,7 +11,7 @@ use winit::{
 };
 
 use crate::{GRAPH_INDICES, GRAPH_VERTICES, Vertex};
-use cgmath::{Matrix4, SquareMatrix};
+use cgmath::{InnerSpace, Matrix4, SquareMatrix, Vector3, Vector4};
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 use wgpu::util::DeviceExt;
@@ -26,14 +26,14 @@ pub struct State {
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
     is_surface_configured: bool,
-    window: Arc<Window>,
+    pub(crate) window: Arc<Window>,
     render_pipeline: wgpu::RenderPipeline,
     graph_pipeline: wgpu::RenderPipeline,
     vertex_buffer: wgpu::Buffer,
     index_buffer: wgpu::Buffer,
     num_indices: u32,
     num_vertices: u32,
-    camera: Camera,
+    pub(crate) camera: Camera,
     camera_uniform: CameraUniform,
     camera_buffer: wgpu::Buffer,
     camera_bind_group: wgpu::BindGroup,
@@ -46,16 +46,35 @@ impl State {
         mouse_pos: PhysicalPosition<f64>,
         mouse_button: MouseButton,
         mouse_scroll: MouseScrollDelta,
+        is_pressed: bool,
     ) {
+        if mouse_button != MouseButton::Left || !is_pressed {
+            return;
+        }
         let (mouse_x, mouse_y) = (mouse_pos.x, mouse_pos.y);
         let (width, height) = (self.config.width, self.config.height);
-        let left = mouse_button == MouseButton::Left;
-        let right = mouse_button == MouseButton::Right;
+        if width == 0 || height == 0 {
+            return;
+        }
         let ndc_x = (2.0 * mouse_x / width as f64) - 1.0;
         let ndc_y = (2.0 * mouse_y / height as f64) - 1.0;
         let vp: Matrix4<f32> = self.camera_uniform.view_proj.into();
         let invert_vp = vp.invert().expect("Error unwrapping inverted vp");
         let near = invert_vp * cgmath::Vector4::new(ndc_x as f32, ndc_y as f32, 0.0, 1.0);
+        let far = invert_vp * Vector4::new(ndc_x as f32, ndc_y as f32, 1.0, 0.0);
+        let ray_origin = (near / near.w).truncate();
+        let ray_target = (far / far.w).truncate();
+        let ray_dir = (ray_target - ray_origin).normalize();
+        if ray_dir.y.abs() > 1e-6 {
+            let t = -ray_origin.y / ray_dir.y;
+            if t >= 0.0 {
+                let hit_pos: Vector3<f32> = ray_origin + ray_dir * t;
+            }
+        }
+    }
+    pub async fn add_point(&mut self, point: Vector3<f32>) {
+        self.queue
+            .write_buffer(&self.vertex_buffer, 0, bytemuck::cast_slice(&[point]));
     }
     pub async fn new(window: Arc<Window>) -> anyhow::Result<State> {
         let size = window.inner_size();
