@@ -22,17 +22,17 @@ from tkinter import font
 app.title("Armor 3D")
 app.geometry("1100x700")
 app.minsize(850, 500)
-canvas = Canvas(app, bg="#252729", highlightthickness=0)
+canvas = Canvas(app, bg="#242B23", highlightthickness=0)
 canvas.pack(fill='both', expand=True)
-command = ctk.CTkEntry(canvas, placeholder_text="Command:", font=("Lexend", 12), fg_color="#2C2C2E", border_color="#1D1B1B")
-history = ctk.CTkTextbox( canvas, font=("Lexend", 11), fg_color="#2C2C2E", border_color="#1D1B1B",  border_width=2)
+command = ctk.CTkEntry(canvas, placeholder_text="Command:", font=("Lexend", 12), fg_color="#3B322A", border_color="#70543B")
+history = ctk.CTkTextbox( canvas, font=("Lexend", 11), fg_color="#3B322A", border_color="#70543B",  border_width=2)
 history_window = canvas.create_window(8, 19, window=history, anchor='nw', height=45)
 history.configure(state="disabled")
 command_window = canvas.create_window(8, 70, window=command, anchor='nw', height=20)
-horizontal = canvas.create_line(100, 100, 1200, 100, fill="#1D1B1B", width=3)
-vertical = canvas.create_line(100, 100, 100, 850)
+horizontal = canvas.create_line(100, 100, 1200, 100, fill="#70543B", width=3)
+vertical = canvas.create_line(100, 100, 100, 850, fill="#70543B", width=3)
 
-shadow_lines= [canvas.create_line(0, 0, 0, 0, fill=color, width=2,  smooth=True, splinesteps=20, state="hidden") for color in ("#222426", "#1D1F21", "#17191B")]
+shadow_lines= [canvas.create_line(0, 0, 0, 0, fill=color, width=2,  smooth=True, splinesteps=20, state="hidden") for color in ("#283328", "#1D281F", "#152019")]
 current_offset = 16
 panel_ratio = 0.5
 animating=False
@@ -60,11 +60,11 @@ def resize_cmd_boxes(width):
 #     spacing = grid_size * zoom
 #     x = 101 + pan_x % spacing
 #     while x < width:
-#         canvas.create_line(x, 101, x, height, fill="#3A3D40", tags="viewport_grid")
+#         canvas.create_line(x, 101, x, height, fill="#4C5746", tags="viewport_grid")
 #         x += spacing
 #     y = 101 + pan_y % spacing
 #     while y < height:
-#         canvas.create_line(101, y, width, y, fill="#3A3D40", tags="viewport_grid")
+#         canvas.create_line(101, y, width, y, fill="#4C5746", tags="viewport_grid")
 #         y += spacing
 #     canvas.tag_lower("viewport_grid")
 # def start_pan(event):
@@ -115,32 +115,148 @@ def runcmd(event):
     command.delete(0, 'end')
 command.bind("<Return>", runcmd)
 
-filez = canvas.create_text(24, 8, text="File", font=("Lexend", 8), fill='#ffffff')
-canvas.tag_bind(filez, "<Enter>", lambda event: canvas.itemconfig(filez, fill="#5c5b5b"))
-canvas.tag_bind(filez, "<Leave>", lambda event: canvas.itemconfig(filez, fill="white"))
+filez = canvas.create_text(24, 8, text="File", font=("Lexend", 8), fill='#F5E8D2')
+canvas.tag_bind(filez, "<Enter>", lambda event: canvas.itemconfig(filez, fill="#F0AA60"))
+canvas.tag_bind(filez, "<Leave>", lambda event: canvas.itemconfig(filez, fill="#F5E8D2"))
+filemenu = Canvas(app, width=160, height=136, bg="#3B322A",  highlightthickness=1, highlightbackground="#A66B3E")
+menu_rows = []
+for i, name in enumerate(("New", "Save", "Save As", "Pumpkin :)")): 
+    y=4 + i * 32
+    box = filemenu.create_rectangle(4, y, 155, y +30, fill="", outline="")
+    label = filemenu.create_text(12, y+15, text=name, anchor='w', fill="#F5E8D2", font=("Iceland", 13))
+    menu_rows.append((box, label))
+def menu_motion(event):
+    hovered = (event.y-4) // 32
+    for i, (box, label) in enumerate(menu_rows):
+        active = i == hovered and 4 <= event.x <= 155
+        filemenu.itemconfig(box, fill='#67442F' if active else "")
+        filemenu.itemconfig(label, fill= "#67442F" if active else "")
+        filemenu.itemconfig(label, fill="#F0AA60" if active else "#F5E8D2")
+filemenu.bind("<Motion>", menu_motion)
+file_hover_job = None
+def open_file_menu():
+    global file_hover_job
+    file_hover_job = None
+    filemenu.place(x=8, y=20)
+    analyze_menu.place_forget()
+def cancelfilehover(event=None):
+    global file_hover_job
+    if file_hover_job is not None:
+        app.after_cancel(file_hover_job)
+        file_hover_job = None
+def file_enter(event):
+    global file_hover_job
+    cancelfilehover()
+    file_hover_job = app.after(500, open_file_menu)
+def file_click(event):
+    cancelfilehover()
+    if filemenu.winfo_manager():
+        filemenu.place_forget()
+    else:
+        open_file_menu()
+fileclosejob = None
+def pointeronfilemenu(event):
+    x=  event.x_root- app.winfo_rootx()
+    y = event.y_root - app.winfo_rooty()
+    return (8 <= x <= 45 and 0 <= y <= 20) or (8 <= x <= 170 and 20 <= y <= 158)
+def cancelfileclose():
+    global fileclosejob
+    if fileclosejob is not None:
+        app.after_cancel(fileclosejob)
+        fileclosejob = None
+def closefilemenu():
+    global fileclosejob
+    fileclosejob = None
+    filemenu.place_forget()
+def filepointermtion(event):
+    global fileclosejob
+    if not filemenu.winfo_manager():
+        return
+    if pointeronfilemenu(event):
+        cancelfileclose()
+    elif fileclosejob is None:
+        fileclosejob = app.after(180, closefilemenu)
+def file_outside_click(event):
+    if filemenu.winfo_manager() and not pointeronfilemenu(event):
+        cancelfileclose()
+        closefilemenu()
+app.bind_all("<Motion>", filepointermtion, add="+")
+app.bind_all("<Button-1>", file_outside_click, add="+")
+canvas.tag_bind(filez, "<Enter>", file_enter, add="+")
+canvas.tag_bind(filez, "<Leave>", cancelfilehover, add="+")
+canvas.tag_bind(filez, "<Button-1>", file_click)
 
-importz = canvas.create_text(68, 8, text='Import', font=("Lexend", 8), fill='white')
-canvas.tag_bind(importz, "<Enter>", lambda event: canvas.itemconfig(importz, fill='#5c5b5b'))
-canvas.tag_bind(importz, "<Leave>", lambda event: canvas.itemconfig(importz, fill='white'))
-
-analyze = canvas.create_text(120, 8, text='Analyze', font=("Lexend", 8), fill='white')
-canvas.tag_bind(analyze, "<Enter>", lambda event: canvas.itemconfig(analyze, fill='#5c5b5b'))
-canvas.tag_bind(analyze, "<Leave>", lambda event: canvas.itemconfig(analyze, fill='white'))
-
-tools = canvas.create_text(170, 8, text="Tools", font=("Lexend", 8), fill='white')
-canvas.tag_bind(tools, "<Enter>", lambda event: canvas.itemconfig(tools, fill='#5c5b5b'))
-canvas.tag_bind(tools, "<Leave>", lambda event: canvas.itemconfig(tools, fill='white'))
-
-AI  = canvas.create_text(226, 8, text='AI Creation', font=("Lexend", 8), fill='white')
-canvas.tag_bind(AI, "<Enter>", lambda event: canvas.itemconfig(AI, fill='#5c5b5b'))
-canvas.tag_bind(AI, "<Leave>", lambda event: canvas.itemconfig(AI, fill='white'))
 
 
-sidebar = ctk.CTkFrame(app, width=520, corner_radius=16, fg_color="#2C2C2E", border_color="#191A1C", border_width=4)
+importz = canvas.create_text(68, 8, text='Import', font=("Lexend", 8), fill='#F5E8D2')
+canvas.tag_bind(importz, "<Enter>", lambda event: canvas.itemconfig(importz, fill='#F0AA60'))
+canvas.tag_bind(importz, "<Leave>", lambda event: canvas.itemconfig(importz, fill='#F5E8D2'))
+
+analyze = canvas.create_text(120, 8, text='Analyze', font=("Lexend", 8), fill='#F5E8D2')
+analyze_menu = Canvas(app, width=160, height=72, bg="#3B332A", highlightthickness=1, highlightbackground="#A66B3E")
+analyze_rows = []
+for i, name in enumerate(("Distance", "Angle")):
+    y = 4 + i *32
+    box = analyze_menu.create_rectangle(4, y, 155, y +30, fill='', outline='')
+    label = analyze_menu.create_text(12, y+15, text=name, anchor='w', fill='#F5E8D2', font=("Iceland", 12))
+    analyze_rows.append((box, label))
+def analyzemenumotion(event):
+    hovered = (event.y-4) //32
+    for i, (box, label) in enumerate(analyze_rows):
+        active = i == hovered and 4 <= event.x <= 155
+        analyze_menu.itemconfig(box, fill='#67442F' if active else "")
+        analyze_menu.itemconfig(label, fill='#F0AA60' if active else "#F5E8D2")
+analyze_menu.bind("<Motion>", analyzemenumotion)
+analyzehoverjob = None
+analyzeclosejob = None
+def openanalyzemenu():
+    global analyzehoverjob
+    analyzehoverjob = None
+    filemenu.place_forget()
+    analyze_menu.place(x=100, y=20)
+def analyze_enter(event):
+    global analyzehoverjob
+    canvas.itemconfig(analyze, fill="#F0AA60")
+    if analyzehoverjob is not None:
+        app.after_cancel(analyzehoverjob)
+    analyzehoverjob = app.after(500, openanalyzemenu)
+def analyzeleave(event):
+    global analyzehoverjob
+    canvas.itemconfig(analyze, fill="#F5E8D2")
+    if analyzehoverjob is not None:
+        app.after_cancel(analyzehoverjob)
+        analyzehoverjob = None
+def analyzepointermotion(event):
+    global analyzeclosejob
+    if not analyze_menu.winfo_manager():
+        return
+    x = event.x_root - app.winfo_rootx()
+    y= event.y_root - app.winfo_rooty()
+    nearby = (94 <= x <= 148 and 0 <= y <= 20) or (100 <= x <= 260 and 20 <= y <= 94)
+    if nearby:
+        if analyzeclosejob is not None:
+            app.after_cancel(analyzeclosejob)
+            analyzeclosejob = None
+    elif analyzeclosejob is None:
+        analyzeclosejob = app.after(180, analyze_menu.place_forget)
+canvas.tag_bind(analyze, "<Enter>", analyze_enter, add="+")
+canvas.tag_bind(analyze, "<Leave>", analyzeleave, add="+")
+app.bind_all("<Motion>", analyzepointermotion, add="+")
+
+tools = canvas.create_text(170, 8, text="Tools", font=("Lexend", 8), fill='#F5E8D2')
+canvas.tag_bind(tools, "<Enter>", lambda event: canvas.itemconfig(tools, fill='#F0AA60'))
+canvas.tag_bind(tools, "<Leave>", lambda event: canvas.itemconfig(tools, fill='#F5E8D2'))
+
+AI  = canvas.create_text(226, 8, text='AI Creation', font=("Lexend", 8), fill='#F5E8D2')
+canvas.tag_bind(AI, "<Enter>", lambda event: canvas.itemconfig(AI, fill='#F0AA60'))
+canvas.tag_bind(AI, "<Leave>", lambda event: canvas.itemconfig(AI, fill='#F5E8D2'))
+
+
+sidebar = ctk.CTkFrame(app, width=520, corner_radius=16, fg_color="#3B322A", border_color="#A66B3E", border_width=4)
 sidebar.pack_propagate(False)
 prompt_label = ctk.CTkLabel(sidebar, text="", font=("Iceland", 35), width=300, height=82, justify='center')
 prompt_label.pack(pady=(24, 10))
-ai_input = ctk.CTkEntry(sidebar, placeholder_text="Start typing...", font=("Lexend", 12))
+ai_input = ctk.CTkEntry( sidebar, placeholder_text="Start typing...", font=("Lexend", 12), fg_color="#3B322A", border_color="#E28B45",  text_color="#F5E8D2", placeholder_text_color="#C5B29A")
 ai_input.place(relx=0.5, rely=1, y=-15, anchor="s", relwidth=0.8)
 ai_input.configure(height=38)
 typingjob = None
@@ -191,12 +307,12 @@ def toggleai(event=None):
                     canvas.itemconfigure(line, state="hidden")
                 resize_cmd_boxes(canvas.winfo_width())
     animate(0)
-close_canvas = Canvas(sidebar, width=32, height=32, bg="#2C2C2E", highlightthickness=0)
+close_canvas = Canvas(sidebar, width=32, height=32, bg="#3B322A", highlightthickness=0)
 close_canvas.place(x=12, y=12)
 close_x = close_canvas.create_text(16, 16, text="×", fill='white', font=("Lexend", 20))
 close_canvas.tag_bind(close_x, "<Button-1>", toggleai)
 canvas.tag_bind(AI, "<Button-1>", toggleai)
-resize_handle = Canvas(sidebar, width=12, bg="#2C2C2E", highlightthickness=0, cursor="sb_h_double_arrow")
+resize_handle = Canvas(sidebar, width=12, bg="#3B322A", highlightthickness=0, cursor="sb_h_double_arrow")
 resize_handle.place(x=0, y=18, relheight=1, height=-36)
 def drag_sidebar(event):
     global panel_ratio
@@ -223,7 +339,7 @@ polyline_square = canvas.create_rectangle(8, 103, 52, 147, fill='', outline='')
 polyline_icon = canvas.create_image(30, 125, image=polylinenormal)
 def polyline_motion(event):
     hovering = 8 <= event.x<= 52 and 103 <= event.y <= 147
-    canvas.itemconfig(polyline_square, fill="#393D40"if hovering else  "", outline="#596066" if hovering else "")
+    canvas.itemconfig(polyline_square, fill="#67442F"if hovering else  "", outline="#E28B45" if hovering else "")
     canvas.itemconfig(polyline_icon, image=polyline_hover if hovering else polylinenormal)
 canvas.bind("<Motion>", polyline_motion)
 
@@ -238,7 +354,7 @@ curve_square = canvas.create_rectangle(53, 103, 96, 147, fill='', outline='')
 curve_icon = canvas.create_image(75, 125, image=curve_normal)
 def curve_motion(event):
     hovering = 53 <= event.x <=97 and 103 <= event.y <=147
-    canvas.itemconfig(curve_square, fill='#393D40' if hovering else '', outline="#596066" if hovering else "")
+    canvas.itemconfig(curve_square, fill='#67442F' if hovering else '', outline="#E28B45" if hovering else "")
     canvas.itemconfig(curve_icon, image=curve_hover if hovering else curve_normal)
 canvas.bind("<Motion>", curve_motion, add="+")
 
@@ -253,7 +369,7 @@ puzzle_square  = canvas.create_rectangle(8, 148, 52, 192, fill='', outline='')
 puzzle_icon = canvas.create_image(30, 170, image=puzzle_normal)
 def puzzlemotion(event):
     hovering = 8 <= event.x <= 52 and 148 <= event.y <= 192
-    canvas.itemconfig(puzzle_square, fill='#393D40' if hovering else "", outline="#596066" if hovering else "")
+    canvas.itemconfig(puzzle_square, fill='#67442F' if hovering else "", outline="#E28B45" if hovering else "")
     canvas.itemconfig(puzzle_icon, image=puzzle_hover if hovering else puzzle_normal)
 canvas.bind("<Motion>", puzzlemotion, add="+")
 
@@ -268,7 +384,7 @@ explode_square = canvas.create_rectangle(53, 148, 97, 192, fill='', outline='')
 explode_icon = canvas.create_image(75, 170, image=explode_normal)
 def explode_motion(event):
     hovering = 53 <= event.x <= 97 and 148 <= event.y <=192
-    canvas.itemconfig(explode_square, fill='#393D40' if hovering else "", outline="#596066" if hovering else "")
+    canvas.itemconfig(explode_square, fill='#67442F' if hovering else "", outline="#E28B45" if hovering else "")
     canvas.itemconfig(explode_icon, image=explode_hover if hovering else explode_normal)
 canvas.bind("<Motion>", explode_motion, add="+")
 
@@ -283,7 +399,7 @@ rectangle_sqaure = canvas.create_rectangle(8, 193, 52, 237, fill='', outline='')
 rectangle_icon = canvas.create_image(30, 215, image=rectangle_normal)
 def rectangle_motion(event):
     hovering = 8 <= event.x <= 52 and 193 <= event.y <= 237
-    canvas.itemconfig(rectangle_sqaure, fill="#393D40" if hovering else "",  outline="#596066" if hovering else "")
+    canvas.itemconfig(rectangle_sqaure, fill="#67442F" if hovering else "",  outline="#E28B45" if hovering else "")
     canvas.itemconfig(rectangle_icon,  image=rectangle_hover if hovering else rectangle_normal)
 canvas.bind("<Motion>", rectangle_motion, add="+")
 
@@ -298,11 +414,39 @@ text_square = canvas.create_rectangle(53, 193, 97, 237, fill="", outline="")
 text_icon = canvas.create_image(75, 215, image=text_normal)
 def text_motion(event):
     hovering = 53 <= event.x <= 97 and 193 <= event.y <= 237
-    canvas.itemconfig(text_square, fill="#393D40" if hovering else "", outline="#596066" if hovering else "")
+    canvas.itemconfig(text_square, fill="#67442F" if hovering else "", outline="#E28B45" if hovering else "")
     canvas.itemconfig(text_icon, image=text_hover if hovering else text_normal)
 canvas.bind("<Motion>", text_motion, add="+")
 
-
+tooltips = [ (8, 103, 52, 147, "Polyline"), (53, 103, 97, 147, "Curve"), (8, 148, 52, 192, "Join"), (53, 148, 97, 192, "Explode"), (8, 193, 52, 237, "Rectangle"), (53, 193, 97, 237, "Text")]
+tooltip_job = None
+tooltip_target = None
+def show_tooltip(name, top):
+    global tooltip_job
+    tooltip_job = None
+    background = canvas.create_rectangle(0, 0, 0, 0, fill="#34291F", outline="#E28B45", tags="tooltip")
+    label = canvas.create_text(111, top+22, text=name, anchor='w', fill='white', font=("Iceland", 11), tags='tooltip')
+    x1, y1, x2, y2 = canvas.bbox(label)
+    canvas.coords(background, x1-7, y1-5, x2+7, y2+5)
+    canvas.tag_raise('tooltip')
+def hide_tooltip(event=None):
+    global tooltip_job, tooltip_target
+    if tooltip_job is not None:
+        app.after_cancel(tooltip_job)
+        tooltip_job = None
+    tooltip_target = None
+    canvas.delete("tooltip")
+def tooltipmotion(event):
+    global tooltip_job, tooltip_target
+    target = next(((name, top) for left, top, right, bottom, name in tooltips if left <= event.x <= right and top <= event.y <= bottom), None)
+    if target == tooltip_target:
+        return
+    hide_tooltip()
+    tooltip_target = target
+    if target is not None:
+        tooltip_job = app.after(650, lambda: show_tooltip(*target))
+canvas.bind("<Motion>", tooltipmotion, add="+")
+canvas.bind("<Leave>", hide_tooltip)
 
 
 
