@@ -2,6 +2,7 @@ import customtkinter as ctk
 from ctypes import windll
 from tkinter import Canvas
 import sys
+from PIL import Image, ImageEnhance, ImageTk, ImageDraw
 from pathlib import Path
 import os
 ctk.set_appearance_mode('dark')
@@ -210,6 +211,84 @@ def drag_sidebar(event):
     update_shadow(window_width, canvas.winfo_height(), 16)
     resize_cmd_boxes(window_width)
 resize_handle.bind("<B1-Motion>", drag_sidebar)
+
+icon = Image.open(getpath("Assets/polylinez.png")).convert("RGBA")
+bounds = icon.getbbox()
+if bounds:
+    icon = icon.crop(bounds)
+icon.thumbnail((30, 30), Image.Resampling.LANCZOS)
+polylinenormal = ImageTk.PhotoImage(icon)
+polyline_hover = ImageTk.PhotoImage(ImageEnhance.Brightness(icon).enhance(0.6))
+polyline_square = canvas.create_rectangle(8, 103, 52, 147, fill='', outline='')
+polyline_icon = canvas.create_image(30, 125, image=polylinenormal)
+def polyline_motion(event):
+    hovering = 8 <= event.x<= 52 and 103 <= event.y <= 147
+    canvas.itemconfig(polyline_square, fill="#393D40"if hovering else  "", outline="#596066" if hovering else "")
+    canvas.itemconfig(polyline_icon, image=polyline_hover if hovering else polylinenormal)
+canvas.bind("<Motion>", polyline_motion)
+
+curve_image = Image.open(getpath("Assets/curvez.png")).convert("RGBA")
+bounds = curve_image.getbbox()
+if bounds:
+    curve_image = curve_image.crop(bounds)
+curve_image.thumbnail((30, 30), Image.Resampling.LANCZOS)
+curve_normal = ImageTk.PhotoImage(curve_image)
+curve_hover = ImageTk.PhotoImage(ImageEnhance.Brightness(curve_image).enhance(0.6))
+curve_square = canvas.create_rectangle(53, 103, 96, 147, fill='', outline='')
+curve_icon = canvas.create_image(75, 125, image=curve_normal)
+def curve_motion(event):
+    hovering = 53 <= event.x <=97 and 103 <= event.y <=147
+    canvas.itemconfig(curve_square, fill='#393D40' if hovering else '', outline="#596066" if hovering else "")
+    canvas.itemconfig(curve_icon, image=curve_hover if hovering else curve_normal)
+canvas.bind("<Motion>", curve_motion, add="+")
+
+puzzle_image = Image.open(getpath("Assets/joinz.png")).convert("RGBA")
+bounds = puzzle_image.getbbox()
+if bounds:
+    puzzle_image = puzzle_image.crop(bounds)
+puzzle_image.thumbnail((30, 30), Image.Resampling.LANCZOS)
+puzzle_normal = ImageTk.PhotoImage(puzzle_image)
+puzzle_hover= ImageTk.PhotoImage(ImageEnhance.Brightness(puzzle_image).enhance(0.6))
+puzzle_square  = canvas.create_rectangle(8, 148, 52, 192, fill='', outline='')
+puzzle_icon = canvas.create_image(30, 170, image=puzzle_normal)
+def puzzlemotion(event):
+    hovering = 8 <= event.x <= 52 and 148 <= event.y <= 192
+    canvas.itemconfig(puzzle_square, fill='#393D40' if hovering else "", outline="#596066" if hovering else "")
+    canvas.itemconfig(puzzle_icon, image=puzzle_hover if hovering else puzzle_normal)
+canvas.bind("<Motion>", puzzlemotion, add="+")
+
+explode_image = Image.open(getpath("Assets/explode.png")).convert("RGBA")
+bounds = explode_image.getbbox()
+if bounds: 
+    explode_image = explode_image.crop(bounds)
+explode_image.thumbnail((30, 30), Image.Resampling.LANCZOS)
+explode_normal = ImageTk.PhotoImage(explode_image)
+explode_hover = ImageTk.PhotoImage(ImageEnhance.Brightness(explode_image).enhance(0.6))
+explode_square = canvas.create_rectangle(53, 148, 97, 192, fill='', outline='')
+explode_icon = canvas.create_image(75, 170, image=explode_normal)
+def explode_motion(event):
+    hovering = 53 <= event.x <= 97 and 148 <= event.y <=192
+    canvas.itemconfig(explode_square, fill='#393D40' if hovering else "", outline="#596066" if hovering else "")
+    canvas.itemconfig(explode_icon, image=explode_hover if hovering else explode_normal)
+canvas.bind("<Motion>", explode_motion, add="+")
+
+rectangle_image = Image.open(getpath("Assets/rectangle.png")).convert("RGBA")
+bounds = rectangle_image.getbbox()
+if bounds:
+    rectangle_image = rectangle_image.crop(bounds)
+rectangle_image.thumbnail((30, 30), Image.Resampling.LANCZOS)
+rectangle_normal = ImageTk.PhotoImage(rectangle_image)
+rectangle_hover = ImageTk.PhotoImage(ImageEnhance.Brightness(rectangle_image).enhance(0.6))
+rectangle_sqaure = canvas.create_rectangle(8, 193, 52, 237, fill='', outline='')
+rectangle_icon = canvas.create_image(30, 215, image=rectangle_normal)
+def rectangle_motion(event):
+    hovering = 8 <= event.x <= 52 and 193 <= event.y <= 237
+    canvas.itemconfig(rectangle_sqaure, fill="#393D40" if hovering else "",  outline="#596066" if hovering else "")
+    canvas.itemconfig(rectangle_icon,  image=rectangle_hover if hovering else rectangle_normal)
+canvas.bind("<Motion>", rectangle_motion, add="+")
+
+
+
 
 app.mainloop()
 
