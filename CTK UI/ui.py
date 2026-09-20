@@ -272,6 +272,23 @@ def explode_motion(event):
     canvas.itemconfig(explode_icon, image=explode_hover if hovering else explode_normal)
 canvas.bind("<Motion>", explode_motion, add="+")
 
+rectangle_image = Image.open(getpath("Assets/rectangle.png")).convert("RGBA")
+bounds = rectangle_image.getbbox()
+if bounds:
+    rectangle_image = rectangle_image.crop(bounds)
+rectangle_image.thumbnail((30, 30), Image.Resampling.LANCZOS)
+rectangle_normal = ImageTk.PhotoImage(rectangle_image)
+rectangle_hover = ImageTk.PhotoImage(ImageEnhance.Brightness(rectangle_image).enhance(0.6))
+rectangle_sqaure = canvas.create_rectangle(8, 193, 52, 237, fill='', outline='')
+rectangle_icon = canvas.create_image(30, 215, image=rectangle_normal)
+def rectangle_motion(event):
+    hovering = 8 <= event.x <= 52 and 193 <= event.y <= 237
+    canvas.itemconfig(rectangle_sqaure, fill="#393D40" if hovering else "",  outline="#596066" if hovering else "")
+    canvas.itemconfig(rectangle_icon,  image=rectangle_hover if hovering else rectangle_normal)
+canvas.bind("<Motion>", rectangle_motion, add="+")
+
+
+
 
 app.mainloop()
 
