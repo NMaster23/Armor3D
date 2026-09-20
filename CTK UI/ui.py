@@ -227,6 +227,21 @@ def polyline_motion(event):
     canvas.itemconfig(polyline_icon, image=polyline_hover if hovering else polylinenormal)
 canvas.bind("<Motion>", polyline_motion)
 
+curve_image = Image.open(getpath("Assets/curvez.png")).convert("RGBA")
+bounds = curve_image.getbbox()
+if bounds:
+    curve_image = curve_image.crop(bounds)
+curve_image.thumbnail((30, 30), Image.Resampling.LANCZOS)
+curve_normal = ImageTk.PhotoImage(curve_image)
+curve_hover = ImageTk.PhotoImage(ImageEnhance.Brightness(curve_image).enhance(0.6))
+curve_square = canvas.create_rectangle(53, 103, 96, 147, fill='', outline='')
+curve_icon = canvas.create_image(75, 125, image=curve_normal)
+def curve_motion(event):
+    hovering = 53 <= event.x <=97 and 103 <= event.y <=147
+    canvas.itemconfig(curve_square, fill='#393D40' if hovering else '', outline="#596066" if hovering else "")
+    canvas.itemconfig(curve_icon, image=curve_hover if hovering else curve_normal)
+canvas.bind("<Motion>", curve_motion, add="+")
+
 
 app.mainloop()
 
