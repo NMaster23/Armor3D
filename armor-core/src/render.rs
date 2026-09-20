@@ -10,7 +10,7 @@ use winit::{
     window::Window,
 };
 
-use crate::{INDICES, VERTICES, Vertex};
+use crate::{GRAPH_INDICES, GRAPH_VERTICES, Vertex};
 use cgmath::{Matrix4, SquareMatrix};
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
@@ -37,7 +37,7 @@ pub struct State {
     camera_uniform: CameraUniform,
     camera_buffer: wgpu::Buffer,
     camera_bind_group: wgpu::BindGroup,
-    camera_controller: CameraController,
+    pub(crate) camera_controller: CameraController,
 }
 
 impl State {
@@ -122,16 +122,16 @@ impl State {
         };
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Vertex Buffer"),
-            contents: bytemuck::cast_slice(VERTICES),
+            contents: bytemuck::cast_slice(GRAPH_VERTICES),
             usage: wgpu::BufferUsages::VERTEX,
         });
         let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Index Buffer"),
-            contents: bytemuck::cast_slice(INDICES),
+            contents: bytemuck::cast_slice(GRAPH_INDICES),
             usage: wgpu::BufferUsages::INDEX,
         });
-        let num_vertices = VERTICES.len() as u32;
-        let num_indices = INDICES.len() as u32;
+        let num_vertices = GRAPH_VERTICES.len() as u32;
+        let num_indices = GRAPH_INDICES.len() as u32;
         let camera = Camera {
             eye: (0.0, 1.0, 2.0).into(),
             target: (0.0, 0.0, 0.0).into(),
@@ -365,4 +365,3 @@ impl State {
         Ok(())
     }
 }
-

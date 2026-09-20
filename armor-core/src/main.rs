@@ -48,7 +48,7 @@ impl Vertex {
 
 pub const COLOR: [f32; 4] = [200.0 / 255.0, 200.0 / 255.0, 200.0 / 255.0, 1.0];
 
-pub const VERTICES: &[Vertex] = &[
+pub const GRAPH_VERTICES: &[Vertex] = &[
     Vertex {
         position: [-1000.0, -1000.0, 1.0],
         coords: [0.0, 1.0, 0.0],
@@ -69,9 +69,29 @@ pub const VERTICES: &[Vertex] = &[
         coords: [1.0, 0.0, 0.0],
         color: COLOR,
     },
+    Vertex {
+        position: [-1000.0, 0.0, -1000.0],
+        coords: [0.0, 1.0, 0.0],
+        color: COLOR,
+    },
+    Vertex {
+        position: [1000.0, 0.0, -1000.0],
+        coords: [1.0, 1.0, 0.0],
+        color: COLOR,
+    },
+    Vertex {
+        position: [-1000.0, 0.0, 1000.0],
+        coords: [0.0, 0.0, 0.0],
+        color: COLOR,
+    },
+    Vertex {
+        position: [1000.0, 0.0, 1000.0],
+        coords: [1.0, 0.0, 0.0],
+        color: COLOR,
+    },
 ];
 
-pub const INDICES: &[u16] = &[0, 1, 2, 2, 1, 3];
+pub const GRAPH_INDICES: &[u16] = &[0, 1, 2, 2, 1, 3, 4, 5, 6, 6, 5, 7];
 
 pub fn main() -> anyhow::Result<()> {
     #[cfg(not(target_arch = "wasm32"))]
