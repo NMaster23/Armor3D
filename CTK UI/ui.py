@@ -22,17 +22,17 @@ from tkinter import font
 app.title("Armor 3D")
 app.geometry("1100x700")
 app.minsize(850, 500)
-canvas = Canvas(app, bg="#252729", highlightthickness=0)
+canvas = Canvas(app, bg="#242B23", highlightthickness=0)
 canvas.pack(fill='both', expand=True)
-command = ctk.CTkEntry(canvas, placeholder_text="Command:", font=("Lexend", 12), fg_color="#2C2C2E", border_color="#1D1B1B")
-history = ctk.CTkTextbox( canvas, font=("Lexend", 11), fg_color="#2C2C2E", border_color="#1D1B1B",  border_width=2)
+command = ctk.CTkEntry(canvas, placeholder_text="Command:", font=("Lexend", 12), fg_color="#3B322A", border_color="#70543B")
+history = ctk.CTkTextbox( canvas, font=("Lexend", 11), fg_color="#3B322A", border_color="#70543B",  border_width=2)
 history_window = canvas.create_window(8, 19, window=history, anchor='nw', height=45)
 history.configure(state="disabled")
 command_window = canvas.create_window(8, 70, window=command, anchor='nw', height=20)
-horizontal = canvas.create_line(100, 100, 1200, 100, fill="#1D1B1B", width=3)
-vertical = canvas.create_line(100, 100, 100, 850)
+horizontal = canvas.create_line(100, 100, 1200, 100, fill="#70543B", width=3)
+vertical = canvas.create_line(100, 100, 100, 850, fill="#70543B", width=3)
 
-shadow_lines= [canvas.create_line(0, 0, 0, 0, fill=color, width=2,  smooth=True, splinesteps=20, state="hidden") for color in ("#222426", "#1D1F21", "#17191B")]
+shadow_lines= [canvas.create_line(0, 0, 0, 0, fill=color, width=2,  smooth=True, splinesteps=20, state="hidden") for color in ("#283328", "#1D281F", "#152019")]
 current_offset = 16
 panel_ratio = 0.5
 animating=False
@@ -60,11 +60,11 @@ def resize_cmd_boxes(width):
 #     spacing = grid_size * zoom
 #     x = 101 + pan_x % spacing
 #     while x < width:
-#         canvas.create_line(x, 101, x, height, fill="#3A3D40", tags="viewport_grid")
+#         canvas.create_line(x, 101, x, height, fill="#4C5746", tags="viewport_grid")
 #         x += spacing
 #     y = 101 + pan_y % spacing
 #     while y < height:
-#         canvas.create_line(101, y, width, y, fill="#3A3D40", tags="viewport_grid")
+#         canvas.create_line(101, y, width, y, fill="#4C5746", tags="viewport_grid")
 #         y += spacing
 #     canvas.tag_lower("viewport_grid")
 # def start_pan(event):
@@ -115,32 +115,32 @@ def runcmd(event):
     command.delete(0, 'end')
 command.bind("<Return>", runcmd)
 
-filez = canvas.create_text(24, 8, text="File", font=("Lexend", 8), fill='#ffffff')
-canvas.tag_bind(filez, "<Enter>", lambda event: canvas.itemconfig(filez, fill="#5c5b5b"))
-canvas.tag_bind(filez, "<Leave>", lambda event: canvas.itemconfig(filez, fill="white"))
+filez = canvas.create_text(24, 8, text="File", font=("Lexend", 8), fill='#F5E8D2')
+canvas.tag_bind(filez, "<Enter>", lambda event: canvas.itemconfig(filez, fill="#F0AA60"))
+canvas.tag_bind(filez, "<Leave>", lambda event: canvas.itemconfig(filez, fill="#F5E8D2"))
 
-importz = canvas.create_text(68, 8, text='Import', font=("Lexend", 8), fill='white')
-canvas.tag_bind(importz, "<Enter>", lambda event: canvas.itemconfig(importz, fill='#5c5b5b'))
-canvas.tag_bind(importz, "<Leave>", lambda event: canvas.itemconfig(importz, fill='white'))
+importz = canvas.create_text(68, 8, text='Import', font=("Lexend", 8), fill='#F5E8D2')
+canvas.tag_bind(importz, "<Enter>", lambda event: canvas.itemconfig(importz, fill='#F0AA60'))
+canvas.tag_bind(importz, "<Leave>", lambda event: canvas.itemconfig(importz, fill='#F5E8D2'))
 
-analyze = canvas.create_text(120, 8, text='Analyze', font=("Lexend", 8), fill='white')
-canvas.tag_bind(analyze, "<Enter>", lambda event: canvas.itemconfig(analyze, fill='#5c5b5b'))
-canvas.tag_bind(analyze, "<Leave>", lambda event: canvas.itemconfig(analyze, fill='white'))
+analyze = canvas.create_text(120, 8, text='Analyze', font=("Lexend", 8), fill='#F5E8D2')
+canvas.tag_bind(analyze, "<Enter>", lambda event: canvas.itemconfig(analyze, fill='#F0AA60'))
+canvas.tag_bind(analyze, "<Leave>", lambda event: canvas.itemconfig(analyze, fill='#F5E8D2'))
 
-tools = canvas.create_text(170, 8, text="Tools", font=("Lexend", 8), fill='white')
-canvas.tag_bind(tools, "<Enter>", lambda event: canvas.itemconfig(tools, fill='#5c5b5b'))
-canvas.tag_bind(tools, "<Leave>", lambda event: canvas.itemconfig(tools, fill='white'))
+tools = canvas.create_text(170, 8, text="Tools", font=("Lexend", 8), fill='#F5E8D2')
+canvas.tag_bind(tools, "<Enter>", lambda event: canvas.itemconfig(tools, fill='#F0AA60'))
+canvas.tag_bind(tools, "<Leave>", lambda event: canvas.itemconfig(tools, fill='#F5E8D2'))
 
-AI  = canvas.create_text(226, 8, text='AI Creation', font=("Lexend", 8), fill='white')
-canvas.tag_bind(AI, "<Enter>", lambda event: canvas.itemconfig(AI, fill='#5c5b5b'))
-canvas.tag_bind(AI, "<Leave>", lambda event: canvas.itemconfig(AI, fill='white'))
+AI  = canvas.create_text(226, 8, text='AI Creation', font=("Lexend", 8), fill='#F5E8D2')
+canvas.tag_bind(AI, "<Enter>", lambda event: canvas.itemconfig(AI, fill='#F0AA60'))
+canvas.tag_bind(AI, "<Leave>", lambda event: canvas.itemconfig(AI, fill='#F5E8D2'))
 
 
-sidebar = ctk.CTkFrame(app, width=520, corner_radius=16, fg_color="#2C2C2E", border_color="#191A1C", border_width=4)
+sidebar = ctk.CTkFrame(app, width=520, corner_radius=16, fg_color="#3B322A", border_color="#A66B3E", border_width=4)
 sidebar.pack_propagate(False)
 prompt_label = ctk.CTkLabel(sidebar, text="", font=("Iceland", 35), width=300, height=82, justify='center')
 prompt_label.pack(pady=(24, 10))
-ai_input = ctk.CTkEntry(sidebar, placeholder_text="Start typing...", font=("Lexend", 12))
+ai_input = ctk.CTkEntry( sidebar, placeholder_text="Start typing...", font=("Lexend", 12), fg_color="#3B322A", border_color="#E28B45",  text_color="#F5E8D2", placeholder_text_color="#C5B29A")
 ai_input.place(relx=0.5, rely=1, y=-15, anchor="s", relwidth=0.8)
 ai_input.configure(height=38)
 typingjob = None
@@ -191,12 +191,12 @@ def toggleai(event=None):
                     canvas.itemconfigure(line, state="hidden")
                 resize_cmd_boxes(canvas.winfo_width())
     animate(0)
-close_canvas = Canvas(sidebar, width=32, height=32, bg="#2C2C2E", highlightthickness=0)
+close_canvas = Canvas(sidebar, width=32, height=32, bg="#3B322A", highlightthickness=0)
 close_canvas.place(x=12, y=12)
 close_x = close_canvas.create_text(16, 16, text="×", fill='white', font=("Lexend", 20))
 close_canvas.tag_bind(close_x, "<Button-1>", toggleai)
 canvas.tag_bind(AI, "<Button-1>", toggleai)
-resize_handle = Canvas(sidebar, width=12, bg="#2C2C2E", highlightthickness=0, cursor="sb_h_double_arrow")
+resize_handle = Canvas(sidebar, width=12, bg="#3B322A", highlightthickness=0, cursor="sb_h_double_arrow")
 resize_handle.place(x=0, y=18, relheight=1, height=-36)
 def drag_sidebar(event):
     global panel_ratio
@@ -223,7 +223,7 @@ polyline_square = canvas.create_rectangle(8, 103, 52, 147, fill='', outline='')
 polyline_icon = canvas.create_image(30, 125, image=polylinenormal)
 def polyline_motion(event):
     hovering = 8 <= event.x<= 52 and 103 <= event.y <= 147
-    canvas.itemconfig(polyline_square, fill="#393D40"if hovering else  "", outline="#596066" if hovering else "")
+    canvas.itemconfig(polyline_square, fill="#67442F"if hovering else  "", outline="#E28B45" if hovering else "")
     canvas.itemconfig(polyline_icon, image=polyline_hover if hovering else polylinenormal)
 canvas.bind("<Motion>", polyline_motion)
 
@@ -238,7 +238,7 @@ curve_square = canvas.create_rectangle(53, 103, 96, 147, fill='', outline='')
 curve_icon = canvas.create_image(75, 125, image=curve_normal)
 def curve_motion(event):
     hovering = 53 <= event.x <=97 and 103 <= event.y <=147
-    canvas.itemconfig(curve_square, fill='#393D40' if hovering else '', outline="#596066" if hovering else "")
+    canvas.itemconfig(curve_square, fill='#67442F' if hovering else '', outline="#E28B45" if hovering else "")
     canvas.itemconfig(curve_icon, image=curve_hover if hovering else curve_normal)
 canvas.bind("<Motion>", curve_motion, add="+")
 
@@ -253,7 +253,7 @@ puzzle_square  = canvas.create_rectangle(8, 148, 52, 192, fill='', outline='')
 puzzle_icon = canvas.create_image(30, 170, image=puzzle_normal)
 def puzzlemotion(event):
     hovering = 8 <= event.x <= 52 and 148 <= event.y <= 192
-    canvas.itemconfig(puzzle_square, fill='#393D40' if hovering else "", outline="#596066" if hovering else "")
+    canvas.itemconfig(puzzle_square, fill='#67442F' if hovering else "", outline="#E28B45" if hovering else "")
     canvas.itemconfig(puzzle_icon, image=puzzle_hover if hovering else puzzle_normal)
 canvas.bind("<Motion>", puzzlemotion, add="+")
 
@@ -268,7 +268,7 @@ explode_square = canvas.create_rectangle(53, 148, 97, 192, fill='', outline='')
 explode_icon = canvas.create_image(75, 170, image=explode_normal)
 def explode_motion(event):
     hovering = 53 <= event.x <= 97 and 148 <= event.y <=192
-    canvas.itemconfig(explode_square, fill='#393D40' if hovering else "", outline="#596066" if hovering else "")
+    canvas.itemconfig(explode_square, fill='#67442F' if hovering else "", outline="#E28B45" if hovering else "")
     canvas.itemconfig(explode_icon, image=explode_hover if hovering else explode_normal)
 canvas.bind("<Motion>", explode_motion, add="+")
 
@@ -283,7 +283,7 @@ rectangle_sqaure = canvas.create_rectangle(8, 193, 52, 237, fill='', outline='')
 rectangle_icon = canvas.create_image(30, 215, image=rectangle_normal)
 def rectangle_motion(event):
     hovering = 8 <= event.x <= 52 and 193 <= event.y <= 237
-    canvas.itemconfig(rectangle_sqaure, fill="#393D40" if hovering else "",  outline="#596066" if hovering else "")
+    canvas.itemconfig(rectangle_sqaure, fill="#67442F" if hovering else "",  outline="#E28B45" if hovering else "")
     canvas.itemconfig(rectangle_icon,  image=rectangle_hover if hovering else rectangle_normal)
 canvas.bind("<Motion>", rectangle_motion, add="+")
 
@@ -298,7 +298,7 @@ text_square = canvas.create_rectangle(53, 193, 97, 237, fill="", outline="")
 text_icon = canvas.create_image(75, 215, image=text_normal)
 def text_motion(event):
     hovering = 53 <= event.x <= 97 and 193 <= event.y <= 237
-    canvas.itemconfig(text_square, fill="#393D40" if hovering else "", outline="#596066" if hovering else "")
+    canvas.itemconfig(text_square, fill="#67442F" if hovering else "", outline="#E28B45" if hovering else "")
     canvas.itemconfig(text_icon, image=text_hover if hovering else text_normal)
 canvas.bind("<Motion>", text_motion, add="+")
 
@@ -308,7 +308,7 @@ tooltip_target = None
 def show_tooltip(name, top):
     global tooltip_job
     tooltip_job = None
-    background = canvas.create_rectangle(0, 0, 0, 0, fill="#17191B", outline="#596066", tags="tooltip")
+    background = canvas.create_rectangle(0, 0, 0, 0, fill="#34291F", outline="#E28B45", tags="tooltip")
     label = canvas.create_text(111, top+22, text=name, anchor='w', fill='white', font=("Iceland", 11), tags='tooltip')
     x1, y1, x2, y2 = canvas.bbox(label)
     canvas.coords(background, x1-7, y1-5, x2+7, y2+5)
