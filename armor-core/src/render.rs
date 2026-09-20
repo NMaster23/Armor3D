@@ -9,10 +9,12 @@ use winit::{
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 use wgpu::util::DeviceExt;
+use winit::dpi::{PhysicalPosition, Position};
 #[cfg(target_arch = "wasm32")]
 use winit::platform::web::EventLoopExtWebSys;
 use winit::window::WindowId;
 use crate::{Vertex, VERTICES, INDICES};
+use cgmath::{Matrix4, SquareMatrix};
 
 pub struct State {
     surface: wgpu::Surface<'static>,
@@ -35,6 +37,17 @@ pub struct State {
 }
 
 impl State {
+    pub async fn drawing(&mut self, mouse_pos: PhysicalPosition<f64>,mouse_button: MouseButton, mouse_scroll: MouseScrollDelta) {
+        let (mouse_x, mouse_y) = (mouse_pos.x, mouse_pos.y);
+        let (width, height) = (self.config.width, self.config.height);
+        let left = mouse_button == MouseButton::Left;
+        let right = mouse_button == MouseButton::Right;
+        let ndc_x = (2.0 * mouse_x / width as f64) - 1.0;
+        let ndc_y = (2.0 * mouse_y / height as f64) - 1.0;
+        let vp: Matrix4<f32> = self.camera_uniform.view_proj.into();
+        let invert_vp = vp.invert().expect("Error unwrapping inverted vp");
+        let near = invert_vp * cgmath::Vector4::new(ndc_x, ndc_y, 0.0, 1.0);
+    }
     pub async fn new(window: Arc<Window>) -> anyhow::Result<State> {
         let size = window.inner_size();
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
