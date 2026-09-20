@@ -302,7 +302,35 @@ def text_motion(event):
     canvas.itemconfig(text_icon, image=text_hover if hovering else text_normal)
 canvas.bind("<Motion>", text_motion, add="+")
 
-
+tooltips = [ (8, 103, 52, 147, "Polyline"), (53, 103, 97, 147, "Curve"), (8, 148, 52, 192, "Join"), (53, 148, 97, 192, "Explode"), (8, 193, 52, 237, "Rectangle"), (53, 193, 97, 237, "Text")]
+tooltip_job = None
+tooltip_target = None
+def show_tooltip(name, top):
+    global tooltip_job
+    tooltip_job = None
+    background = canvas.create_rectangle(0, 0, 0, 0, fill="#17191B", outline="#596066", tags="tooltip")
+    label = canvas.create_text(111, top+22, text=name, anchor='w', fill='white', font=("Iceland", 11), tags='tooltip')
+    x1, y1, x2, y2 = canvas.bbox(label)
+    canvas.coords(background, x1-7, y1-5, x2+7, y2+5)
+    canvas.tag_raise('tooltip')
+def hide_tooltip(event=None):
+    global tooltip_job, tooltip_target
+    if tooltip_job is not None:
+        app.after_cancel(tooltip_job)
+        tooltip_job = None
+    tooltip_target = None
+    canvas.delete("tooltip")
+def tooltipmotion(event):
+    global tooltip_job, tooltip_target
+    target = next(((name, top) for left, top, right, bottom, name in tooltips if left <= event.x <= right and top <= event.y <= bottom), None)
+    if target == tooltip_target:
+        return
+    hide_tooltip()
+    tooltip_target = target
+    if target is not None:
+        tooltip_job = app.after(650, lambda: show_tooltip(*target))
+canvas.bind("<Motion>", tooltipmotion, add="+")
+canvas.bind("<Leave>", hide_tooltip)
 
 
 
