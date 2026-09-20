@@ -257,6 +257,20 @@ def puzzlemotion(event):
     canvas.itemconfig(puzzle_icon, image=puzzle_hover if hovering else puzzle_normal)
 canvas.bind("<Motion>", puzzlemotion, add="+")
 
+explode_image = Image.open(getpath("Assets/explode.png")).convert("RGBA")
+bounds = explode_image.getbbox()
+if bounds: 
+    explode_image = explode_image.crop(bounds)
+explode_image.thumbnail((30, 30), Image.Resampling.LANCZOS)
+explode_normal = ImageTk.PhotoImage(explode_image)
+explode_hover = ImageTk.PhotoImage(ImageEnhance.Brightness(explode_image).enhance(0.6))
+explode_square = canvas.create_rectangle(53, 148, 97, 192, fill='', outline='')
+explode_icon = canvas.create_image(75, 170, image=explode_normal)
+def explode_motion(event):
+    hovering = 53 <= event.x <= 97 and 148 <= event.y <=192
+    canvas.itemconfig(explode_square, fill='#393D40' if hovering else "", outline="#596066" if hovering else "")
+    canvas.itemconfig(explode_icon, image=explode_hover if hovering else explode_normal)
+canvas.bind("<Motion>", explode_motion, add="+")
 
 
 app.mainloop()
