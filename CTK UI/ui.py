@@ -448,7 +448,47 @@ def tooltipmotion(event):
 canvas.bind("<Motion>", tooltipmotion, add="+")
 canvas.bind("<Leave>", hide_tooltip)
 
+def snapbckground(fill=None, outline=None):
+    image = Image.new("RGBA", (84, 36), (0, 0, 0, 0))
+    if fill:
+        ImageDraw.Draw(image).rounded_rectangle((0, 0, 83, 35), radius=8, fill=fill, outline=outline, width=1)
+    return ImageTk.PhotoImage(image)
+snapnormal = snapbckground()
+snaphover = snapbckground("#67442F", "#E28b45")
+snap_selected = snapbckground("#A66b3e", "#e28b45")
+gridsnapbox = canvas.create_image(50, 270, image=snapnormal)
+gridsnaptext = canvas.create_text(50, 270, text="Grid Snap", font=("Iceland", 13), fill='#F5E8D2', anchor='center')
+gridsnapon = False
+def showgridsnap(hovering=False):
+    if gridsnapon:
+        background, text = snap_selected, "#F5e8d2"
+    elif hovering:
+        background, text = snaphover, "#F0aa60"
+    else:
+        background, text = snapnormal, "#F5e8d2"
+    canvas.itemconfig(gridsnapbox, image=background)
+    canvas.itemconfig(gridsnaptext, fill=text)
+def gridsnapmotion(event):
+    hovering = 8 <= event.x <= 92 and 252 <= event.y <= 288
+    showgridsnap(hovering)
+def gridsnapclick(event):
+    global gridsnapon
+    if 8 <= event.x <= 92 and 252 <= event.y <= 288:
+        gridsnapon = not gridsnapon
+        showgridsnap(True)
+canvas.bind("<Motion>", gridsnapmotion, add="+")
+canvas.bind("<Button-1>", gridsnapclick, add="+")
+canvas.bind("<Leave>", lambda event: showgridsnap(False), add="+")
 
+canvas.create_text(45, 310, text="Ortho", font=("Iceland", 13), fill='#F5E8D2', anchor='center')
+
+canvas.create_text(45, 350, text="Osnap", font=("Iceland", 13), fill='#F5E8D2', anchor='center')
+
+canvas.create_line(0, 377, 100, 377, fill='#70543B', width=2)
+canvas.create_line(0, 247, 100, 247, fill='#70543b', width=2)
+canvas.create_line(0, 465, 100, 465, fill='#70543b', width=2)
+canvas.create_text(45, 400, text="Layers", font=("Iceland", 15), fill='#F5E8D2', anchor='center')
+canvas.create_text(60, 440, text="Default", font=("Iceland", 11), fill='#F5E8d2', anchor='center')
 
 app.mainloop()
 
