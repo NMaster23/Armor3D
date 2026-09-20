@@ -118,6 +118,74 @@ command.bind("<Return>", runcmd)
 filez = canvas.create_text(24, 8, text="File", font=("Lexend", 8), fill='#F5E8D2')
 canvas.tag_bind(filez, "<Enter>", lambda event: canvas.itemconfig(filez, fill="#F0AA60"))
 canvas.tag_bind(filez, "<Leave>", lambda event: canvas.itemconfig(filez, fill="#F5E8D2"))
+filemenu = Canvas(app, width=160, height=136, bg="#3B322A",  highlightthickness=1, highlightbackground="#A66B3E")
+menu_rows = []
+for i, name in enumerate(("New", "Save", "Save As", "Pumpkin :)")): 
+    y=4 + i * 32
+    box = filemenu.create_rectangle(4, y, 155, y +30, fill="", outline="")
+    label = filemenu.create_text(12, y+15, text=name, anchor='w', fill="#F5E8D2", font=("Iceland", 13))
+    menu_rows.append((box, label))
+def menu_motion(event):
+    hovered = (event.y-4) // 32
+    for i, (box, label) in enumerate(menu_rows):
+        active = i == hovered and 4 <= event.x <= 155
+        filemenu.itemconfig(box, fill='#67442F' if active else "")
+        filemenu.itemconfig(label, fill= "#67442F" if active else "")
+        filemenu.itemconfig(label, fill="#F0AA60" if active else "#F5E8D2")
+filemenu.bind("<Motion>", menu_motion)
+file_hover_job = None
+def open_file_menu():
+    global file_hover_job
+    file_hover_job = None
+    filemenu.place(x=8, y=20)
+def cancelfilehover(event=None):
+    global file_hover_job
+    if file_hover_job is not None:
+        app.after_cancel(file_hover_job)
+        file_hover_job = None
+def file_enter(event):
+    global file_hover_job
+    cancelfilehover()
+    file_hover_job = app.after(500, open_file_menu)
+def file_click(event):
+    cancelfilehover()
+    if filemenu.winfo_manager():
+        filemenu.place_forget()
+    else:
+        open_file_menu()
+fileclosejob = None
+def pointeronfilemenu(event):
+    x=  event.x_root- app.winfo_rootx()
+    y = event.y_root - app.winfo_rooty()
+    return (8 <= x <= 45 and 0 <= y <= 20) or (8 <+ x <= 170 and 20 <= y <= 158)
+def cancelfileclose():
+    global fileclosejob
+    if fileclosejob is not None:
+        app.after_cancel(fileclosejob)
+        fileclosejob = None
+def closefilemenu():
+    global fileclosejob
+    fileclosejob = None
+    filemenu.place_forget()
+def filepointermtion(event):
+    global fileclosejob
+    if not filemenu.winfo_manager():
+        return
+    if pointeronfilemenu(event):
+        cancelfileclose()
+    elif fileclosejob is None:
+        fileclosejob = app.after(180, closefilemenu)
+def file_outside_click(event):
+    if filemenu.winfo_manager() and not pointeronfilemenu(event):
+        cancelfileclose()
+        closefilemenu()
+app.bind_all("<Motion>", filepointermtion, add="+")
+app.bind_all("<Button-1>", file_outside_click, add="+")
+canvas.tag_bind(filez, "<Enter>", file_enter, add="+")
+canvas.tag_bind(filez, "<Leave>", cancelfilehover, add="+")
+canvas.tag_bind(filez, "<Button-1>", file_click)
+
+
 
 importz = canvas.create_text(68, 8, text='Import', font=("Lexend", 8), fill='#F5E8D2')
 canvas.tag_bind(importz, "<Enter>", lambda event: canvas.itemconfig(importz, fill='#F0AA60'))
