@@ -242,6 +242,22 @@ def curve_motion(event):
     canvas.itemconfig(curve_icon, image=curve_hover if hovering else curve_normal)
 canvas.bind("<Motion>", curve_motion, add="+")
 
+puzzle_image = Image.open(getpath("Assets/joinz.png")).convert("RGBA")
+bounds = puzzle_image.getbbox()
+if bounds:
+    puzzle_image = puzzle_image.crop(bounds)
+puzzle_image.thumbnail((30, 30), Image.Resampling.LANCZOS)
+puzzle_normal = ImageTk.PhotoImage(puzzle_image)
+puzzle_hover= ImageTk.PhotoImage(ImageEnhance.Brightness(puzzle_image).enhance(0.6))
+puzzle_square  = canvas.create_rectangle(8, 148, 52, 192, fill='', outline='')
+puzzle_icon = canvas.create_image(30, 170, image=puzzle_normal)
+def puzzlemotion(event):
+    hovering = 8 <= event.x <= 52 and 148 <= event.y <= 192
+    canvas.itemconfig(puzzle_square, fill='#393D40' if hovering else "", outline="#596066" if hovering else "")
+    canvas.itemconfig(puzzle_icon, image=puzzle_hover if hovering else puzzle_normal)
+canvas.bind("<Motion>", puzzlemotion, add="+")
+
+
 
 app.mainloop()
 
