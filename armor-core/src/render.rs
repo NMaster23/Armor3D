@@ -20,6 +20,8 @@ use winit::dpi::{PhysicalPosition, Position};
 use winit::platform::web::EventLoopExtWebSys;
 use winit::window::WindowId;
 
+const INITIAL_POINT_SIZE: usize = 16;
+
 pub struct State {
     surface: wgpu::Surface<'static>,
     device: wgpu::Device,
@@ -29,10 +31,12 @@ pub struct State {
     pub(crate) window: Arc<Window>,
     render_pipeline: wgpu::RenderPipeline,
     graph_pipeline: wgpu::RenderPipeline,
-    vertex_buffer: wgpu::Buffer,
-    index_buffer: wgpu::Buffer,
+    graph_index_buffer: wgpu::Buffer,
+    graph_vertex_buffer: wgpu::Buffer,
+    point_buffer: wgpu::Buffer,
+    point_buffer_capacity: usize,
     num_indices: u32,
-    num_vertices: u32,
+    point_vertices: Vec<Vertex>,
     pub(crate) camera: Camera,
     camera_uniform: CameraUniform,
     camera_buffer: wgpu::Buffer,
@@ -41,7 +45,7 @@ pub struct State {
 }
 
 impl State {
-    pub async fn drawing(
+    pub fn drawing(
         &mut self,
         mouse_pos: PhysicalPosition<f64>,
         mouse_button: MouseButton,
@@ -57,11 +61,11 @@ impl State {
             return;
         }
         let ndc_x = (2.0 * mouse_x / width as f64) - 1.0;
-        let ndc_y = (2.0 * mouse_y / height as f64) - 1.0;
+        let ndc_y = 1.0 - (2.0 * mouse_y / height as f64);
         let vp: Matrix4<f32> = self.camera_uniform.view_proj.into();
         let invert_vp = vp.invert().expect("Error unwrapping inverted vp");
         let near = invert_vp * cgmath::Vector4::new(ndc_x as f32, ndc_y as f32, 0.0, 1.0);
-        let far = invert_vp * Vector4::new(ndc_x as f32, ndc_y as f32, 1.0, 0.0);
+        let far = invert_vp * Vector4::new(ndc_x as f32, ndc_y as f32, 1.0, 1.0);
         let ray_origin = (near / near.w).truncate();
         let ray_target = (far / far.w).truncate();
         let ray_dir = (ray_target - ray_origin).normalize();
@@ -69,12 +73,28 @@ impl State {
             let t = -ray_origin.y / ray_dir.y;
             if t >= 0.0 {
                 let hit_pos: Vector3<f32> = ray_origin + ray_dir * t;
+                self.add_point(hit_pos);
             }
         }
     }
-    pub async fn add_point(&mut self, point: Vector3<f32>) {
-        self.queue
-            .write_buffer(&self.vertex_buffer, 0, bytemuck::cast_slice(&[point]));
+    pub fn add_point(&mut self, point: Vector3<f32>) {
+        let vertex = Vertex {
+            position: point.into(),
+            coords: [0.0, 0.0, 0.0],
+            color: [1.0, 1.0, 0.0, 1.0],
+        };
+        self.point_vertices.push(vertex);
+        if self.point_vertices.len() > self.point_buffer_capacity {
+            self.point_buffer_capacity = (self.point_vertices.len() * 2).max(16);
+            self.point_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("Point Buffer"),
+                size: (self.point_buffer_capacity * std::mem::size_of::<Vertex>()) as u64,
+                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+        }
+        self.queue.write_buffer(&self.point_buffer, 0, bytemuck::cast_slice(&self.point_vertices));
+        self.window.request_redraw();
     }
     pub async fn new(window: Arc<Window>) -> anyhow::Result<State> {
         let size = window.inner_size();
@@ -139,17 +159,22 @@ impl State {
             desired_maximum_frame_latency: 2,
             color_space: wgpu::SurfaceColorSpace::Auto,
         };
-        let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Vertex Buffer"),
+        let graph_vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Graph Vertex Buffer"),
             contents: bytemuck::cast_slice(GRAPH_VERTICES),
-            usage: wgpu::BufferUsages::VERTEX,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
         });
-        let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Index Buffer"),
+        let graph_index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Graph Index Buffer"),
             contents: bytemuck::cast_slice(GRAPH_INDICES),
             usage: wgpu::BufferUsages::INDEX,
         });
-        let num_vertices = GRAPH_VERTICES.len() as u32;
+        let point_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Point Buffer"),
+            size: (INITIAL_POINT_SIZE * std::mem::size_of::<Vertex>()) as u64,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
         let num_indices = GRAPH_INDICES.len() as u32;
         let camera = Camera {
             eye: (0.0, 1.0, 2.0).into(),
@@ -218,10 +243,10 @@ impl State {
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             }),
             primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleList,
+                topology: wgpu::PrimitiveTopology::PointList,
                 strip_index_format: None,
                 front_face: wgpu::FrontFace::Ccw,
-                cull_mode: Some(wgpu::Face::Back),
+                cull_mode: None,
                 polygon_mode: wgpu::PolygonMode::Fill,
                 unclipped_depth: false,
                 conservative: false,
@@ -279,14 +304,16 @@ impl State {
             device,
             queue,
             config,
-            is_surface_configured: false,
+            is_surface_configured: true,
             render_pipeline,
             graph_pipeline,
             window,
-            vertex_buffer,
-            index_buffer,
+            graph_vertex_buffer,
+            graph_index_buffer,
             num_indices,
-            num_vertices,
+            point_vertices: Vec::new(),
+            point_buffer,
+            point_buffer_capacity: INITIAL_POINT_SIZE,
             camera,
             camera_uniform,
             camera_buffer,
@@ -299,13 +326,14 @@ impl State {
         if width > 0 && height > 0 {
             self.config.width = width;
             self.config.height = height;
+            self.camera.aspect = width as f32 / height as f32;
             self.surface.configure(&self.device, &self.config);
             self.is_surface_configured = true;
         }
     }
 
     pub fn handle_key(&mut self, event_loop: &ActiveEventLoop, code: KeyCode, is_pressed: bool) {
-        self.camera_controller.handle_key(code, is_pressed);
+        self.camera_controller.handle_key(&mut self.camera, code, is_pressed);
         match (code, is_pressed) {
             (KeyCode::Escape, _) => {
                 event_loop.exit();
@@ -372,11 +400,16 @@ impl State {
                 multiview_mask: None,
             });
             render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
-            render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-            render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
-
             render_pass.set_pipeline(&self.graph_pipeline);
+            render_pass.set_vertex_buffer(0, self.graph_vertex_buffer.slice(..));
+            render_pass.set_index_buffer(self.graph_index_buffer.slice(..), wgpu::IndexFormat::Uint16);
             render_pass.draw_indexed(0..self.num_indices, 0, 0..1);
+            if !self.point_vertices.is_empty() {
+                render_pass.set_pipeline(&self.render_pipeline);
+                render_pass.set_vertex_buffer(0, self.point_buffer.slice(..));
+                render_pass.draw(0..self.point_vertices.len() as u32, 0..1);
+            }
+
         }
         self.queue.submit(std::iter::once(encoder.finish()));
         self.queue.present(output);

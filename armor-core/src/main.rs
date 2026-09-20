@@ -8,7 +8,8 @@ use crate::camera::Camera;
 use crate::render::State;
 use std::sync::Arc;
 use winit::application::ApplicationHandler;
-use winit::event::{KeyEvent, MouseScrollDelta, WindowEvent};
+use winit::dpi::PhysicalPosition;
+use winit::event::{ElementState, KeyEvent, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::Window;
@@ -123,6 +124,7 @@ pub struct App {
     #[cfg(target_arch = "wasm32")]
     proxy: Option<winit::event_loop::EventLoopProxy<State>>,
     state: Option<State>,
+    cursor_pos: PhysicalPosition<f64>,
 }
 
 impl App {
@@ -133,6 +135,7 @@ impl App {
             state: None,
             #[cfg(target_arch = "wasm32")]
             proxy,
+            cursor_pos: PhysicalPosition::new(0.0, 0.0),
         }
     }
 }
@@ -157,7 +160,8 @@ impl ApplicationHandler<State> for App {
         }
 
         let window = Arc::new(event_loop.create_window(window_attributes).unwrap());
-
+        let state = pollster::block_on(State::new(window.clone())).expect("State::new");
+        self.state = Some(state);
         #[cfg(not(target_arch = "wasm32"))]
         {
             self.state = Some(pollster::block_on(State::new(window)).unwrap());
@@ -200,11 +204,10 @@ impl ApplicationHandler<State> for App {
         _window_id: winit::window::WindowId,
         event: WindowEvent,
     ) {
-        let state = match &mut self.state {
-            Some(canvas) => canvas,
+        let state = match self.state.as_mut() {
+            Some(state) => state,
             None => return,
         };
-
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::Resized(size) => state.resize(size.width, size.height),
@@ -234,6 +237,17 @@ impl ApplicationHandler<State> for App {
                     .camera_controller
                     .handle_scroll(&mut state.camera, &delta);
                 state.window.request_redraw();
+            }
+            WindowEvent::CursorMoved { position, .. } => {
+                self.cursor_pos = position;
+            }
+            WindowEvent::MouseInput { state: mouse_state, button, .. } => {
+                state.drawing(
+                    self.cursor_pos,
+                    button,
+                    MouseScrollDelta::LineDelta(0.0, 0.0),
+                    mouse_state == ElementState::Pressed,
+                )
             }
             _ => {}
         }
