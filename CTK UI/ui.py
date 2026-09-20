@@ -49,41 +49,58 @@ def resize_cmd_boxes(width):
     canvas.itemconfig(command_window, width=box_width)
     canvas.itemconfig(history_window, width=box_width)
 
-grid_size = 40
-pan_x = 0
-pan_y = 0
-last_mouse = None
-def draw_grid(width, height):
-    canvas.delete("viewport_grid")
-    for x in range(101 + pan_x % grid_size, width, grid_size):
-        canvas.create_line(x, 101, x, height, fill='#3A3D40', tags='viewport_grid')
-    for y in range(101 + pan_y % grid_size, height, grid_size):
-        canvas.create_line(101, y, width, y, fill='#3A3D40', tags='viewport_grid')
-    canvas.tag_lower("viewport_grid")
-def start_pan(event):
-    global last_mouse
-    if event.x >= 100 and event.y >= 100:
-        last_mouse = (event.x, event.y)
-def move_pan(event):
-    global pan_x, pan_y, last_mouse
-    if last_mouse is None:
-        return
-    pan_x += event.x - last_mouse[0]
-    pan_y += event.y -last_mouse[1]
-    last_mouse = (event.x, event.y)
-    draw_grid(canvas.winfo_width(), canvas.winfo_height())
-def stop_pan(event):
-    global last_mouse
-    last_mouse = None
-canvas.bind("<Button-3>", start_pan)
-canvas.bind("<B3-Motion>", move_pan)
-canvas.bind("<ButtonRelease-3>", stop_pan)
+# grid_size = 40
+# zoom = 1.0
+# pan_x = 0
+# pan_y = 0
+# last_mouse = None
+# def draw_grid(width, height):
+#     canvas.delete("viewport_grid")
+#     spacing = grid_size * zoom
+#     x = 101 + pan_x % spacing
+#     while x < width:
+#         canvas.create_line(x, 101, x, height, fill="#3A3D40", tags="viewport_grid")
+#         x += spacing
+#     y = 101 + pan_y % spacing
+#     while y < height:
+#         canvas.create_line(101, y, width, y, fill="#3A3D40", tags="viewport_grid")
+#         y += spacing
+#     canvas.tag_lower("viewport_grid")
+# def start_pan(event):
+#     global last_mouse
+#     if event.x >= 100 and event.y >= 100:
+#         last_mouse = (event.x, event.y)
+# def move_pan(event):
+#     global pan_x, pan_y, last_mouse
+#     if last_mouse is None:
+#         return
+#     pan_x += event.x - last_mouse[0]
+#     pan_y += event.y -last_mouse[1]
+#     last_mouse = (event.x, event.y)
+#     draw_grid(canvas.winfo_width(), canvas.winfo_height())
+# def stop_pan(event):
+#     global last_mouse
+#     last_mouse = None
+# canvas.bind("<Button-3>", start_pan)
+# canvas.bind("<B3-Motion>", move_pan)
+# canvas.bind("<ButtonRelease-3>", stop_pan)
+# def zoom_grid(event):
+#     global zoom, pan_x, pan_y
+#     if event.x < 101 or event.y < 101:
+#         return
+#     newzoom = max(0.25, min(4.0, zoom * (1.1 if event.delta > 0 else 1 / 1.1)))
+#     factor = newzoom / zoom
+#     pan_x = (event.x-101) - (event.x - 101 - pan_x) * factor
+#     pan_y = (event.y - 101) - (event.y - 101 - pan_y) * factor
+#     zoom = newzoom
+#     draw_grid(canvas.winfo_width(), canvas.winfo_height())
+# canvas.bind("<MouseWheel>", zoom_grid)
 def resizethings(event):
     canvas.coords(horizontal, 100, 100, event.width, 100)
     canvas.coords(vertical, 100, 100, 100, event.height)
     resize_cmd_boxes(event.width)
     update_shadow(event.width, event.height, current_offset)
-    draw_grid(event.width, event.height)
+    # draw_grid(event.width, event.height)
 canvas.bind("<Configure>", resizethings)
 
 def runcmd(event):
