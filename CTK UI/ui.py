@@ -226,6 +226,16 @@ def analyzeleave(event):
     if analyzehoverjob is not None:
         app.after_cancel(analyzehoverjob)
         analyzehoverjob = None
+def analyzeclick(event):
+    global analyzehoverjob
+    if analyzehoverjob is not None:
+        app.after_cancel(analyzehoverjob)
+        analyzehoverjob= None
+    if analyze_menu.winfo_manager():
+        analyze_menu.place_forget()
+    else:
+        openanalyzemenu()
+canvas.tag_bind(analyze, "<Button-1>", analyzeclick)
 def analyzepointermotion(event):
     global analyzeclosejob
     if not analyze_menu.winfo_manager():
@@ -501,7 +511,7 @@ canvas.bind("<Leave>", lambda event: showosnap(False), add="+")
 canvas.create_line(0, 377, 100, 377, fill='#70543B', width=2)
 canvas.create_line(0, 247, 100, 247, fill='#70543b', width=2)
 canvas.create_line(0, 465, 100, 465, fill='#70543b', width=2)
-canvas.create_text(45, 400, text="Layers", font=("Iceland", 15), fill='#F5E8D2', anchor='center')
+canvas.create_text(50, 400, text="Layers", font=("Iceland", 15), fill='#F5E8D2', anchor='center')
 layername = canvas.create_text(60, 440, text='Default', font=("Iceland", 11), fill='#F5E8D2', anchor='center')
 
 layer_color = "#000000"
@@ -551,6 +561,16 @@ canvas.tag_bind(layer_swatch, "<Button-1>", toggle_layer_menu)
 layermenu.bind("<Motion>", layermenumotion)
 layermenu.bind("<Button-1>", chooselayercolor)
 app.bind_all("<Button-1>", close_layer_outside, add="+")
+
+canvas.create_text(50, 480, text="Osnap", fill='#F5E8D2', anchor='center', font=("Iceland", 14))
+end  =canvas.create_text(60, 515, text="End", fill="#F5E8d2", anchor='center', font=("Iceland", 13))
+near = canvas.create_text(60, 550, text="Near", fill='#F5E8D2', anchor='center', font=("Iceland", 13))
+intz = canvas.create_text(60, 585, text="Int", fill="#F5E8D2", anchor='center', font=("Iceland", 13))
+mid = canvas.create_text(60, 620, text="Mid", fill="#F5E8D2", anchor='center', font=("Iceland", 13))
+cen = canvas.create_text(60, 655, text="Cen", fill="#F5E8D2", anchor='center', font=("Iceland", 13))
+disable = canvas.create_text(62, 690, text="Disable", fill='#F5E8D2', anchor='center', font=("Iceland", 13))
+
+
 
 app.mainloop()
 
