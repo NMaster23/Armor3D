@@ -44,6 +44,12 @@ Use the path to your own `python.exe` if it differs. After the wheel is installe
 - Shift + right drag to orbit
 - Left click to draw (temporary for week one - will use actual Rhino commands during week two)
 
+## The Project Structure
+- `CTK UI/ui.py` - CustomTkinter interface and controls
+- `armor-core/` - Rust/wgpu viewport and camera
+- `Assets/` - Fonts and toolbar images
+- `Armor3D.spec` - Windows executable packaging
+
 ## Next Steps
 ### Week 2
 - Start AI integration
