@@ -18,7 +18,7 @@ The rust side utilizes wgpu for closer system level access, but is harder to cod
 Week 1 - this release only features drawing polylines on a grid, with many of the other features not available at the time. The main UI and most of the buttons, however, have been completed. 
 
 ## Download
-Downlaod the EXE from the latest release: (). After that is completed, ignore the Windows security feature, and then you're in the app!
+Downlaod the EXE from the latest release: (https://github.com/NMaster23/Armor3D/releases/tag/v1). After that is completed, ignore the Windows security feature, and then you're in the app!
 
 ## Run locally
 This version is specifically built for Windows.
@@ -71,5 +71,6 @@ We've followed this week's "harvest" theme by basing our main UI around it, usin
 - Nihaal Mysore Bharath - Rust viewport and grid work
 
 ## DEMO
+<img width="1097" height="734" alt="Screenshot 2026-09-20 201748" src="https://github.com/user-attachments/assets/cb7e91e4-4478-4a00-b9bb-7285fbdbad4e" />
 
 
