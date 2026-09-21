@@ -69,21 +69,28 @@ impl State {
         let ray_origin = (near / near.w).truncate();
         let ray_target = (far / far.w).truncate();
         let ray_dir = (ray_target - ray_origin).normalize();
-        if ray_dir.y.abs() > 1e-6 {
-            let t = -ray_origin.y / ray_dir.y;
-            if t >= 0.0 {
-                let hit_pos: Vector3<f32> = ray_origin + ray_dir * t;
-                self.add_point(hit_pos);
-            }
-        }
+        let distance = (self.camera.target - self.camera.eye).magnitude();
+        let hit_pos: Vector3<f32> = ray_origin + ray_dir * distance;
+        self.add_point(hit_pos);
     }
     pub fn add_point(&mut self, point: Vector3<f32>) {
-        let vertex = Vertex {
-            position: point.into(),
-            coords: [0.0, 0.0, 0.0],
-            color: [1.0, 1.0, 0.0, 1.0],
-        };
-        self.point_vertices.push(vertex);
+        let size = 0.05;
+        let color = [0.4, 0.4, 0.4, 1.0];
+        let forward = (self.camera.target - self.camera.eye).normalize();
+        let right = forward.cross(self.camera.up).normalize();
+        let up = right.cross(forward).normalize();
+        let p0 = point - right * size - up * size;
+        let p1 = point + right * size - up * size;
+        let p2 = point - right * size + up * size;
+        let p3 = point + right * size + up * size;
+        self.point_vertices.extend_from_slice(&[
+            Vertex { position: p0.into(), coords: [0.0, 0.0, 0.0], color },
+            Vertex { position: p1.into(), coords: [0.0, 0.0, 0.0], color },
+            Vertex { position: p2.into(), coords: [0.0, 0.0, 0.0], color },
+            Vertex { position: p2.into(), coords: [0.0, 0.0, 0.0], color },
+            Vertex { position: p1.into(), coords: [0.0, 0.0, 0.0], color },
+            Vertex { position: p3.into(), coords: [0.0, 0.0, 0.0], color },
+        ]);
         if self.point_vertices.len() > self.point_buffer_capacity {
             self.point_buffer_capacity = (self.point_vertices.len() * 2).max(16);
             self.point_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
@@ -243,7 +250,7 @@ impl State {
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             }),
             primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::PointList,
+                topology: wgpu::PrimitiveTopology::TriangleList,
                 strip_index_format: None,
                 front_face: wgpu::FrontFace::Ccw,
                 cull_mode: None,
@@ -285,7 +292,7 @@ impl State {
                 topology: wgpu::PrimitiveTopology::TriangleList,
                 strip_index_format: None,
                 front_face: wgpu::FrontFace::Ccw,
-                cull_mode: Some(wgpu::Face::Back),
+                cull_mode: None,
                 polygon_mode: wgpu::PolygonMode::Fill,
                 unclipped_depth: false,
                 conservative: false,
