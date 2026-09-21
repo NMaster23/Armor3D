@@ -449,6 +449,60 @@ canvas.bind("<Motion>", tooltipmotion, add="+")
 canvas.bind("<Leave>", hide_tooltip)
 
 
+gridsnaptext = canvas.create_text(50, 270, text="Grid Snap", font=("Iceland", 13), fill='#F5E8D2', anchor='center')
+gridsnapon = False
+def showgridsnap(hovering=False):
+    color = "#F0AA60" if gridsnapon else "#E28B45" if hovering else "#f5e8d2"
+    canvas.itemconfig(gridsnaptext, fill=color)
+def gridsnapmotion(event):
+    hovering = 8 <= event.x <= 92 and 252 <= event.y <= 288
+    showgridsnap(hovering)
+def gridsnapclick(event):
+    global gridsnapon
+    if 8 <= event.x <= 92 and 252 <= event.y <= 288:
+        gridsnapon = not gridsnapon
+        showgridsnap(True)
+canvas.bind("<Motion>", gridsnapmotion, add="+")
+canvas.bind("<Button-1>", gridsnapclick, add="+")
+canvas.bind("<Leave>", lambda event: showgridsnap(False), add="+")
+
+orthotext = canvas.create_text(50, 310, text='Ortho', font=("Iceland", 13), fill='#F5E8D2', anchor='center')
+orthoon = False
+def showortho(hovering=False):
+    color = "#f0aa60" if orthoon else "#e28b45" if hovering else "#F5E8d2"
+    canvas.itemconfig(orthotext, fill=color)
+def orthomotion(event):
+    showortho(8 <= event.x <= 92 and 292 <= event.y <= 328)
+def orthoclick(event):
+    global orthoon
+    if 8 <= event.x <= 92 and 292 <= event.y <= 328:
+        orthoon = not orthoon
+        showortho(True)
+canvas.bind("<Motion>", orthomotion, add="+")
+canvas.bind("<Button-1>", orthoclick, add="+")
+canvas.bind("<Leave>", lambda event: showortho(False), add="+")
+
+osnaptext = canvas.create_text(50, 350, text='Osnap', font=("Iceland", 13), fill='#F5E8d2', anchor='center')
+onsapon = False
+def showosnap(hovering=False):
+    color = "#F0AA60" if onsapon else "#e28b45" if hovering else "#F5E8D2"
+    canvas.itemconfig(osnaptext, fill=color)
+def onsapmotion(event):
+    showosnap(8 <= event.x <= 92 and 332 <= event.y <= 368)
+def osnapclick(event):
+    global onsapon
+    if 8 <= event.x <= 92 and 332 <= event.y <=368:
+        onsapon = not onsapon
+        showosnap(True)
+canvas.bind("<Motion>", onsapmotion, add="+")
+canvas.bind("<Button-1>", osnapclick, add="+")
+canvas.bind("<Leave>", lambda event: showosnap(False), add="+")
+
+canvas.create_line(0, 377, 100, 377, fill='#70543B', width=2)
+canvas.create_line(0, 247, 100, 247, fill='#70543b', width=2)
+canvas.create_line(0, 465, 100, 465, fill='#70543b', width=2)
+canvas.create_text(45, 400, text="Layers", font=("Iceland", 15), fill='#F5E8D2', anchor='center')
+canvas.create_text(60, 440, text="Default", font=("Iceland", 11), fill='#F5E8d2', anchor='center')
 
 app.mainloop()
 
