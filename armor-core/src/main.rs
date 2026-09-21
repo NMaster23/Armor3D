@@ -1,7 +1,6 @@
 mod camera;
 mod render;
 
-use crate::camera::Camera;
 use crate::render::State;
 use std::sync::Arc;
 use winit::application::ApplicationHandler;
@@ -188,7 +187,9 @@ impl ApplicationHandler<State> for App {
     fn user_event(&mut self, _event_loop: &ActiveEventLoop, mut event: State) {
         #[cfg(target_arch = "wasm32")]
         {
-            event.window.request_redraw();
+            if let Some(window) = &event.window {
+                window.request_redraw();
+            }
             event.resize(
                 event.window.inner_size().width,
                 event.window.inner_size().height,
@@ -233,7 +234,9 @@ impl ApplicationHandler<State> for App {
                     key_state.is_pressed(),
                 );
                 if handled {
-                    state.window.request_redraw();
+                    if let Some(window) = &state.window {
+                        window.request_redraw();
+                    }
                 }
             },
             WindowEvent::MouseWheel {
@@ -244,7 +247,9 @@ impl ApplicationHandler<State> for App {
                 state
                     .camera_controller
                     .handle_scroll(&mut state.camera, &delta);
-                state.window.request_redraw();
+                if let Some(window) = &state.window {
+                    window.request_redraw();
+                }
             }
             WindowEvent::CursorMoved { position, .. } => {
                 self.cursor_pos = position;

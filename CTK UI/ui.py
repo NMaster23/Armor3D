@@ -5,6 +5,7 @@ import sys
 from PIL import Image, ImageEnhance, ImageTk, ImageDraw
 from pathlib import Path
 import os
+from armor_core import ViewportRenderer
 ctk.set_appearance_mode('dark')
 def getpath(relativepath):
     try:
@@ -31,6 +32,53 @@ history.configure(state="disabled")
 command_window = canvas.create_window(8, 70, window=command, anchor='nw', height=20)
 horizontal = canvas.create_line(100, 100, 1200, 100, fill="#70543B", width=3)
 vertical = canvas.create_line(100, 100, 100, 850, fill="#70543B", width=3)
+viewport = ctk.CTkFrame(canvas, fg_color="#101010", corner_radius=0, border_width=0)
+viewport_window = canvas.create_window(
+    101,
+    101,
+    window=viewport,
+    anchor="nw",
+    width=700,
+    height=500,
+)
+renderer = None
+
+def initialize_renderer():
+    global renderer
+    app.update_idletasks()
+    renderer = ViewportRenderer(
+        viewport.winfo_id(),
+        max(1, viewport.winfo_width()),
+        max(1, viewport.winfo_height()),
+    )
+    render_frame()
+
+def render_frame():
+    if renderer is not None:
+        renderer.render()
+        app.after(16, render_frame)
+
+def resize_viewport(event):
+    if renderer is not None:
+        renderer.resize(max(1, event.width), max(1, event.height))
+
+def viewport_mouse_move(event):
+    if renderer is not None:
+        renderer.mouse_move(event.x, event.y)
+
+def viewport_mouse_down(event):
+    viewport.focus_set()
+    if renderer is not None:
+        renderer.mouse_button(True)
+
+def viewport_mouse_up(event):
+    if renderer is not None:
+        renderer.mouse_button(False)
+
+viewport.bind("<Configure>", resize_viewport)
+viewport.bind("<Motion>", viewport_mouse_move)
+viewport.bind("<ButtonPress-1>", viewport_mouse_down)
+viewport.bind("<ButtonRelease-1>", viewport_mouse_up)
 
 shadow_lines= [canvas.create_line(0, 0, 0, 0, fill=color, width=2,  smooth=True, splinesteps=20, state="hidden") for color in ("#283328", "#1D281F", "#152019")]
 current_offset = 16
@@ -99,6 +147,7 @@ def resize_cmd_boxes(width):
 def resizethings(event):
     canvas.coords(horizontal, 100, 100, event.width, 100)
     canvas.coords(vertical, 100, 100, 100, event.height)
+    canvas.itemconfig(viewport_window, width=max(1, event.width - 101), height=max(1, event.height - 101))
     resize_cmd_boxes(event.width)
     update_shadow(event.width, event.height, current_offset)
     # draw_grid(event.width, event.height)
@@ -572,7 +621,7 @@ disable = canvas.create_text(62, 690, text="Disable", fill='#F5E8D2', anchor='ce
 
 
 
+app.after_idle(initialize_renderer)
 app.mainloop()
-
 
 

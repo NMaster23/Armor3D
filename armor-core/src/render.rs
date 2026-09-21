@@ -28,7 +28,7 @@ pub struct State {
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
     is_surface_configured: bool,
-    pub(crate) window: Arc<Window>,
+    pub(crate) window: Option<Arc<Window>>,
     render_pipeline: wgpu::RenderPipeline,
     graph_pipeline: wgpu::RenderPipeline,
     graph_index_buffer: wgpu::Buffer,
@@ -42,6 +42,8 @@ pub struct State {
     camera_buffer: wgpu::Buffer,
     camera_bind_group: wgpu::BindGroup,
     pub(crate) camera_controller: CameraController,
+    cursor_pos: PhysicalPosition<f64>,
+    holding_left: bool,
 }
 
 impl State {
@@ -101,7 +103,9 @@ impl State {
             });
         }
         self.queue.write_buffer(&self.point_buffer, 0, bytemuck::cast_slice(&self.point_vertices));
-        self.window.request_redraw();
+        if let Some(window) = &self.window {
+            window.request_redraw();
+        }
     }
     pub async fn new(window: Arc<Window>) -> anyhow::Result<State> {
         let size = window.inner_size();
@@ -314,7 +318,7 @@ impl State {
             is_surface_configured: true,
             render_pipeline,
             graph_pipeline,
-            window,
+            window: Some(window),
             graph_vertex_buffer,
             graph_index_buffer,
             num_indices,
@@ -326,7 +330,231 @@ impl State {
             camera_buffer,
             camera_bind_group,
             camera_controller,
+            cursor_pos: PhysicalPosition::new(0.0, 0.0),
+            holding_left: false,
         })
+    }
+
+    pub async fn new_embedded(
+        hwnd: isize,
+        width: u32,
+        height: u32,
+    ) -> anyhow::Result<State> {
+        use raw_window_handle::{
+            RawDisplayHandle, RawWindowHandle, Win32WindowHandle, WindowsDisplayHandle,
+        };
+        use std::num::NonZeroIsize;
+
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+            backends: wgpu::Backends::PRIMARY,
+            flags: Default::default(),
+            memory_budget_thresholds: Default::default(),
+            backend_options: Default::default(),
+            display: None,
+        });
+        let window_handle = Win32WindowHandle::new(
+            NonZeroIsize::new(hwnd).ok_or_else(|| anyhow::anyhow!("invalid HWND"))?,
+        );
+        let surface = unsafe {
+            instance.create_surface_unsafe(wgpu::SurfaceTargetUnsafe::RawHandle {
+                raw_display_handle: Some(RawDisplayHandle::Windows(WindowsDisplayHandle::new())),
+                raw_window_handle: RawWindowHandle::Win32(window_handle),
+            })?
+        };
+        Self::new_with_surface(instance, surface, width, height).await
+    }
+
+    async fn new_with_surface(
+        instance: wgpu::Instance,
+        surface: wgpu::Surface<'static>,
+        width: u32,
+        height: u32,
+    ) -> anyhow::Result<State> {
+        let adapter = instance
+            .request_adapter(&wgpu::RequestAdapterOptions {
+                power_preference: wgpu::PowerPreference::default(),
+                compatible_surface: Some(&surface),
+                force_fallback_adapter: false,
+                apply_limit_buckets: true,
+            })
+            .await?;
+        let (device, queue) = adapter
+            .request_device(&wgpu::DeviceDescriptor {
+                label: None,
+                required_features: wgpu::Features::empty(),
+                experimental_features: wgpu::ExperimentalFeatures::disabled(),
+                required_limits: wgpu::Limits::default(),
+                memory_hints: Default::default(),
+                trace: wgpu::Trace::Off,
+            })
+            .await?;
+        let surface_caps = surface.get_capabilities(&adapter);
+        let surface_format = surface_caps
+            .formats
+            .iter()
+            .find(|format| format.is_srgb())
+            .copied()
+            .unwrap_or(surface_caps.formats[0]);
+        let config = wgpu::SurfaceConfiguration {
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            format: surface_format,
+            width,
+            height,
+            present_mode: surface_caps.present_modes[0],
+            alpha_mode: surface_caps.alpha_modes[0],
+            view_formats: vec![],
+            desired_maximum_frame_latency: 2,
+            color_space: wgpu::SurfaceColorSpace::Auto,
+        };
+        surface.configure(&device, &config);
+
+        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("Shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
+        });
+        let graph_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("Graph Shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("graph_shader.wgsl").into()),
+        });
+        let graph_vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Graph Vertex Buffer"),
+            contents: bytemuck::cast_slice(GRAPH_VERTICES),
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+        });
+        let graph_index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Graph Index Buffer"),
+            contents: bytemuck::cast_slice(GRAPH_INDICES),
+            usage: wgpu::BufferUsages::INDEX,
+        });
+        let point_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Point Buffer"),
+            size: (INITIAL_POINT_SIZE * std::mem::size_of::<Vertex>()) as u64,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let camera = Camera {
+            eye: (0.0, 1.0, 2.0).into(),
+            target: (0.0, 0.0, 0.0).into(),
+            up: cgmath::Vector3::unit_y(),
+            aspect: width as f32 / height.max(1) as f32,
+            fov_y: 45.0,
+            z_near: 0.1,
+            z_far: 100.0,
+        };
+        let camera_controller = CameraController::new(0.02);
+        let mut camera_uniform = CameraUniform::new();
+        camera_uniform.update_view_proj(&camera);
+        let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Camera Buffer"),
+            contents: bytemuck::cast_slice(&[camera_uniform]),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+        let camera_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }],
+                label: Some("camera_bind_group_layout"),
+            });
+        let camera_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &camera_bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: camera_buffer.as_entire_binding(),
+            }],
+            label: Some("camera_bind_group"),
+        });
+        let render_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("Render Pipeline Layout"),
+                bind_group_layouts: &[Some(&camera_bind_group_layout)],
+                immediate_size: 0,
+            });
+        let create_pipeline = |module: &wgpu::ShaderModule, blend| {
+            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some("Render Pipeline"),
+                layout: Some(&render_pipeline_layout),
+                vertex: wgpu::VertexState {
+                    module,
+                    entry_point: Some("vs_main"),
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                    buffers: &[Some(Vertex::desc())],
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module,
+                    entry_point: Some("fs_main"),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: config.format,
+                        blend,
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                }),
+                primitive: wgpu::PrimitiveState::default(),
+                depth_stencil: None,
+                multisample: wgpu::MultisampleState::default(),
+                multiview_mask: None,
+                cache: None,
+            })
+        };
+
+        let render_pipeline = create_pipeline(&shader, Some(wgpu::BlendState::REPLACE));
+        let graph_pipeline = create_pipeline(&graph_shader, Some(wgpu::BlendState::ALPHA_BLENDING));
+
+        Ok(Self {
+            surface,
+            device,
+            queue,
+            config,
+            is_surface_configured: width > 0 && height > 0,
+            window: None,
+            render_pipeline,
+            graph_pipeline,
+            graph_index_buffer,
+            graph_vertex_buffer,
+            point_buffer,
+            point_buffer_capacity: INITIAL_POINT_SIZE,
+            num_indices: GRAPH_INDICES.len() as u32,
+            point_vertices: Vec::new(),
+            camera,
+            camera_uniform,
+            camera_buffer,
+            camera_bind_group,
+            camera_controller,
+            cursor_pos: PhysicalPosition::new(0.0, 0.0),
+            holding_left: false,
+        })
+    }
+
+    pub fn mouse_move(&mut self, x: f64, y: f64) {
+        self.cursor_pos = PhysicalPosition::new(x, y);
+        if self.holding_left {
+            self.drawing(
+                self.cursor_pos,
+                MouseButton::Left,
+                MouseScrollDelta::LineDelta(0.0, 0.0),
+                true,
+            );
+        }
+    }
+
+    pub fn mouse_button(&mut self, pressed: bool) {
+        self.holding_left = pressed;
+        if pressed {
+            self.drawing(
+                self.cursor_pos,
+                MouseButton::Left,
+                MouseScrollDelta::LineDelta(0.0, 0.0),
+                true,
+            );
+        }
     }
 
     pub fn resize(&mut self, width: u32, height: u32) {
@@ -356,7 +584,9 @@ impl State {
             0,
             bytemuck::cast_slice(&[self.camera_uniform]),
         );
-        self.window.request_redraw();
+        if let Some(window) = &self.window {
+            window.request_redraw();
+        }
         if !self.is_surface_configured {
             return Ok(());
         }
