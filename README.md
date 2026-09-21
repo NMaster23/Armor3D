@@ -66,6 +66,10 @@ We've followed this week's "harvest" theme by basing our main UI around it, usin
 - Merging Rust grid and Python UI - AI was used here because of the time concern
 - Rest of AI usage that has not been mentioned here is most likely in the commits
 
+## Credits
+- Nishanth Prabhu - UI, design, and app integration
+- Nihaal Mysore Bharath - Rust viewport and grid work
+
 ## DEMO
 
 
