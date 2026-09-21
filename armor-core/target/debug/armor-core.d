@@ -1,1 +1,0 @@
-D:\VSCode\Hackclub\Armor3D\armor-core\target\debug\armor-core.exe: D:\VSCode\Hackclub\Armor3D\armor-core\src\camera.rs D:\VSCode\Hackclub\Armor3D\armor-core\src\graph_shader.wgsl D:\VSCode\Hackclub\Armor3D\armor-core\src\main.rs D:\VSCode\Hackclub\Armor3D\armor-core\src\render.rs D:\VSCode\Hackclub\Armor3D\armor-core\src\shader.wgsl

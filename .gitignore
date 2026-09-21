@@ -4,3 +4,8 @@
 *.pdb
 /armor-core/target
 armor-core/target/debug/deps/armor_core.pdb
+/armor-core/target/
+/build/
+/dist/
+__pycache__/
+*.pyc
