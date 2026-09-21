@@ -25,6 +25,9 @@ Keep the Assets folder in the project root so the fonts and icons can load.
 - Complete all button functions
 - Improve on 3D drawing
 
+## Week 1 theme
+We've followed this week's "harvest" theme by basing our main UI around it, using colors such as orange and green. 
+
 ## Where AI assistance has been used
 - Creating some of the UI animations
 - Fix/find bugs
