@@ -502,7 +502,55 @@ canvas.create_line(0, 377, 100, 377, fill='#70543B', width=2)
 canvas.create_line(0, 247, 100, 247, fill='#70543b', width=2)
 canvas.create_line(0, 465, 100, 465, fill='#70543b', width=2)
 canvas.create_text(45, 400, text="Layers", font=("Iceland", 15), fill='#F5E8D2', anchor='center')
-canvas.create_text(60, 440, text="Default", font=("Iceland", 11), fill='#F5E8d2', anchor='center')
+layername = canvas.create_text(60, 440, text='Default', font=("Iceland", 11), fill='#F5E8D2', anchor='center')
+
+layer_color = "#000000"
+layer_swatch = canvas.create_rectangle(17, 432, 33, 448, fill=layer_color, outline="#70543b", width=1)
+def swatch_enter(event):
+    canvas.itemconfig(layer_swatch, outline="#E28B45", width=2)
+def swatch_leave(event):
+    canvas.itemconfig(layer_swatch, outline="#70543b", width=1)
+colors = (("Black", "#000000"), ("Orange", "#E28B45"), ("Green", "#657b4f"), ("Brown", '#8A5837'))
+layermenu = Canvas(app, width=152, height=128, bg="#3b322a", highlightthickness=1, highlightbackground="#A66B3e")
+layer_rows = []
+for i, (name, color) in enumerate(colors):
+    y = 4+i *30
+    background = layermenu.create_rectangle(4, y, 148, y+28, fill='', outline='')
+    layermenu.create_rectangle(12, y+7, 26, y+21, fill=color, outline="#F5E8D2")
+    label = layermenu.create_text(36, y+14, text=name, anchor='w', fill='#F5E8D2', font=("Iceland", 12))
+    layer_rows.append((background, label))
+def layermenumotion(event):
+    hovered = (event.y-4)//30
+    for i, (background, label) in enumerate(layer_rows):
+        active = i == hovered and 4 <= event.x <=148
+        layermenu.itemconfig(background, fill="#67442f" if active else "")
+        layermenu.itemconfig(label, fill='#F0AA60' if active else "#F5E8D2")
+def chooselayercolor(event):
+    global layer_color
+    index = (event.y-4) // 30
+    if 0 <= index < len(colors):
+        layer_color  =colors[index][1]
+        canvas.itemconfig(layer_swatch, fill=layer_color)
+        canvas.itemconfig(layername, text=colors[index][0])
+        layermenu.place_forget()
+def toggle_layer_menu(event):
+    if layermenu.winfo_manager():
+        layermenu.place_forget()
+    else:
+        menu_y = 452 if app.winfo_height() >= 590 else 298
+        layermenu.place(x=8, y=menu_y)
+def close_layer_outside(event):
+    if event.widget == layermenu:
+        return
+    if event.widget == canvas and 17 <= event.x <= 33 and 432 <= event.y <= 448:
+        return
+    layermenu.place_forget()
+canvas.tag_bind(layer_swatch, "<Enter>", swatch_enter)
+canvas.tag_bind(layer_swatch, "<Leave>", swatch_leave)
+canvas.tag_bind(layer_swatch, "<Button-1>", toggle_layer_menu)
+layermenu.bind("<Motion>", layermenumotion)
+layermenu.bind("<Button-1>", chooselayercolor)
+app.bind_all("<Button-1>", close_layer_outside, add="+")
 
 app.mainloop()
 
