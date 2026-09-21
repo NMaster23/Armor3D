@@ -137,8 +137,8 @@ file_hover_job = None
 def open_file_menu():
     global file_hover_job
     file_hover_job = None
-    filemenu.place(x=8, y=20)
-    analyze_menu.place_forget()
+    slidemenu(analyze_menu, 100, 72, False)
+    slidemenu(filemenu, 8, 136, True)
 def cancelfilehover(event=None):
     global file_hover_job
     if file_hover_job is not None:
@@ -151,10 +151,11 @@ def file_enter(event):
 def file_click(event):
     cancelfilehover()
     if filemenu.winfo_manager():
-        filemenu.place_forget()
+        slidemenu(filemenu, 8, 136, False)
     else:
         open_file_menu()
 fileclosejob = None
+
 def pointeronfilemenu(event):
     x=  event.x_root- app.winfo_rootx()
     y = event.y_root - app.winfo_rooty()
@@ -167,8 +168,10 @@ def cancelfileclose():
 def closefilemenu():
     global fileclosejob
     fileclosejob = None
-    filemenu.place_forget()
+    slidemenu(filemenu, 8, 136, False)
 def filepointermtion(event):
+    if filemenu in menusliding:
+        return
     global fileclosejob
     if not filemenu.winfo_manager():
         return
@@ -212,8 +215,8 @@ analyzeclosejob = None
 def openanalyzemenu():
     global analyzehoverjob
     analyzehoverjob = None
-    filemenu.place_forget()
-    analyze_menu.place(x=100, y=20)
+    slidemenu(filemenu, 8, 136, False)
+    slidemenu(analyze_menu, 100, 72, True)
 def analyze_enter(event):
     global analyzehoverjob
     canvas.itemconfig(analyze, fill="#F0AA60")
@@ -232,11 +235,17 @@ def analyzeclick(event):
         app.after_cancel(analyzehoverjob)
         analyzehoverjob= None
     if analyze_menu.winfo_manager():
-        analyze_menu.place_forget()
+        slidemenu(analyze_menu, 100, 72, False)
     else:
         openanalyzemenu()
 canvas.tag_bind(analyze, "<Button-1>", analyzeclick)
+def closeanalyzemenu():
+    global analyzeclosejob
+    analyze = None
+    slidemenu(analyze_menu, 100, 72, False)
 def analyzepointermotion(event):
+    if analyze_menu in menusliding:
+        return
     global analyzeclosejob
     if not analyze_menu.winfo_manager():
         return
@@ -248,7 +257,7 @@ def analyzepointermotion(event):
             app.after_cancel(analyzeclosejob)
             analyzeclosejob = None
     elif analyzeclosejob is None:
-        analyzeclosejob = app.after(180, analyze_menu.place_forget)
+        analyzeclosejob = app.after(180, closeanalyzemenu)
 canvas.tag_bind(analyze, "<Enter>", analyze_enter, add="+")
 canvas.tag_bind(analyze, "<Leave>", analyzeleave, add="+")
 app.bind_all("<Motion>", analyzepointermotion, add="+")
@@ -569,6 +578,31 @@ intz = canvas.create_text(60, 585, text="Int", fill="#F5E8D2", anchor='center', 
 mid = canvas.create_text(60, 620, text="Mid", fill="#F5E8D2", anchor='center', font=("Iceland", 13))
 cen = canvas.create_text(60, 655, text="Cen", fill="#F5E8D2", anchor='center', font=("Iceland", 13))
 disable = canvas.create_text(62, 690, text="Disable", fill='#F5E8D2', anchor='center', font=("Iceland", 13))
+
+menujobs = {}
+menusliding = set()
+def slidemenu(menu, x, height, opening):
+    oldjob = menujobs.pop(menu, None)
+    if oldjob is not None:
+        app.after_cancel(oldjob)
+    if not opening and not menu.winfo_manager():
+        return
+    start = menu.winfo_y() if menu.winfo_manager() else -height
+    end = 20 if opening else -height
+    menusliding.add(menu)
+    def step(number):
+        progress = 1 - (1-number /12) ** 3
+        y = round(start + (end-start) * progress)
+        menu.place(x=x, y=y)
+        if number < 12: 
+            menujobs[menu]  = app.after(16, lambda: step(number+1))
+        else:
+            menujobs.pop(menu, None)
+            menusliding.discard(menu)
+            if not opening:
+                menu.place_forget()
+    step(0)
+
 
 
 
