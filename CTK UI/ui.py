@@ -669,6 +669,18 @@ intz = canvas.create_text(60, 585, text="Int", fill="#F5E8D2", anchor='center', 
 mid = canvas.create_text(60, 620, text="Mid", fill="#F5E8D2", anchor='center', font=("Iceland", 13))
 cen = canvas.create_text(60, 655, text="Cen", fill="#F5E8D2", anchor='center', font=("Iceland", 13))
 disable = canvas.create_text(62, 690, text="Disable", fill='#F5E8D2', anchor='center', font=("Iceland", 13))
+snap_options = {"End": (end, 515), "Near": (near, 550), "Int": (intz, 585), "Mid": (mid, 620), "Cen": (cen, 655), "Disable": (disable, 690)} 
+snapenabled = {name: False for name in snap_options}
+def toggle_snap(name):
+    snapenabled[name] = not snapenabled[name]
+    canvas.itemconfig(snap_marks[name], state='normal' if snapenabled[name] else "hidden")
+snap_marks = {}
+for name, (label, y) in snap_options.items():
+    box = canvas.create_rectangle(18, y-7, 32, y+7, fill="#3B322A", outline="#E28B45", width=2)
+    mark = canvas.create_text(25, y, text="✓", fill="#F0AA60", font=("Iceland", 13), state='hidden')
+    snap_marks[name] = mark
+    for item in (box, mark, label):
+        canvas.tag_bind(item, "<Button-1>", lambda event, option=name: toggle_snap(option))
 
 menujobs = {}
 menusliding = set()
