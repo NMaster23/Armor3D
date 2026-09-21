@@ -1,4 +1,4 @@
-use cgmath::InnerSpace;
+use cgmath::{Deg, InnerSpace, Matrix3, Rad};
 use winit::event::MouseScrollDelta;
 use winit::keyboard::KeyCode;
 
@@ -64,10 +64,14 @@ pub struct CameraController {
     speed: f32,
     scroll: f32,
     pub is_locked: bool,
-    is_forward_pressed: bool,
-    is_backward_pressed: bool,
-    is_left_pressed: bool,
-    is_right_pressed: bool,
+    is_move_forward_pressed: bool,
+    is_move_backward_pressed: bool,
+    is_move_left_pressed: bool,
+    is_move_right_pressed: bool,
+    is_rotate_up_pressed: bool,
+    is_rotate_down_pressed: bool,
+    is_rotate_left_pressed: bool,
+    is_rotate_right_pressed: bool,
 }
 
 impl CameraController {
@@ -76,10 +80,14 @@ impl CameraController {
             speed,
             scroll: 0.0,
             is_locked: false,
-            is_forward_pressed: false,
-            is_backward_pressed: false,
-            is_left_pressed: false,
-            is_right_pressed: false,
+            is_move_forward_pressed: false,
+            is_move_backward_pressed: false,
+            is_move_left_pressed: false,
+            is_move_right_pressed: false,
+            is_rotate_up_pressed: false,
+            is_rotate_down_pressed: false,
+            is_rotate_left_pressed: false,
+            is_rotate_right_pressed: false,
         }
     }
     pub(crate) fn handle_scroll(&mut self, camera: &mut Camera, delta: &MouseScrollDelta) {
@@ -100,28 +108,48 @@ impl CameraController {
         is_pressed: bool,
     ) -> bool {
         match code {
-            KeyCode::KeyW | KeyCode::ArrowUp => {
-                self.is_forward_pressed = is_pressed;
+            KeyCode::ArrowUp => {
+                self.is_move_forward_pressed = is_pressed;
                 true
             }
-            KeyCode::KeyA | KeyCode::ArrowLeft => {
-                self.is_left_pressed = is_pressed;
+            KeyCode::ArrowLeft => {
+                self.is_move_left_pressed = is_pressed;
                 true
             }
-            KeyCode::KeyS | KeyCode::ArrowDown => {
-                self.is_backward_pressed = is_pressed;
+            KeyCode::ArrowDown => {
+                self.is_move_backward_pressed = is_pressed;
                 true
             }
-            KeyCode::KeyD | KeyCode::ArrowRight => {
-                self.is_right_pressed = is_pressed;
+            KeyCode::ArrowRight => {
+                self.is_move_right_pressed = is_pressed;
                 true
             }
+
+            KeyCode::KeyW => {
+                self.is_rotate_up_pressed = is_pressed;
+                true
+            }
+            KeyCode::KeyA => {
+                self.is_rotate_left_pressed = is_pressed;
+                true
+            }
+            KeyCode::KeyS => {
+                self.is_rotate_down_pressed = is_pressed;
+                true
+            }
+            KeyCode::KeyD => {
+                self.is_rotate_right_pressed = is_pressed;
+                true
+            }
+
             KeyCode::Digit2 => {
-                self.is_locked = !self.is_locked;
-                if self.is_locked {
-                    camera.lock_to_ground();
-                } else {
-                    camera.unlock();
+                if is_pressed {
+                    self.is_locked = !self.is_locked;
+                    if self.is_locked {
+                        camera.lock_to_ground();
+                    } else {
+                        camera.unlock();
+                    }
                 }
                 true
             }
@@ -129,48 +157,62 @@ impl CameraController {
         }
     }
 
-    pub(crate) fn update_camera(&self, camera: &mut Camera) {
-        let forward = camera.target - camera.eye;
-        let forward_norm = forward.normalize();
-        let forward_mag = forward.magnitude();
-        if self.is_locked {
-            if self.is_forward_pressed {
-                camera.eye.z -= self.speed;
-                camera.target.z -= self.speed;
-            }
-            if self.is_backward_pressed {
-                camera.eye.z += self.speed;
-                camera.target.z += self.speed;
-            }
-            if self.is_left_pressed {
-                camera.eye.x -= self.speed;
-                camera.target.x -= self.speed;
-            }
-            if self.is_right_pressed {
-                camera.eye.x += self.speed;
-                camera.target.x += self.speed;
-            }
-        } else {
-            if self.is_forward_pressed && forward_mag > self.speed {
-                camera.eye += forward_norm * self.speed;
-            }
-            if self.is_backward_pressed {
-                camera.eye -= forward_norm * self.speed;
-            }
-            if self.scroll.abs() > 0.0 {
-                camera.eye += forward_norm * self.scroll * self.speed;
-            }
-            let right = forward_norm.cross(camera.up);
-            let forward = camera.target - camera.eye;
-            let forward_mag = forward.magnitude();
-            if self.is_right_pressed {
-                camera.eye =
-                    camera.target - (forward + right * self.speed).normalize() * forward_mag;
-            }
-            if self.is_left_pressed {
-                camera.eye =
-                    camera.target - (forward - right * self.speed).normalize() * forward_mag;
-            }
+    pub(crate) fn update_camera(&mut self, camera: &mut Camera) {
+        let move_speed = self.speed * 0.15;
+        let rotate_speed = 0.003;
+
+        let view = camera.target - camera.eye;
+        let view_dir = view.normalize();
+        let right = view_dir.cross(camera.up).normalize();
+
+        let mut movement = cgmath::Vector3::new(0.0, 0.0, 0.0);
+
+        if self.is_rotate_up_pressed {
+            movement += view_dir * move_speed;
+        }
+        if self.is_rotate_down_pressed {
+            movement -= view_dir * move_speed;
+        }
+        if self.is_rotate_right_pressed {
+            movement += right * move_speed;
+        }
+        if self.is_rotate_left_pressed {
+            movement -= right * move_speed;
+        }
+
+        if movement.magnitude2() > 0.0 {
+            camera.eye += movement;
+            camera.target += movement;
+        }
+
+        let mut offset = camera.eye - camera.target;
+
+        if self.is_move_left_pressed {
+            let rotation = Matrix3::from_angle_y(Rad(rotate_speed));
+            offset = rotation * offset;
+        }
+        if self.is_move_right_pressed {
+            let rotation = Matrix3::from_angle_y(Rad(-rotate_speed));
+            offset = rotation * offset;
+        }
+
+        let orbit_right = offset.normalize().cross(camera.up).normalize();
+
+        if self.is_move_forward_pressed {
+            let rotation = Matrix3::from_axis_angle(orbit_right, Rad(rotate_speed));
+            offset = rotation * offset;
+        }
+        if self.is_move_backward_pressed {
+            let rotation = Matrix3::from_axis_angle(orbit_right, Rad(-rotate_speed));
+            offset = rotation * offset;
+        }
+
+        camera.eye = camera.target + offset;
+
+        if self.scroll.abs() > 0.0 {
+            let zoom_dir = (camera.target - camera.eye).normalize();
+            camera.eye += zoom_dir * self.scroll * self.speed;
+            self.scroll = 0.0;
         }
     }
 }

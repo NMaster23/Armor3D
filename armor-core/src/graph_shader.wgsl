@@ -32,7 +32,7 @@ fn calculate_grid(pos: vec2<f32>, scale: f32) -> f32 {
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    let pos = in.world_pos.xy;
+    let pos = select(in.world_pos.xy, in.world_pos.xz, abs(in.world_pos.y) < 0.001);
     let main_grid = calculate_grid(pos, 1.0);
     let sub_grid = calculate_grid(pos, 10.0);
     let bg_color = vec4<f32>(0.05, 0.07, 0.1, 0.3);
@@ -42,10 +42,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     color = mix(color, main_color, main_grid);
     let axis_width = fwidth(pos) * 1.5;
     if abs(pos.y) < axis_width.y {
-        color = vec4<f32>(1.0, 0.25, 0.25, 0.95); // Red X-axis
+        color = vec4<f32>(1.0, 0.25, 0.25, 0.95);
     }
     if abs(pos.x) < axis_width.x {
-        color = vec4<f32>(0.25, 0.85, 0.25, 0.95); // Green Z-axis
+        color = vec4<f32>(0.25, 0.85, 0.25, 0.95);
     }
     return color;
 }

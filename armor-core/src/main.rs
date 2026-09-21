@@ -1,7 +1,4 @@
 mod camera;
-mod geo;
-mod ipc;
-mod math;
 mod render;
 
 use crate::camera::Camera;
@@ -9,7 +6,7 @@ use crate::render::State;
 use std::sync::Arc;
 use winit::application::ApplicationHandler;
 use winit::dpi::PhysicalPosition;
-use winit::event::{ElementState, KeyEvent, MouseScrollDelta, WindowEvent};
+use winit::event::{ElementState, KeyEvent, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::Window;
@@ -52,22 +49,22 @@ pub const COLOR: [f32; 4] = [200.0 / 255.0, 200.0 / 255.0, 200.0 / 255.0, 1.0];
 
 pub const GRAPH_VERTICES: &[Vertex] = &[
     Vertex {
-        position: [-1000.0, -1000.0, 1.0],
+        position: [-1000.0, -1000.0, 0.0],
         coords: [0.0, 1.0, 0.0],
         color: COLOR,
     },
     Vertex {
-        position: [1000.0, -1000.0, 1.0],
+        position: [1000.0, -1000.0, 0.0],
         coords: [1.0, 1.0, 0.0],
         color: COLOR,
     },
     Vertex {
-        position: [-1000.0, 1000.0, 1.0],
+        position: [-1000.0, 1000.0, 0.0],
         coords: [0.0, 0.0, 0.0],
         color: COLOR,
     },
     Vertex {
-        position: [1000.0, 1000.0, 1.0],
+        position: [1000.0, 1000.0, 0.0],
         coords: [1.0, 0.0, 0.0],
         color: COLOR,
     },
@@ -93,7 +90,7 @@ pub const GRAPH_VERTICES: &[Vertex] = &[
     },
 ];
 
-pub const GRAPH_INDICES: &[u16] = &[0, 1, 2, 2, 1, 3, 4, 5, 6, 6, 5, 7];
+pub const GRAPH_INDICES: &[u16] = &[0, 1, 2, 2, 1, 3, 4, 6, 5, 6, 7, 5];
 
 pub fn main() -> anyhow::Result<()> {
     #[cfg(not(target_arch = "wasm32"))]
@@ -125,6 +122,7 @@ pub struct App {
     proxy: Option<winit::event_loop::EventLoopProxy<State>>,
     state: Option<State>,
     cursor_pos: PhysicalPosition<f64>,
+    holding_left: bool,
 }
 
 impl App {
@@ -136,6 +134,7 @@ impl App {
             #[cfg(target_arch = "wasm32")]
             proxy,
             cursor_pos: PhysicalPosition::new(0.0, 0.0),
+            holding_left: false,
         }
     }
 }
@@ -227,7 +226,16 @@ impl ApplicationHandler<State> for App {
                         ..
                     },
                 ..
-            } => state.handle_key(event_loop, code, key_state.is_pressed()),
+            } => {
+                let handled = state.camera_controller.handle_key(
+                    &mut state.camera,
+                    code,
+                    key_state.is_pressed(),
+                );
+                if handled {
+                    state.window.request_redraw();
+                }
+            },
             WindowEvent::MouseWheel {
                 device_id,
                 delta,
@@ -240,14 +248,27 @@ impl ApplicationHandler<State> for App {
             }
             WindowEvent::CursorMoved { position, .. } => {
                 self.cursor_pos = position;
+                if self.holding_left {
+                    state.drawing(
+                        self.cursor_pos,
+                        MouseButton::Left,
+                        MouseScrollDelta::LineDelta(0.0, 0.0),
+                        true,
+                    );
+                }
             }
             WindowEvent::MouseInput { state: mouse_state, button, .. } => {
-                state.drawing(
-                    self.cursor_pos,
-                    button,
-                    MouseScrollDelta::LineDelta(0.0, 0.0),
-                    mouse_state == ElementState::Pressed,
-                )
+                if button == MouseButton::Left {
+                    self.holding_left = mouse_state == ElementState::Pressed;
+                    if self.holding_left {
+                        state.drawing(
+                            self.cursor_pos,
+                            button,
+                            MouseScrollDelta::LineDelta(0.0, 0.0),
+                            mouse_state == ElementState::Pressed,
+                        );
+                    }
+                }
             }
             _ => {}
         }
