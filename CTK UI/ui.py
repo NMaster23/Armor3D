@@ -1,6 +1,6 @@
 import customtkinter as ctk
 from ctypes import windll
-from tkinter import Canvas
+from tkinter import Canvas, Frame
 import sys
 from PIL import Image, ImageEnhance, ImageTk, ImageDraw
 from pathlib import Path
@@ -32,7 +32,7 @@ history.configure(state="disabled")
 command_window = canvas.create_window(8, 70, window=command, anchor='nw', height=20)
 horizontal = canvas.create_line(100, 100, 1200, 100, fill="#70543B", width=3)
 vertical = canvas.create_line(100, 100, 100, 850, fill="#70543B", width=3)
-viewport = ctk.CTkFrame(canvas, fg_color="#101010", corner_radius=0, border_width=0)
+viewport = Frame(canvas, bg="#101010", bd=0, highlightthickness=0, takefocus=1)
 viewport_window = canvas.create_window(
     101,
     101,
@@ -75,10 +75,52 @@ def viewport_mouse_up(event):
     if renderer is not None:
         renderer.mouse_button(False)
 
+last_right_drag = None
+
+def viewport_right_down(event):
+    global last_right_drag
+    viewport.focus_set()
+    last_right_drag = (event.x, event.y)
+
+def viewport_right_drag(event):
+    global last_right_drag
+    if renderer is not None and last_right_drag is not None:
+        dx = event.x - last_right_drag[0]
+        dy = event.y - last_right_drag[1]
+        if event.state & 0x0001:
+            renderer.orbit(dx, dy)
+        else:
+            renderer.pan(dx, dy)
+    last_right_drag = (event.x, event.y)
+
+def viewport_right_up(event):
+    global last_right_drag
+    last_right_drag = None
+
+def viewport_wheel(event):
+    if renderer is not None:
+        renderer.zoom(event.delta / 120)
+
+def viewport_key(event, pressed):
+    if renderer is not None:
+        renderer.key_event(event.keysym, pressed)
+
+def viewport_focus_out(event):
+    if renderer is not None:
+        for key in ("w", "a", "s", "d", "Up", "Down", "Left", "Right"):
+            renderer.key_event(key, False)
+
 viewport.bind("<Configure>", resize_viewport)
 viewport.bind("<Motion>", viewport_mouse_move)
 viewport.bind("<ButtonPress-1>", viewport_mouse_down)
 viewport.bind("<ButtonRelease-1>", viewport_mouse_up)
+viewport.bind("<ButtonPress-3>", viewport_right_down)
+viewport.bind("<B3-Motion>", viewport_right_drag)
+viewport.bind("<ButtonRelease-3>", viewport_right_up)
+viewport.bind("<MouseWheel>", viewport_wheel)
+viewport.bind("<KeyPress>", lambda event: viewport_key(event, True))
+viewport.bind("<KeyRelease>", lambda event: viewport_key(event, False))
+viewport.bind("<FocusOut>", viewport_focus_out)
 
 shadow_lines= [canvas.create_line(0, 0, 0, 0, fill=color, width=2,  smooth=True, splinesteps=20, state="hidden") for color in ("#283328", "#1D281F", "#152019")]
 current_offset = 16

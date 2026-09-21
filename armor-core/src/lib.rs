@@ -3,6 +3,7 @@ mod render;
 
 use pyo3::prelude::*;
 use render::State;
+use winit::keyboard::KeyCode;
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -85,6 +86,34 @@ impl ViewportRenderer {
 
     fn mouse_button(&mut self, pressed: bool) {
         self.state.mouse_button(pressed);
+    }
+
+    fn pan(&mut self, dx: f32, dy: f32) {
+        self.state.camera.pan(dx, dy);
+    }
+
+    fn orbit(&mut self, dx: f32, dy: f32) {
+        self.state.camera.orbit(dx, dy);
+    }
+
+    fn zoom(&mut self, steps: f32) {
+        self.state.camera.zoom(steps);
+    }
+
+    fn key_event(&mut self, key: &str, pressed: bool) -> bool {
+        let code = match key {
+            "w" | "W" => KeyCode::KeyW,
+            "a" | "A" => KeyCode::KeyA,
+            "s" | "S" => KeyCode::KeyS,
+            "d" | "D" => KeyCode::KeyD,
+            "Up" => KeyCode::ArrowUp,
+            "Down" => KeyCode::ArrowDown,
+            "Left" => KeyCode::ArrowLeft,
+            "Right" => KeyCode::ArrowRight,
+            "2" | "KP_2" => KeyCode::Digit2,
+            _ => return false,
+        };
+        self.state.camera_controller.handle_key(&mut self.state.camera, code, pressed)
     }
 }
 

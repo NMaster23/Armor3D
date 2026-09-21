@@ -18,8 +18,22 @@ Week 1 - this release only features drawing polylines on a grid, with many of th
 ## Run locally
 This version is specifically built for Windows.
 
-1. Instal Python and the dependencies: pip install customtkinter pillow
-2. Run from the project root: python "CTK UI/ui.py"
+The UI imports the compiled `armor_core` Python extension, so build and install it before running the app. In PowerShell, from the project root:
+
+```powershell
+$py = "$env:LOCALAPPDATA\Python\pythoncore-3.14-64\python.exe"
+$env:Path = "$HOME\.cargo\bin;$env:Path"
+& $py -m pip install customtkinter pillow maturin
+& $py -m maturin build --release --manifest-path "armor-core\Cargo.toml" --interpreter $py
+$wheel = Get-ChildItem "armor-core\target\wheels\armor_core-*.whl" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+& $py -m pip install --force-reinstall $wheel.FullName
+& $py "CTK UI\ui.py"
+```
+
+Use the path to your own `python.exe` if it differs. After the wheel is installed, only the last command is needed to run the app. Rebuild the wheel after changing Rust code.
+
+## Viewport navigation
+With the pointer over the grid, use the mouse wheel to zoom, right-drag to pan, or Shift + right-drag to orbit. Click the grid to focus it, then use W/A/S/D to move and the arrow keys to rotate the view. Press 2 to toggle a top-down orthographic 2D view; press 2 again to restore the previous 3D view. Left-click still draws points.
 
 Keep the Assets folder in the project root so the fonts and icons can load.
 

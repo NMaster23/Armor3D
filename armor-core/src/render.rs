@@ -195,6 +195,7 @@ impl State {
             fov_y: 45.0,
             z_near: 0.1,
             z_far: 100.0,
+            orthographic: false,
         };
         let camera_controller = CameraController::new(0.02);
         let mut camera_uniform = CameraUniform::new();
@@ -440,6 +441,7 @@ impl State {
             fov_y: 45.0,
             z_near: 0.1,
             z_far: 100.0,
+            orthographic: false,
         };
         let camera_controller = CameraController::new(0.02);
         let mut camera_uniform = CameraUniform::new();
