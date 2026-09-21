@@ -1,6 +1,10 @@
 # Armor3D
 ### Armor3D is an attempt at re-making Rhinoceros 8, a CAD drawing software. Armor3D is built with Python (main UI with CTK) and Rust (grid drawing + all 3D calculations).
 
+## Rust Side
+
+The rust side utilizes wgpu for closer system level access, but is harder to code in. It requires much more boilerplate but currently a world graph is implemented on x, y, and z. There is a working 3D camera. Drawing also works but currently it is hardcoded.
+
 ## Week 1 progress
 - Main workspace with a command input and history
 - Left toolbar with hover effects and tooltips
