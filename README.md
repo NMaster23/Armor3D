@@ -2,7 +2,7 @@
 ### Armor3D is an attempt at re-making Rhinoceros 8, a CAD drawing software. Armor3D is built with Python (main UI with CTK) and Rust (grid drawing + all 3D calculations).
 
 ## NOTICE
-The drawing for the grid is a temporary solution for week one, and will be changed in week two to match actual Rhino commands. Currently, most of the buttons are not functional, and will be working in week two. 
+The drawing for the grid is a temporary solution for week one, and will be changed in week two to match actual Rhino commands. Currently, most of the buttons are not functional, and will be working in week two. The only buttons that work at the moment are: **AI Creation button** - actual AI isn't implemented yet, **File button** - dropdown works not actual function, and the **Analyze button** - only dropdown not actual function. 
 
 ## Rust Side
 The rust side utilizes wgpu for closer system level access, but is harder to code in. It requires much more boilerplate but currently a world graph is implemented on x, y, and z. There is a working 3D camera. Drawing also works but currently it is hardcoded.
@@ -16,6 +16,9 @@ The rust side utilizes wgpu for closer system level access, but is harder to cod
 
 ## Current limitations
 Week 1 - this release only features drawing polylines on a grid, with many of the other features not available at the time. The main UI and most of the buttons, however, have been completed. 
+
+## Download
+Downlaod the EXE from the latest release: (). After that is completed, ignore the Windows security feature, and then you're in the app!
 
 ## Run locally
 This version is specifically built for Windows.
@@ -32,7 +35,7 @@ $wheel = Get-ChildItem "armor-core\target\wheels\armor_core-*.whl" | Sort-Object
 & $py "CTK UI\ui.py"
 ```
 
-Use the path to your own `python.exe` if it differs. After the wheel is installed, only the last command is needed to run the app. Rebuild the wheel after changing Rust code.
+Use the path to your own `python.exe` if it differs. After the wheel is installed, only the last command is needed to run the app. Rebuild the wheel after changing Rust code. Keep the Assets folder in the project root so the fonts and icons can load.
 
 ## CONTROLS
 - Right click to pan
@@ -41,12 +44,8 @@ Use the path to your own `python.exe` if it differs. After the wheel is installe
 - Shift + right drag to orbit
 - Left click to draw (temporary for week one - will use actual Rhino commands during week two)
 
-With the pointer over the grid, use the mouse wheel to zoom, right-drag to pan, or Shift + right-drag to orbit. Click the grid to focus it, then use W/A/S/D to move and the arrow keys to rotate the view. Press 2 to toggle a top-down orthographic 2D view; press 2 again to restore the previous 3D view. Left-click still draws points.
-
-Keep the Assets folder in the project root so the fonts and icons can load.
-
 ## Next Steps
-### Week 1
+### Week 2
 - Start AI integration
 - Complete all button functions
 - Improve on 3D drawing
