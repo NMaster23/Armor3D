@@ -194,18 +194,35 @@ def resizethings(event):
     update_shadow(event.width, event.height, current_offset)
     # draw_grid(event.width, event.height)
 canvas.bind("<Configure>", resizethings)
-
+past_commands= []
+history_index = 0
 def runcmd(event):
     typed = command.get().strip()
     if not typed:
         return
+    global history_index
+    past_commands.append(typed)
+    history_index = len(past_commands)
     history.configure(state='normal')
     history.insert('end', f"> {typed}\nCommand not found\n")
     history.see("end")
     history.configure(state='disabled')
     command.delete(0, 'end')
 command.bind("<Return>", runcmd)
-
+def browse_commands(event):
+    global history_index
+    if not past_commands:
+        return "break"
+    if event.keysym == 'Up':
+        history_index = max(0, history_index-1)
+    else:
+        history_index = min(len(past_commands), history_index+1)
+    command.delete(0, "end")
+    if history_index < len(past_commands):
+        command.insert(0, past_commands[history_index])
+    return "break"
+command.bind("<Up>", browse_commands)
+command.bind("<Down>", browse_commands)
 filez = canvas.create_text(24, 8, text="File", font=("Lexend", 8), fill='#F5E8D2')
 canvas.tag_bind(filez, "<Enter>", lambda event: canvas.itemconfig(filez, fill="#F0AA60"))
 canvas.tag_bind(filez, "<Leave>", lambda event: canvas.itemconfig(filez, fill="#F5E8D2"))
