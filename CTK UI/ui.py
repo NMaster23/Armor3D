@@ -1,8 +1,8 @@
 import customtkinter as ctk
 from ctypes import windll
-from tkinter import Canvas, Frame
+from tkinter import Canvas, Frame, filedialog
 import sys
-from PIL import Image, ImageEnhance, ImageTk, ImageDraw
+from PIL import Image, ImageEnhance, ImageTk, ImageDraw, ImageGrab
 from pathlib import Path
 import os
 from armor_core import ViewportRenderer
@@ -201,6 +201,19 @@ def browse_commands(event):
     return "break"
 command.bind("<Up>", browse_commands)
 command.bind("<Down>", browse_commands)
+
+def saveviewportpng():
+    path = filedialog.asksaveasfilename(parent=app, title="Save viewport as PNG", defaultextension=".png", filetypes=[("PNG image", "*.png")], initialfile="Armor3D.png")
+    if not path:
+        return
+    closefilemenu()
+    def capture():
+        x = viewport.winfo_rootx()
+        y= viewport.winfo_rooty()
+        width = viewport.winfo_width()
+        height = viewport.winfo_height()
+        ImageGrab.grab(bbox=(x, y, x + width, y + height), all_screens=True).save(path, "PNG")
+    app.after(250, capture)
 filez = canvas.create_text(24, 8, text="File", font=("Lexend", 8), fill='#F5E8D2')
 canvas.tag_bind(filez, "<Enter>", lambda event: canvas.itemconfig(filez, fill="#F0AA60"))
 canvas.tag_bind(filez, "<Leave>", lambda event: canvas.itemconfig(filez, fill="#F5E8D2"))
@@ -233,6 +246,8 @@ def filemenuclick(event):
     row = (event.y - 4) //32
     if filepage == 'main' and row == 2 and 68 <= event.y <= 98:
         showfilepage("formats")
+    elif filepage == 'formats' and row == 1 and 36 <= event.y <= 66:
+        saveviewportpng()
 filemenu.bind("<Button-1>", filemenuclick)
 file_hover_job = None
 def open_file_menu():
