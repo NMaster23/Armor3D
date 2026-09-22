@@ -1,24 +1,24 @@
-use crate::camera::{Camera, CameraController, CameraUniform};
+use crate::camera::{Camera, CameraController, CameraUniform, OPENGL_TO_WGPU_MATRIX};
 
 use std::sync::Arc;
 
 use winit::{
-    application::ApplicationHandler,
     event::*,
-    event_loop::{ActiveEventLoop, EventLoop},
-    keyboard::{KeyCode, PhysicalKey},
+    event_loop::ActiveEventLoop,
+    keyboard::KeyCode,
     window::Window,
 };
 
 use crate::{GRAPH_INDICES, GRAPH_VERTICES, Vertex};
-use cgmath::{InnerSpace, Matrix4, SquareMatrix, Vector3, Vector4};
+use cgmath::{Deg, EuclideanSpace, InnerSpace, Matrix4, SquareMatrix, Vector3, Vector4, perspective};
+use cgmath::num_traits::real::Real;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 use wgpu::util::DeviceExt;
-use winit::dpi::{PhysicalPosition, Position};
+use winit::dpi::PhysicalPosition;
 #[cfg(target_arch = "wasm32")]
 use winit::platform::web::EventLoopExtWebSys;
-use winit::window::WindowId;
+
 
 const INITIAL_POINT_SIZE: usize = 16;
 
@@ -64,19 +64,53 @@ impl State {
         }
         let ndc_x = (2.0 * mouse_x / width as f64) - 1.0;
         let ndc_y = 1.0 - (2.0 * mouse_y / height as f64);
-        let vp: Matrix4<f32> = self.camera_uniform.view_proj.into();
-        let invert_vp = vp.invert().expect("Error unwrapping inverted vp");
-        let near = invert_vp * cgmath::Vector4::new(ndc_x as f32, ndc_y as f32, 0.0, 1.0);
-        let far = invert_vp * Vector4::new(ndc_x as f32, ndc_y as f32, 1.0, 1.0);
-        let ray_origin = (near / near.w).truncate();
-        let ray_target = (far / far.w).truncate();
-        let ray_dir = (ray_target - ray_origin).normalize();
+        let ndc = Vector4::new(ndc_x as f32, ndc_y as f32, 1.0, 1.0);
+        let view = Matrix4::look_at_rh(
+            self.camera.eye,
+            self.camera.target,
+            Vector3::unit_y(),
+        );
+        let projection = perspective(
+            Deg(45.0),
+            self.camera.aspect,
+            0.1,
+            100.0,
+        );
+        let view_projection = OPENGL_TO_WGPU_MATRIX * projection * view;
+        let inverse = view_projection.invert().expect("inverse projection");
+        let world = inverse * ndc;
+        let world_point = world.truncate() / world.w;
+        let ray_origin = self.camera.eye.to_vec();
+        let ray_dir = (world_point - ray_origin).normalize();
         let distance = (self.camera.target - self.camera.eye).magnitude();
-        let hit_pos: Vector3<f32> = ray_origin + ray_dir * distance;
+        let horizontal = if ray_dir.y.abs() > f32::EPSILON {
+            -ray_origin.y / ray_dir.y
+        } else {
+            -1.0
+        };
+        let vertical = if ray_dir.z.abs() > f32::EPSILON {
+            -ray_origin.z / ray_dir.z
+        } else {
+            -1.0
+        };
+        let horizontal_hit = ray_origin + ray_dir * horizontal;
+        let vertical_hit = ray_origin + ray_dir * vertical;
+        let hit_pos = match (horizontal >= 0.0, vertical >= 0.0) {
+            (true, true) => {
+                if horizontal < vertical {
+                    ray_origin + ray_dir * horizontal
+                } else {
+                    ray_origin + ray_dir * vertical
+                }
+            }
+            (true, false) => ray_origin + ray_dir * horizontal,
+            (false, true) => ray_origin + ray_dir * vertical,
+            (false, false) => return,
+        };
         self.add_point(hit_pos);
     }
     pub fn add_point(&mut self, point: Vector3<f32>) {
-        let size = 0.05;
+        let size = 0.01;
         let color = [0.4, 0.4, 0.4, 1.0];
         let forward = (self.camera.target - self.camera.eye).normalize();
         let right = forward.cross(self.camera.up).normalize();
