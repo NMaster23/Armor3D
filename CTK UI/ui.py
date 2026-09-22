@@ -186,12 +186,15 @@ def resize_cmd_boxes(width):
 #     zoom = newzoom
 #     draw_grid(canvas.winfo_width(), canvas.winfo_height())
 # canvas.bind("<MouseWheel>", zoom_grid)
+snapwindow = None
 def resizethings(event):
     canvas.coords(horizontal, 100, 100, event.width, 100)
     canvas.coords(vertical, 100, 100, 100, event.height)
     canvas.itemconfig(viewport_window, width=max(1, event.width - 101), height=max(1, event.height - 101))
     resize_cmd_boxes(event.width)
     update_shadow(event.width, event.height, current_offset)
+    if snapwindow is not None:
+        canvas.itemconfig(snapwindow, height=max(25, event.height-470))
     # draw_grid(event.width, event.height)
 canvas.bind("<Configure>", resizethings)
 past_commands= []
@@ -621,6 +624,7 @@ def osnapclick(event):
     if 8 <= event.x <= 92 and 332 <= event.y <=368:
         onsapon = not onsapon
         showosnap(True)
+        refreshosnap()
 canvas.bind("<Motion>", onsapmotion, add="+")
 canvas.bind("<Button-1>", osnapclick, add="+")
 canvas.bind("<Leave>", lambda event: showosnap(False), add="+")
@@ -679,25 +683,42 @@ layermenu.bind("<Motion>", layermenumotion)
 layermenu.bind("<Button-1>", chooselayercolor)
 app.bind_all("<Button-1>", close_layer_outside, add="+")
 
-canvas.create_text(50, 480, text="Osnap", fill='#F5E8D2', anchor='center', font=("Iceland", 14))
-end  =canvas.create_text(60, 515, text="End", fill="#F5E8d2", anchor='center', font=("Iceland", 13))
-near = canvas.create_text(60, 550, text="Near", fill='#F5E8D2', anchor='center', font=("Iceland", 13))
-intz = canvas.create_text(60, 585, text="Int", fill="#F5E8D2", anchor='center', font=("Iceland", 13))
-mid = canvas.create_text(60, 620, text="Mid", fill="#F5E8D2", anchor='center', font=("Iceland", 13))
-cen = canvas.create_text(60, 655, text="Cen", fill="#F5E8D2", anchor='center', font=("Iceland", 13))
-disable = canvas.create_text(62, 690, text="Disable", fill='#F5E8D2', anchor='center', font=("Iceland", 13))
-snap_options = {"End": (end, 515), "Near": (near, 550), "Int": (intz, 585), "Mid": (mid, 620), "Cen": (cen, 655), "Disable": (disable, 690)} 
-snapenabled = {name: False for name in snap_options}
-def toggle_snap(name):
-    snapenabled[name] = not snapenabled[name]
-    canvas.itemconfig(snap_marks[name], state='normal' if snapenabled[name] else "hidden")
-snap_marks = {}
-for name, (label, y) in snap_options.items():
-    box = canvas.create_rectangle(18, y-7, 32, y+7, fill="#3B322A", outline="#E28B45", width=2)
-    mark = canvas.create_text(25, y, text="✓", fill="#F0AA60", font=("Iceland", 13), state='hidden')
-    snap_marks[name] = mark
+snapcanvas = Canvas(canvas, bg="#242B23", highlightthickness=0)
+snapwindow = canvas.create_window(0, 470, window=snapcanvas, anchor='nw', width=100, height=230)
+snapheading = snapcanvas.create_text(50, 15, text='Osnap', fill='#F5E8D2', font=("Iceland", 14))
+snapenabled = {}
+snapitems = {}
+def togglesnap(name):
+    global onsapon
+    if name == 'Disable':
+        onsapon= not onsapon
+        showosnap()
+    elif onsapon:
+        snapenabled[name] = not snapenabled[name]
+    refreshosnap()
+def refreshosnap():
+    active = onsapon
+    snapcanvas.itemconfig(snapheading, fill='#F5E8D2' if active else "#777777")
+    for name, (box, mark, label) in snapitems.items():
+        if name == 'Disable':
+            snapcanvas.itemconfig(mark, state='hidden' if active else 'normal')
+            continue
+        snapcanvas.itemconfig(box, outline="#E28B45" if active else "#555555")
+        snapcanvas.itemconfig(label, fill="#F5E8D2" if active else "#777777")
+        snapcanvas.itemconfig(mark, fill="#F0AA60" if active else "#777777")
+        snapcanvas.itemconfig(mark, state="normal" if snapenabled[name] else "hidden")
+for i, name in enumerate(("End", "Near", "Int", "Mid", "Cen", "Disable")):
+    y = 48 + i *30
+    snapenabled[name] = False
+    box = snapcanvas.create_rectangle(18, y-7, 32, y+7, fill='#3B322A', outline="#E28B45", width=2)
+    mark = snapcanvas.create_text(25, y, text="✓", fill='#F0AA60',font=("Iceland", 13), state='hidden')
+    label = snapcanvas.create_text(60, y, text=name, fill="#F5E8D2", font=("Iceland", 13))
+    snapitems[name] = (box, mark, label)
     for item in (box, mark, label):
-        canvas.tag_bind(item, "<Button-1>", lambda event, option=name: toggle_snap(option))
+        snapcanvas.tag_bind(item, "<Button-1>", lambda event, option=name: togglesnap(option))
+snapcanvas.configure(scrollregion=(0, 0, 100, 225))
+snapcanvas.bind("<MouseWheel>", lambda event: snapcanvas.yview_scroll(-1 if event.delta > 0 else 1, "units"))
+refreshosnap()
 
 menujobs = {}
 menusliding = set()
