@@ -1,6 +1,6 @@
 import customtkinter as ctk
 from ctypes import windll
-from tkinter import Canvas, Frame, filedialog
+from tkinter import Canvas, Frame, filedialog, Toplevel, StringVar
 import sys
 from PIL import Image, ImageEnhance, ImageTk, ImageDraw, ImageGrab
 from pathlib import Path
@@ -203,17 +203,164 @@ command.bind("<Up>", browse_commands)
 command.bind("<Down>", browse_commands)
 
 def saveviewportpng():
-    path = filedialog.asksaveasfilename(parent=app, title="Save viewport as PNG", defaultextension=".png", filetypes=[("PNG image", "*.png")], initialfile="Armor3D.png")
-    if not path:
-        return
     closefilemenu()
-    def capture():
-        x = viewport.winfo_rootx()
-        y= viewport.winfo_rooty()
-        width = viewport.winfo_width()
-        height = viewport.winfo_height()
-        ImageGrab.grab(bbox=(x, y, x + width, y + height), all_screens=True).save(path, "PNG")
-    app.after(250, capture)
+    app.after(250, openpngdialog)
+def openpngdialog():
+    app.update_idletasks()
+    x, y = viewport.winfo_rootx(), viewport.winfo_rooty()
+    w, h = viewport.winfo_width(), viewport.winfo_height()
+    shot = ImageGrab.grab(bbox=(x, y, x+w, y+h), all_screens=True)
+    vx, vy=x - app.winfo_rootx(), y - app.winfo_rooty()
+    selected = [0, 0, w, h]
+    dragstart = [None]
+    dragbox = [None]
+    selecting = [False]
+    overlay = Toplevel(app)
+    overlay.overrideredirect(True)
+    overlay.geometry(f"{app.winfo_width()}x{app.winfo_height()}" f"+{app.winfo_rootx()}+{app.winfo_rooty()}")
+    overlay.attributes("-alpha", 0.55)
+    shade = Canvas(overlay, bg='black', highlightthickness=0, cursor='arrow')
+    shade.pack(fill='both', expand=True)
+    diaglog  = ctk.CTkToplevel(app)
+    diaglog.overrideredirect(True)
+    diaglog.configure(fg_color='#242B23')
+    dx = app.winfo_rootx() + (app.winfo_width()-560)//2
+    dy = app.winfo_rooty() + (app.winfo_height()-320)//2
+    diaglog.geometry(f"560x320+{dx}+{dy}")
+    panel = ctk.CTkFrame(diaglog, fg_color="#3B322A", corner_radius=8, border_color="#A66b3E", border_width=2)
+    panel.pack(fill='both', expand=True, padx=4, pady=4)
+    diaglog.lift()
+    def follow_app(event):
+        if event.widget is not app:
+            return
+        ax, ay = app.winfo_rootx(), app.winfo_rooty()
+        aw, ah = app.winfo_width(), app.winfo_height()
+        overlay.geometry(f"{aw}x{ah}+{ax}+{ay}")
+        diaglog.geometry(f"560x320+{ax+(aw-560)//2}+{ay+(ah-320)//2}")
+    follow_id = app.bind("<Configure>", follow_app, add="+")
+    def close():
+        app.unbind("<Configure>", follow_id)
+        diaglog.destroy()
+        overlay.destroy()
+    def textbutton(text, width, height, command, fontsize=18):
+        button=Canvas(panel, width=width, height=height, bg="#3B322A", highlightthickness=0, cursor='hand2')
+        label = button.create_text(width//2, height//2, text=text, fill='#F5E8D2', font=("Iceland", fontsize))
+        button.label_id = label
+        button.enabled = True
+        button.bind("<Enter>", lambda e: button.itemconfig(label, fill='#F0AA60' if button.enabled else "#777777"))
+        button.bind("<Leave>", lambda e: button.itemconfig(label, fill='#F5E8D2' if button.enabled else "#777777"))
+        button.bind("<Button-1>", lambda e: command() if button.enabled else None)
+        return button
+    def pixelbox():
+        return (  round(selected[0] * shot.width / w),  round(selected[1] * shot.height / h),  round(selected[2] * shot.width / w),  round(selected[3] * shot.height / h))
+    scale = StringVar(value="100")
+    ctk.CTkLabel(panel, text="Save as PNG", font=("Lexend", 17)).place(x=22, y=15)
+    textbutton("×", 40, 40, close, 24).place(x=495, y=8)
+    ctk.CTkLabel(panel, text="Scale (%)", font=("Lexend", 12)).place(x=24, y=75)
+    scale_entry = ctk.CTkEntry(panel, width=95, textvariable=scale)
+    scale_entry.place(x=24, y=106)
+    ctk.CTkLabel(panel, text="Preview", font=("Lexend", 12)).place(x=230, y=42)
+    preview = ctk.CTkLabel(panel, text="", width=290, height=170, fg_color="#242B23" )
+    preview.place(x=230, y=70)
+    dimensions = ctk.CTkLabel(panel, text='', font=("Lexend", 11))
+    dimensions.place(x=230, y=245)
+    def refresh(*_):
+        try:
+            percent = int(scale.get())
+        except ValueError:
+            percent = 0
+        valid = 1 <= percent <= 100
+        scale_entry.configure(border_color = "#E28B45" if valid else "#B9533C" )
+        save_button.enabled = valid
+        save_button.itemconfig(save_button.label_id, fill="#F5E8D2" if valid else "#777777")
+        save_button.configure(cursor="hand2" if valid else "arrow")
+        if not valid:
+            return
+        cropped = shot.crop(pixelbox())
+        out_w = max(1, round(cropped.width * percent/100))
+        out_h = max(1, round(cropped.height * percent / 100))
+        image = cropped.resize((out_w, out_h), Image.Resampling.LANCZOS)
+        image.thumbnail((280, 160), Image.Resampling.LANCZOS)
+        preview.configure(image=ctk.CTkImage(light_image=image, dark_image=image, size=image.size))
+        dimensions.configure(text=f"{out_w} x {out_h} px")
+    def set_area():
+        selecting[0] = True
+        diaglog.withdraw()
+        overlay.attributes("-alpha", 0.25)
+        shade.focus_set()
+    def position(event):
+        return(max(0, min(w, event.x-vx)), max(0, min(h, event.y-vy)))
+    def insideview(event):
+        return vx <= event.x <= vx+w and vy <= event.y <= vy+h
+    def cancel_drag():
+        if dragbox[0] is not None:
+            shade.delete(dragbox[0])
+            dragbox[0] = None
+        dragstart[0] = None
+
+    def star_drag(event):
+        if not selecting[0]:
+            return
+        if not (vx <= event.x<=  vx +w and vy <= event.y <= vy+h):
+            return
+        dragstart[0] = position(event)
+        dragbox[0] = shade.create_rectangle( event.x, event.y, event.x, event.y, outline="#F0AA60", width=3)
+    def movedrag(event):
+        if not selecting[0] or dragstart[0] is None:
+            return
+        if dragstart[0] is None:
+                return
+        px, py = position(event)
+        sx, sy = dragstart[0]
+        shade.coords(dragbox[0], vx+sx, vy+sy, vx+px, vy+py)
+    def enddrag(event):
+        if not selecting[0] or dragstart[0] is None:
+            return
+        if dragstart[0] is None:
+            return
+        sx, sy = dragstart[0]
+        px, py = position(event)
+        if abs(px-sx) >= 5 and abs(py-sy) >= 5:
+            selected[:] = [min(sx, px), min(sy, py), max(sx, px), max(sy, py)]
+        cancel_drag()
+        selecting[0] = False
+        shade.configure(cursor="arrow")
+        overlay.attributes("-alpha", 0.55)
+        diaglog.deiconify()
+        diaglog.lift()
+        refresh()
+    def save():
+        path = filedialog.asksaveasfilename(parent=diaglog, title='Save viewport as PNG', defaultextension=".png", filetypes=[("PNG image", "*.png")], initialfile = 'Armor3D.png')
+        if not path:
+            return
+        cropped = shot.crop(pixelbox())
+        percent = int(scale.get())
+        size = (max(1, round(cropped.width * percent /100)), max(1, round(cropped.height * percent/100)))
+        cropped.resize(size, Image.Resampling.LANCZOS).save(path, "PNG")
+        close()
+    textbutton("Set", 95, 42, set_area).place(x=18, y=164)
+    save_button = textbutton("Save", 115, 42, save)
+    save_button.place(x=412, y=258)
+    def bringdialogfront():
+        if diaglog.winfo_exists() and not selecting[0]:
+            diaglog.lift()
+            diaglog.focus_set()
+    def shadeclick(event):
+        if selecting[0]:
+            star_drag(event)
+        else:
+            app.after_idle(bringdialogfront)
+            return "break"
+    shade.bind("<ButtonPress-1>", shadeclick)
+    shade.bind("<ButtonRelease-1>", enddrag)
+    shade.bind("<B1-Motion>", movedrag)
+    shade.bind("<Escape>", lambda event: close())
+    shade.bind("<Motion>", lambda e: shade.configure(cursor='crosshair' if selecting[0] and insideview(e) else "arrow"))
+    shade.bind("<Leave>", lambda e: cancel_drag())
+    diaglog.bind("<Escape>", lambda event: close())
+    scale.trace_add("write", refresh)
+    refresh()
+        
 filez = canvas.create_text(24, 8, text="File", font=("Lexend", 8), fill='#F5E8D2')
 canvas.tag_bind(filez, "<Enter>", lambda event: canvas.itemconfig(filez, fill="#F0AA60"))
 canvas.tag_bind(filez, "<Leave>", lambda event: canvas.itemconfig(filez, fill="#F5E8D2"))
