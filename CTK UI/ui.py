@@ -33,55 +33,35 @@ command_window = canvas.create_window(8, 70, window=command, anchor='nw', height
 horizontal = canvas.create_line(100, 100, 1200, 100, fill="#70543B", width=3)
 vertical = canvas.create_line(100, 100, 100, 850, fill="#70543B", width=3)
 viewport = Frame(canvas, bg="#101010", bd=0, highlightthickness=0, takefocus=1)
-viewport_window = canvas.create_window(
-    101,
-    101,
-    window=viewport,
-    anchor="nw",
-    width=700,
-    height=500,
-)
+viewport_window = canvas.create_window(101,  101,  window=viewport, anchor="nw", width=700, height=500,)
 renderer = None
-
 def initialize_renderer():
     global renderer
     app.update_idletasks()
-    renderer = ViewportRenderer(
-        viewport.winfo_id(),
-        max(1, viewport.winfo_width()),
-        max(1, viewport.winfo_height()),
-    )
+    renderer = ViewportRenderer(viewport.winfo_id(),  max(1, viewport.winfo_width()), max(1, viewport.winfo_height()),)
     render_frame()
-
 def render_frame():
     if renderer is not None:
         renderer.render()
         app.after(16, render_frame)
-
 def resize_viewport(event):
     if renderer is not None:
         renderer.resize(max(1, event.width), max(1, event.height))
-
 def viewport_mouse_move(event):
     if renderer is not None:
         renderer.mouse_move(event.x, event.y)
-
 def viewport_mouse_down(event):
     viewport.focus_set()
     if renderer is not None:
         renderer.mouse_button(True)
-
 def viewport_mouse_up(event):
     if renderer is not None:
         renderer.mouse_button(False)
-
 last_right_drag = None
-
 def viewport_right_down(event):
     global last_right_drag
     viewport.focus_set()
     last_right_drag = (event.x, event.y)
-
 def viewport_right_drag(event):
     global last_right_drag
     if renderer is not None and last_right_drag is not None:
@@ -92,24 +72,19 @@ def viewport_right_drag(event):
         else:
             renderer.pan(dx, dy)
     last_right_drag = (event.x, event.y)
-
 def viewport_right_up(event):
     global last_right_drag
     last_right_drag = None
-
 def viewport_wheel(event):
     if renderer is not None:
         renderer.zoom(event.delta / 120)
-
 def viewport_key(event, pressed):
     if renderer is not None:
         renderer.key_event(event.keysym, pressed)
-
 def viewport_focus_out(event):
     if renderer is not None:
         for key in ("w", "a", "s", "d", "Up", "Down", "Left", "Right"):
             renderer.key_event(key, False)
-
 viewport.bind("<Configure>", resize_viewport)
 viewport.bind("<Motion>", viewport_mouse_move)
 viewport.bind("<ButtonPress-1>", viewport_mouse_down)
@@ -229,9 +204,9 @@ command.bind("<Down>", browse_commands)
 filez = canvas.create_text(24, 8, text="File", font=("Lexend", 8), fill='#F5E8D2')
 canvas.tag_bind(filez, "<Enter>", lambda event: canvas.itemconfig(filez, fill="#F0AA60"))
 canvas.tag_bind(filez, "<Leave>", lambda event: canvas.itemconfig(filez, fill="#F5E8D2"))
-filemenu = Canvas(app, width=160, height=136, bg="#3B322A",  highlightthickness=1, highlightbackground="#A66B3E")
+filemenu = Canvas(app, width=160, height=104, bg="#3B322A",  highlightthickness=1, highlightbackground="#A66B3E")
 menu_rows = []
-for i, name in enumerate(("New", "Save", "Save As", "Pumpkin :)")): 
+for i, name in enumerate(("New", "Save", "Save As")): 
     y=4 + i * 32
     box = filemenu.create_rectangle(4, y, 155, y +30, fill="", outline="")
     label = filemenu.create_text(12, y+15, text=name, anchor='w', fill="#F5E8D2", font=("Iceland", 13))
@@ -244,12 +219,28 @@ def menu_motion(event):
         filemenu.itemconfig(label, fill= "#67442F" if active else "")
         filemenu.itemconfig(label, fill="#F0AA60" if active else "#F5E8D2")
 filemenu.bind("<Motion>", menu_motion)
+filepage = "main"
+def showfilepage(page):
+    global filepage
+    filepage = page
+    names = ("New", "Save", "Save As") if page == "main" else ("3DM", "PNG", "DXF")
+    for (box, label), name in zip(menu_rows, names):
+        filemenu.itemconfig(box, fill='')
+        filemenu.itemconfig(label, text=name, fill="#F5E8D2")
+def filemenuclick(event):
+    if not (4 <= event.x <= 155):
+        return
+    row = (event.y - 4) //32
+    if filepage == 'main' and row == 2 and 68 <= event.y <= 98:
+        showfilepage("formats")
+filemenu.bind("<Button-1>", filemenuclick)
 file_hover_job = None
 def open_file_menu():
+    showfilepage("main")
     global file_hover_job
     file_hover_job = None
     slidemenu(analyze_menu, 100, 72, False)
-    slidemenu(filemenu, 8, 136, True)
+    slidemenu(filemenu, 8, 104, True)
 def cancelfilehover(event=None):
     global file_hover_job
     if file_hover_job is not None:
@@ -262,7 +253,7 @@ def file_enter(event):
 def file_click(event):
     cancelfilehover()
     if filemenu.winfo_manager():
-        slidemenu(filemenu, 8, 136, False)
+        slidemenu(filemenu, 8, 104, False)
     else:
         open_file_menu()
 fileclosejob = None
@@ -279,7 +270,7 @@ def cancelfileclose():
 def closefilemenu():
     global fileclosejob
     fileclosejob = None
-    slidemenu(filemenu, 8, 136, False)
+    slidemenu(filemenu, 8, 104, False)
 def filepointermtion(event):
     if filemenu in menusliding:
         return
@@ -326,7 +317,7 @@ analyzeclosejob = None
 def openanalyzemenu():
     global analyzehoverjob
     analyzehoverjob = None
-    slidemenu(filemenu, 8, 136, False)
+    slidemenu(filemenu, 8, 104, False)
     slidemenu(analyze_menu, 100, 72, True)
 def analyze_enter(event):
     global analyzehoverjob
@@ -373,9 +364,73 @@ canvas.tag_bind(analyze, "<Enter>", analyze_enter, add="+")
 canvas.tag_bind(analyze, "<Leave>", analyzeleave, add="+")
 app.bind_all("<Motion>", analyzepointermotion, add="+")
 
-tools = canvas.create_text(170, 8, text="Tools", font=("Lexend", 8), fill='#F5E8D2')
-canvas.tag_bind(tools, "<Enter>", lambda event: canvas.itemconfig(tools, fill='#F0AA60'))
-canvas.tag_bind(tools, "<Leave>", lambda event: canvas.itemconfig(tools, fill='#F5E8D2'))
+tools = canvas.create_text(170, 8, text="Tools", font=("Lexend", 8), fill="#F5E8D2")
+toolsmenu = Canvas(app, width=160, height=136, bg="#3B322a", highlightthickness=1, highlightbackground="#A66B3E")
+toolsrows = []
+for i, name in enumerate(("Revolve", "Extrude", "Mirror", "Copy")):
+    y = 4+i *32
+    box = toolsmenu.create_rectangle(4, y, 155, y +30, fill='', outline='')
+    label = toolsmenu.create_text(12, y+15, text=name, anchor='w', fill='#F5E8D2', font=("Iceland", 13))
+    toolsrows.append((box, label))
+def toolsmotion(event):
+    hovered =(event.y - 4)// 32
+    for i, (box, label) in enumerate(toolsrows):
+        active = i == hovered and 4 <= event.x <=155
+        toolsmenu.itemconfig(box, fill='#67442F' if active else "")
+        toolsmenu.itemconfig(label, fill='#F0AA60' if active else "#F5E8D2")
+toolsmenu.bind("<Motion>", toolsmotion)
+toolshoverjob = None
+toolsclosejob = None
+def opentoolsmenu():
+    global toolshoverjob
+    toolshoverjob = None
+    slidemenu(filemenu, 8, 104, False)
+    slidemenu(analyze_menu, 100, 72, False)
+    slidemenu(toolsmenu, 150, 136, True)
+def closetoolsmenu():
+    global toolsclosejob
+    toolsclosejob = None
+    slidemenu(toolsmenu, 150, 136, False)
+def toolsenter(event):
+    global toolshoverjob
+    canvas.itemconfig(tools, fill='#F0AA60')
+    if toolshoverjob is not None:
+        app.after_cancel(toolshoverjob)
+    toolshoverjob = app.after(500, opentoolsmenu)
+def toolsleave(event):
+    global toolshoverjob
+    canvas.itemconfig(tools, fill='#F5E8D2')
+    if toolshoverjob is not None:
+        app.after_cancel(toolshoverjob)
+        toolshoverjob = None
+def toolsclick(event):
+    toolsleave(event)
+    if toolsmenu.winfo_manager():
+        closetoolsmenu()
+    else:
+        opentoolsmenu()
+def pointerontoolsmenu(event):
+    x = event.x_root - app.winfo_rootx()
+    y = event.y_root - app.winfo_rooty()
+    return (150 <= x <= 190 and 0 <= y <= 20) or (150 <= x <= 310 and 20 <= y <= 156)
+def toolspointermotion(event):
+    global toolsclosejob
+    if toolsmenu in menusliding or not toolsmenu.winfo_manager():
+        return
+    if pointerontoolsmenu(event):
+        if toolsclosejob is not None:
+            app.after_cancel(toolsclosejob)
+            toolsclosejob = None
+    elif toolsclosejob is None:
+        toolsclosejob = app.after(180, closetoolsmenu)
+def toolsoutsideclick(event):
+    if toolsmenu.winfo_manager() and not pointerontoolsmenu(event):
+        closetoolsmenu()
+canvas.tag_bind(tools, "<Enter>", toolsenter)
+canvas.tag_bind(tools, "<Leave>", toolsleave)
+canvas.tag_bind(tools, "<Button-1>", toolsclick)
+app.bind_all("<Motion>", toolspointermotion, add="+")
+app.bind_all("<Button-1>", toolsoutsideclick, add="+")
 
 AI  = canvas.create_text(226, 8, text='AI Creation', font=("Lexend", 8), fill='#F5E8D2')
 canvas.tag_bind(AI, "<Enter>", lambda event: canvas.itemconfig(AI, fill='#F0AA60'))
