@@ -1,24 +1,21 @@
 use crate::camera::{Camera, CameraController, CameraUniform, OPENGL_TO_WGPU_MATRIX};
-
 use std::sync::Arc;
-
 use winit::{
     event::*,
     event_loop::ActiveEventLoop,
     keyboard::KeyCode,
     window::Window,
 };
-
 use crate::{GRAPH_INDICES, GRAPH_VERTICES, Vertex};
-use cgmath::{Deg, EuclideanSpace, InnerSpace, Matrix4, SquareMatrix, Vector3, Vector4, perspective};
-use cgmath::num_traits::real::Real;
-#[cfg(target_arch = "wasm32")]
-use wasm_bindgen::prelude::*;
+use cgmath::{perspective, Deg, EuclideanSpace, InnerSpace, Matrix4, SquareMatrix, Vector3, Vector4, Zero};
 use wgpu::util::DeviceExt;
 use winit::dpi::PhysicalPosition;
-#[cfg(target_arch = "wasm32")]
-use winit::platform::web::EventLoopExtWebSys;
 
+#[repr(C)]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct PolyLineVertex {
+    position: [f32; 3],
+}
 
 const INITIAL_POINT_SIZE: usize = 16;
 
@@ -47,20 +44,11 @@ pub struct State {
 }
 
 impl State {
-    pub fn drawing(
-        &mut self,
-        mouse_pos: PhysicalPosition<f64>,
-        mouse_button: MouseButton,
-        mouse_scroll: MouseScrollDelta,
-        is_pressed: bool,
-    ) {
-        if mouse_button != MouseButton::Left || !is_pressed {
-            return;
-        }
+    pub fn fetch_point(&mut self, mouse_pos: PhysicalPosition<f64>) -> Vector3<f32> {
         let (mouse_x, mouse_y) = (mouse_pos.x, mouse_pos.y);
         let (width, height) = (self.config.width, self.config.height);
         if width == 0 || height == 0 {
-            return;
+            return Vector3::zero();
         }
         let ndc_x = (2.0 * mouse_x / width as f64) - 1.0;
         let ndc_y = 1.0 - (2.0 * mouse_y / height as f64);
@@ -82,7 +70,6 @@ impl State {
         let world_point = world.truncate() / world.w;
         let ray_origin = self.camera.eye.to_vec();
         let ray_dir = (world_point - ray_origin).normalize();
-        let distance = (self.camera.target - self.camera.eye).magnitude();
         let horizontal = if ray_dir.y.abs() > f32::EPSILON {
             -ray_origin.y / ray_dir.y
         } else {
@@ -93,8 +80,6 @@ impl State {
         } else {
             -1.0
         };
-        let horizontal_hit = ray_origin + ray_dir * horizontal;
-        let vertical_hit = ray_origin + ray_dir * vertical;
         let hit_pos = match (horizontal >= 0.0, vertical >= 0.0) {
             (true, true) => {
                 if horizontal < vertical {
@@ -105,9 +90,78 @@ impl State {
             }
             (true, false) => ray_origin + ray_dir * horizontal,
             (false, true) => ray_origin + ray_dir * vertical,
-            (false, false) => return,
+            (false, false) => return Vector3::zero(),
         };
-        self.add_point(hit_pos);
+        hit_pos
+    }
+    pub fn drawing(
+        &mut self,
+        mouse_pos: PhysicalPosition<f64>,
+        mouse_button: MouseButton,
+        mouse_scroll: MouseScrollDelta,
+        is_pressed: bool,
+        code: KeyCode,
+    ) {
+        if !is_pressed {
+            return;
+        }
+        if mouse_button == MouseButton::Right && is_pressed {
+            let hit_pos = self.fetch_point(mouse_pos);
+            self.add_point(hit_pos);
+        } else if mouse_button == MouseButton::Left && is_pressed {
+            self.polyline(mouse_pos, mouse_button, mouse_scroll, is_pressed, code);
+        }
+    }
+    pub fn polyline(
+        &mut self,
+        mouse_pos: PhysicalPosition<f64>,
+        mouse_button: MouseButton,
+        mouse_scroll: MouseScrollDelta,
+        is_pressed: bool,
+        code: KeyCode,
+    ) {
+        if mouse_button != MouseButton::Left || !is_pressed  {
+            return;
+        }
+        let mut line_vertices: &[PolyLineVertex];
+        let hit_pos = self.fetch_point(mouse_pos);
+        let endpoint: Vector3<f32>;
+        let point_num = 1;
+        if point_num == 1 {
+            self.add_point(hit_pos);
+        }
+        if code == KeyCode::Enter && point_num == 1 {
+            endpoint = self.fetch_point(mouse_pos);
+            let point_num = 0;
+        } else {
+            endpoint = Vector3::zero();
+        }
+        let line_vertices = [
+            PolyLineVertex {
+                position: hit_pos.into()
+            },
+            PolyLineVertex {
+                position: endpoint.into()
+            }
+        ];
+
+    }
+    pub fn add_line(&mut self, point1: Vector3<f32>, point2: Vector3<f32>, step_size: f64) {
+        let dx = point2.x - point1.x;
+        let dy = point2.y - point1.y;
+        let distance = hypot((dx * dx) as f64, (dy * dy) as f64);
+        if distance == 0.0 {
+            self.add_point(point1);
+            return;
+        }
+        let steps = (distance / step_size).ceil() as usize;
+        for i in 0..=steps {
+            let t = i as f32 / steps as f32;
+            let x = point1.x + t * dx;
+            let y = point1.y + t * dy;
+            let point = Vector3::new(x, y, 0.0);
+            self.add_point(point);
+        }
     }
     pub fn add_point(&mut self, point: Vector3<f32>) {
         let size = 0.01;
@@ -569,7 +623,7 @@ impl State {
         })
     }
 
-    pub fn mouse_move(&mut self, x: f64, y: f64) {
+    pub fn mouse_move(&mut self, x: f64, y: f64, code: KeyCode) {
         self.cursor_pos = PhysicalPosition::new(x, y);
         if self.holding_left {
             self.drawing(
@@ -577,11 +631,12 @@ impl State {
                 MouseButton::Left,
                 MouseScrollDelta::LineDelta(0.0, 0.0),
                 true,
+                code,
             );
         }
     }
 
-    pub fn mouse_button(&mut self, pressed: bool) {
+    pub fn mouse_button(&mut self, pressed: bool, code: KeyCode) {
         self.holding_left = pressed;
         if pressed {
             self.drawing(
@@ -589,6 +644,7 @@ impl State {
                 MouseButton::Left,
                 MouseScrollDelta::LineDelta(0.0, 0.0),
                 true,
+                code,
             );
         }
     }
