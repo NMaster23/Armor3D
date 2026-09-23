@@ -181,7 +181,6 @@ impl CameraController {
                 self.is_rotate_right_pressed = is_pressed;
                 true
             }
-
             KeyCode::Digit2 => {
                 if is_pressed && !self.two_pressed {
                     self.is_locked = !self.is_locked;

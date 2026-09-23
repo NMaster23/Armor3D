@@ -65,7 +65,10 @@ impl ViewportRenderer {
             .map_err(|error| pyo3::exceptions::PyRuntimeError::new_err(error.to_string()))?;
         Ok(Self { state })
     }
-
+    fn clear(&mut self) {
+        self.state.clear();
+    }
+    
     fn resize(&mut self, width: u32, height: u32) {
         self.state.resize(width, height);
     }

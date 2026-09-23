@@ -1,19 +1,19 @@
 use crate::camera::{Camera, CameraController, CameraUniform, OPENGL_TO_WGPU_MATRIX};
+use crate::{GRAPH_INDICES, GRAPH_VERTICES, Vertex};
+use cgmath::{Deg, EuclideanSpace, InnerSpace, Matrix4, SquareMatrix, Vector3, Vector4, Zero, perspective};
+use lyon::math::point;
+use lyon::path::Path;
+use lyon::tessellation::{BuffersBuilder, FillOptions, FillTessellator, FillVertex, VertexBuffers};
 use std::sync::Arc;
+use wgpu::util::DeviceExt;
+use wgpu::wgt::BufferDescriptor;
+use winit::dpi::PhysicalPosition;
 use winit::{
     event::*,
     event_loop::ActiveEventLoop,
     keyboard::KeyCode,
     window::Window,
 };
-use crate::{GRAPH_INDICES, GRAPH_VERTICES, Vertex};
-use cgmath::{perspective, Deg, EuclideanSpace, InnerSpace, Matrix4, SquareMatrix, Vector3, Vector4, Zero};
-use lyon::math::point;
-use lyon::path::Path;
-use lyon::tessellation::{BuffersBuilder, FillOptions, FillTessellator, FillVertex, VertexBuffers};
-use wgpu::util::{BufferInitDescriptor, DeviceExt};
-use wgpu::wgt::BufferDescriptor;
-use winit::dpi::PhysicalPosition;
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -56,6 +56,37 @@ pub struct Shape {
 }
 
 impl State {
+    pub fn graph_handle_key(
+        &mut self,
+        code: KeyCode,
+        is_pressed: bool
+    ) {
+        match code {
+            KeyCode::KeyC => {
+                if is_pressed {
+                    self.clear();
+                }
+            },
+            KeyCode::Tab => {
+                if is_pressed {
+                    self.osnap = !self.osnap;
+                }
+            }
+            _ => {}
+        }
+    }
+    pub fn clear(&mut self) {
+        self.point_vertices.clear();
+        self.active_polyline.clear();
+        self.queue.write_buffer(
+            &self.point_buffer,
+            0,
+            bytemuck::cast_slice(&self.point_vertices),
+        );
+        if let Some(window) = &self.window {
+            window.request_redraw();
+        }
+    }
     pub fn get_snap_pos(
         &mut self,
         point: Vector3<f32>,
