@@ -122,6 +122,7 @@ pub struct App {
     state: Option<State>,
     cursor_pos: PhysicalPosition<f64>,
     holding_left: bool,
+    holding_right: bool,
 }
 
 impl App {
@@ -134,6 +135,7 @@ impl App {
             proxy,
             cursor_pos: PhysicalPosition::new(0.0, 0.0),
             holding_left: false,
+            holding_right: false,
         }
     }
 }

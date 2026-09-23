@@ -8,7 +8,11 @@ use winit::{
 };
 use crate::{GRAPH_INDICES, GRAPH_VERTICES, Vertex};
 use cgmath::{perspective, Deg, EuclideanSpace, InnerSpace, Matrix4, SquareMatrix, Vector3, Vector4, Zero};
-use wgpu::util::DeviceExt;
+use lyon::math::point;
+use lyon::path::Path;
+use lyon::tessellation::{BuffersBuilder, FillOptions, FillTessellator, FillVertex, VertexBuffers};
+use wgpu::util::{BufferInitDescriptor, DeviceExt};
+use wgpu::wgt::BufferDescriptor;
 use winit::dpi::PhysicalPosition;
 
 #[repr(C)]
@@ -18,6 +22,7 @@ pub struct PolyLineVertex {
 }
 
 const INITIAL_POINT_SIZE: usize = 16;
+const SNAP_RADIUS: f32 = 1.0;
 
 pub struct State {
     surface: wgpu::Surface<'static>,
@@ -34,6 +39,7 @@ pub struct State {
     point_buffer_capacity: usize,
     num_indices: u32,
     point_vertices: Vec<Vertex>,
+    pub osnap: bool,
     pub active_polyline: Vec<Vector3<f32>>,
     pub(crate) camera: Camera,
     camera_uniform: CameraUniform,
@@ -44,12 +50,35 @@ pub struct State {
     holding_left: bool,
 }
 
+pub struct Shape {
+    pub vertices: Vec<Vector3<f32>>,
+    pub is_3d: bool,
+}
+
 impl State {
-    pub fn fetch_point(&mut self, mouse_pos: PhysicalPosition<f64>) -> Vector3<f32> {
+    pub fn get_snap_pos(
+        &mut self,
+        point: Vector3<f32>,
+    ) -> (Vector3<f32>, bool) {
+        if self.active_polyline.len() >= 3 {
+            if let Some(&start) = self.active_polyline.first() {
+                if (point - start).magnitude() <= SNAP_RADIUS {
+                    return (point, true);
+                }
+            }
+        }
+        for &vertex in &self.active_polyline {
+            if (point - vertex).magnitude() <= SNAP_RADIUS {
+                return (point, false);
+            }
+        }
+        (point, false)
+    }
+    pub fn fetch_point(&mut self, mouse_pos: PhysicalPosition<f64>) -> Option<Vector3<f32>> {
         let (mouse_x, mouse_y) = (mouse_pos.x, mouse_pos.y);
         let (width, height) = (self.config.width, self.config.height);
         if width == 0 || height == 0 {
-            return Vector3::zero();
+            return Some(Vector3::zero());
         }
         let ndc_x = (2.0 * mouse_x / width as f64) - 1.0;
         let ndc_y = 1.0 - (2.0 * mouse_y / height as f64);
@@ -91,9 +120,9 @@ impl State {
             }
             (true, false) => ray_origin + ray_dir * horizontal,
             (false, true) => ray_origin + ray_dir * vertical,
-            (false, false) => return Vector3::zero(),
+            (false, false) => return Some(Vector3::zero()),
         };
-        hit_pos
+        Some(hit_pos)
     }
     pub fn drawing(
         &mut self,
@@ -104,24 +133,104 @@ impl State {
         if !is_pressed {
             return;
         }
-        if mouse_button == MouseButton::Right && is_pressed {
-            let hit_pos = self.fetch_point(mouse_pos);
-            self.add_point(hit_pos);
-        } else if mouse_button == MouseButton::Left && is_pressed {
-            self.polyline(mouse_pos);
+        match mouse_button {
+            MouseButton::Right => {
+                let hit_pos = self.fetch_point(mouse_pos);
+                self.add_point(hit_pos.expect("Error unwrapping hit_pos"));
+            }
+            MouseButton::Left => {
+                self.polyline(mouse_pos);
+            }
+            _ => {}
         }
+    }
+    pub fn vertice_append(&mut self, vertices: &[Vertex]) {
+        if vertices.is_empty() {
+            return;
+        }
+        self.point_vertices.extend_from_slice(vertices);
+        if self.point_vertices.len() > self.point_buffer_capacity {
+            self.point_buffer_capacity = (self.point_vertices.len() * 2).max(64);
+            self.point_buffer = self.device.create_buffer(&BufferDescriptor {
+                label:  Some("Dynamic Vertex Buffer"),
+                size: (self.point_buffer_capacity * std::mem::size_of::<Vertex>()) as u64,
+                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+        }
+        self.queue.write_buffer(&self.point_buffer, 0, bytemuck::cast_slice(&self.point_vertices));
+        if let Some(window) = &self.window {
+            window.request_redraw();
+        }
+    }
+    pub fn fill_2d(
+        &mut self,
+        points: &[Vector3<f32>],
+    ) {
+        if points.len() < 3 {
+            return;
+        }
+        let mut builder = Path::builder();
+        builder.begin(point(points[0].x, points[0].z));
+        for p in &points[1..] {
+            builder.line_to(point(p.x, p.z));
+        }
+        builder.close();
+        let path = builder.build();
+        let mut geometry: VertexBuffers<Vertex, u16> = VertexBuffers::new();
+        let mut tessellator = FillTessellator::new();
+        let color = [0.4, 0.7, 0.4, 0.7];
+        let result = tessellator.tessellate_path(
+            &path,
+            &FillOptions::default(),
+            &mut BuffersBuilder::new(&mut geometry, |vertex: FillVertex| {
+                let vertex_pos = vertex.position();
+                Vertex {
+                    position: [vertex_pos.x, 0.0, vertex_pos.y],
+                    coords: [0.0, 0.0, 0.0],
+                    color,
+                }
+            }),
+        );
+        if result.is_err() {
+            return;
+        }
+        let mut flat_vertices = Vec::with_capacity(geometry.indices.len());
+        for &index in &geometry.indices {
+            flat_vertices.push(geometry.vertices[index as usize]);
+        }
+        self.vertice_append(&flat_vertices);
     }
     pub fn polyline(
         &mut self,
         mouse_pos: PhysicalPosition<f64>,
     ) {
-        let hit_pos = self.fetch_point(mouse_pos);
-        if let Some(&last_point) = self.active_polyline.last() {
-            self.add_line(last_point, hit_pos, 0.02);
+        let hit_pos = match self.fetch_point(mouse_pos) {
+            Some(hit_pos) => hit_pos,
+            None => return,
+        };
+        let (snap_pos, shape_close) = if self.osnap {
+            self.get_snap_pos(hit_pos)
         } else {
-            self.add_point(hit_pos);
+            (hit_pos, false)
+        };
+        if shape_close {
+            let active_polyline = self.active_polyline.clone();
+            if let Some(&first_point) = active_polyline.first() {
+                if let Some(&last_point) = active_polyline.last() {
+                    self.add_line(last_point, first_point, 0.02);
+                }
+            }
+            self.fill_2d(&active_polyline);
+            self.active_polyline.clear();
+        } else {
+            if let Some(&last_point) = self.active_polyline.last() {
+                self.add_line(last_point, snap_pos, 0.02);
+            } else {
+                self.add_point(snap_pos);
+            }
+            self.active_polyline.push(snap_pos);
         }
-        self.active_polyline.push(hit_pos);
     }
     pub fn add_line(&mut self, point1: Vector3<f32>, point2: Vector3<f32>, step_size: f32) {
         let dir = point2 - point1;
@@ -386,6 +495,7 @@ impl State {
             graph_index_buffer,
             num_indices,
             point_vertices: Vec::new(),
+            osnap: true,
             active_polyline: Vec::new(),
             point_buffer,
             point_buffer_capacity: INITIAL_POINT_SIZE,
@@ -588,6 +698,7 @@ impl State {
             point_buffer_capacity: INITIAL_POINT_SIZE,
             num_indices: GRAPH_INDICES.len() as u32,
             point_vertices: Vec::new(),
+            osnap: true,
             active_polyline: Vec::new(),
             camera,
             camera_uniform,
