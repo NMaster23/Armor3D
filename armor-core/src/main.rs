@@ -257,7 +257,6 @@ impl ApplicationHandler<State> for App {
                     state.drawing(
                         self.cursor_pos,
                         MouseButton::Left,
-                        MouseScrollDelta::LineDelta(0.0, 0.0),
                         true,
                     );
                 }
@@ -269,7 +268,6 @@ impl ApplicationHandler<State> for App {
                         state.drawing(
                             self.cursor_pos,
                             button,
-                            MouseScrollDelta::LineDelta(0.0, 0.0),
                             mouse_state == ElementState::Pressed,
                         );
                     }

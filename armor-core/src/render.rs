@@ -34,6 +34,7 @@ pub struct State {
     point_buffer_capacity: usize,
     num_indices: u32,
     point_vertices: Vec<Vertex>,
+    pub active_polyline: Vec<Vector3<f32>>,
     pub(crate) camera: Camera,
     camera_uniform: CameraUniform,
     camera_buffer: wgpu::Buffer,
@@ -98,9 +99,7 @@ impl State {
         &mut self,
         mouse_pos: PhysicalPosition<f64>,
         mouse_button: MouseButton,
-        mouse_scroll: MouseScrollDelta,
         is_pressed: bool,
-        code: KeyCode,
     ) {
         if !is_pressed {
             return;
@@ -109,47 +108,24 @@ impl State {
             let hit_pos = self.fetch_point(mouse_pos);
             self.add_point(hit_pos);
         } else if mouse_button == MouseButton::Left && is_pressed {
-            self.polyline(mouse_pos, mouse_button, mouse_scroll, is_pressed, code);
+            self.polyline(mouse_pos);
         }
     }
     pub fn polyline(
         &mut self,
         mouse_pos: PhysicalPosition<f64>,
-        mouse_button: MouseButton,
-        mouse_scroll: MouseScrollDelta,
-        is_pressed: bool,
-        code: KeyCode,
     ) {
-        if mouse_button != MouseButton::Left || !is_pressed  {
-            return;
-        }
-        let mut line_vertices: &[PolyLineVertex];
         let hit_pos = self.fetch_point(mouse_pos);
-        let endpoint: Vector3<f32>;
-        let point_num = 1;
-        if point_num == 1 {
+        if let Some(&last_point) = self.active_polyline.last() {
+            self.add_line(last_point, hit_pos, 0.02);
+        } else {
             self.add_point(hit_pos);
         }
-        if code == KeyCode::Enter && point_num == 1 {
-            endpoint = self.fetch_point(mouse_pos);
-            let point_num = 0;
-        } else {
-            endpoint = Vector3::zero();
-        }
-        let line_vertices = [
-            PolyLineVertex {
-                position: hit_pos.into()
-            },
-            PolyLineVertex {
-                position: endpoint.into()
-            }
-        ];
-
+        self.active_polyline.push(hit_pos);
     }
-    pub fn add_line(&mut self, point1: Vector3<f32>, point2: Vector3<f32>, step_size: f64) {
-        let dx = point2.x - point1.x;
-        let dy = point2.y - point1.y;
-        let distance = hypot((dx * dx) as f64, (dy * dy) as f64);
+    pub fn add_line(&mut self, point1: Vector3<f32>, point2: Vector3<f32>, step_size: f32) {
+        let dir = point2 - point1;
+        let distance = dir.magnitude();
         if distance == 0.0 {
             self.add_point(point1);
             return;
@@ -157,9 +133,7 @@ impl State {
         let steps = (distance / step_size).ceil() as usize;
         for i in 0..=steps {
             let t = i as f32 / steps as f32;
-            let x = point1.x + t * dx;
-            let y = point1.y + t * dy;
-            let point = Vector3::new(x, y, 0.0);
+            let point = point1 + dir *t;
             self.add_point(point);
         }
     }
@@ -412,6 +386,7 @@ impl State {
             graph_index_buffer,
             num_indices,
             point_vertices: Vec::new(),
+            active_polyline: Vec::new(),
             point_buffer,
             point_buffer_capacity: INITIAL_POINT_SIZE,
             camera,
@@ -613,6 +588,7 @@ impl State {
             point_buffer_capacity: INITIAL_POINT_SIZE,
             num_indices: GRAPH_INDICES.len() as u32,
             point_vertices: Vec::new(),
+            active_polyline: Vec::new(),
             camera,
             camera_uniform,
             camera_buffer,
@@ -629,9 +605,7 @@ impl State {
             self.drawing(
                 self.cursor_pos,
                 MouseButton::Left,
-                MouseScrollDelta::LineDelta(0.0, 0.0),
                 true,
-                code,
             );
         }
     }
@@ -642,9 +616,7 @@ impl State {
             self.drawing(
                 self.cursor_pos,
                 MouseButton::Left,
-                MouseScrollDelta::LineDelta(0.0, 0.0),
                 true,
-                code,
             );
         }
     }
