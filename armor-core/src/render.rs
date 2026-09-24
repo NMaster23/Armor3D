@@ -5,6 +5,7 @@ use lyon::math::point;
 use lyon::path::Path;
 use lyon::tessellation::{BuffersBuilder, FillOptions, FillTessellator, FillVertex, VertexBuffers};
 use std::sync::Arc;
+use pyo3::impl_::wrap::SomeWrap;
 use wgpu::util::DeviceExt;
 use wgpu::wgt::BufferDescriptor;
 use winit::dpi::PhysicalPosition;
@@ -21,8 +22,17 @@ pub struct PolyLineVertex {
     position: [f32; 3],
 }
 
+#[derive(Clone, Debug)]
+pub struct PolyLine {
+    pub id: usize,
+    pub vertices: Vec<Vector3<f32>>,
+    pub color: [f32; 4],
+    pub thickness: f32,
+    pub selected: bool,
+}
+
 const INITIAL_POINT_SIZE: usize = 16;
-const SNAP_RADIUS: f32 = 1.0;
+const SNAP_RADIUS: f32 = 0.05;
 
 pub struct State {
     surface: wgpu::Surface<'static>,
@@ -41,13 +51,16 @@ pub struct State {
     point_vertices: Vec<Vertex>,
     pub osnap: bool,
     pub active_polyline: Vec<Vector3<f32>>,
-    pub(crate) camera: Camera,
+    pub camera: Camera,
     camera_uniform: CameraUniform,
     camera_buffer: wgpu::Buffer,
     camera_bind_group: wgpu::BindGroup,
-    pub(crate) camera_controller: CameraController,
+    pub camera_controller: CameraController,
     cursor_pos: PhysicalPosition<f64>,
     holding_left: bool,
+    pub entities: Vec<PolyLine>,
+    pub selected_entity: Option<usize>,
+    next_entity: usize,
 }
 
 pub struct Shape {
@@ -56,23 +69,157 @@ pub struct Shape {
 }
 
 impl State {
+    pub fn dist_to_segment(p: cgmath::Vector2<f32>, a: cgmath::Vector2<f32>, b: cgmath::Vector2<f32>) -> f32 {
+        let ab = b - a;
+        let ap = p - a;
+        let len_sq = ab.magnitude2();
+        if len_sq == 0.0 {
+            return ap.magnitude2();
+        }
+        let t = (ap.dot(ab) / len_sq).clamp(0.0, 1.0);
+        let projection = a + ab * t;
+        (p-projection).magnitude2()
+    }
+    pub fn select_shape(&mut self, mouse_px: cgmath::Vector2<f32>, hit_threshold_px: f32) -> Option<usize> {
+        let threshold_sq = hit_threshold_px * hit_threshold_px;
+        let mut closest = None;
+        let mut min_dist_sq = threshold_sq;
+        for entity in &self.entities {
+            if entity.vertices.len() < 2 {
+                continue;
+            }
+            let screen_vertices: Vec<cgmath::Vector2<f32>> = entity.vertices.iter().filter_map(|p| self.world_to_screen(*p)).collect();
+            for i in 0..screen_vertices.len().saturating_sub(1) {
+                let dist_sq = Self::dist_to_segment(
+                    mouse_px,
+                    screen_vertices[i],
+                    screen_vertices[i + 1],
+                );
+                if dist_sq < min_dist_sq {
+                    min_dist_sq = dist_sq;
+                    closest = Some(entity.id);
+                }
+            }
+        }
+        self.selected_entity = closest;
+        for entity in &mut self.entities {
+            entity.selected = Some(entity.id) == closest;
+        }
+        self.rebuild_gpu_buffers();
+        closest
+    }
+    pub fn world_to_screen(&self, world_pos: cgmath::Vector3<f32>) -> Option<cgmath::Vector2<f32>> {
+        let view_proj = self.camera.build_view_projection_matrix();
+        let clip_pos = view_proj * cgmath::Vector4::new(world_pos.x, world_pos.y, world_pos.z, 1.0);
+        if clip_pos.w <= 0.0 {
+            return None;
+        }
+        let ndc = clip_pos.truncate() / clip_pos.w;
+        let screen_x = (ndc.x + 1.0) * 0.5 * self.config.width as f32;
+        let screen_y = (1.0 - ndc.y) * 0.5 * self.config.height as f32;
+
+        Some(cgmath::Vector2::new(screen_x, screen_y))
+    }
+    pub fn rebuild_gpu_buffers(&mut self) {
+        let mut new_vertices = Vec::new();
+
+        for entity in &self.entities {
+            let draw_color = if entity.selected {
+                [1.0, 0.8, 0.0, 1.0]
+            } else {
+                entity.color
+            };
+
+            let entity_verts = self.tessellate_polyline(&entity.vertices, entity.thickness, draw_color);
+            new_vertices.extend_from_slice(&entity_verts);
+        }
+        self.point_vertices = new_vertices;
+        if self.point_vertices.len() > self.point_buffer_capacity {
+            self.point_buffer_capacity = (self.point_vertices.len() * 2).max(64);
+            self.point_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("Dynamic Point Buffer"),
+                size: (self.point_buffer_capacity * std::mem::size_of::<Vertex>()) as u64,
+                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+        }
+        if !self.point_vertices.is_empty() {
+            self.queue.write_buffer(
+                &self.point_buffer,
+                0,
+                bytemuck::cast_slice(&self.point_vertices),
+            );
+        }
+
+        if let Some(window) = &self.window {
+            window.request_redraw();
+        }
+    }
+    pub fn tessellate_polyline(
+        &self,
+        points: &[cgmath::Vector3<f32>],
+        thickness: f32,
+        color: [f32; 4],
+    ) -> Vec<Vertex> {
+        let mut vertices = Vec::new();
+        if points.len() < 2 {
+            return vertices;
+        }
+        let half_w = thickness * 0.5;
+        for window in points.windows(2) {
+            let p1 = window[0];
+            let p2 = window[1];
+            let dir = (p2 - p1).normalize();
+            let normal = cgmath::Vector3::new(-dir.z, 0.0, dir.x) * half_w;
+
+            let v0 = p1 + normal;
+            let v1 = p1 - normal;
+            let v2 = p2 + normal;
+            let v3 = p2 - normal;
+            let quad = [
+                Vertex { position: [v0.x, v0.y, v0.z], coords: [0.0, 0.0, 0.0], color },
+                Vertex { position: [v1.x, v1.y, v1.z], coords: [0.0, 0.0, 0.0], color },
+                Vertex { position: [v2.x, v2.y, v2.z], coords: [0.0, 0.0, 0.0], color },
+                Vertex { position: [v2.x, v2.y, v2.z], coords: [0.0, 0.0, 0.0], color },
+                Vertex { position: [v1.x, v1.y, v1.z], coords: [0.0, 0.0, 0.0], color },
+                Vertex { position: [v3.x, v3.y, v3.z], coords: [0.0, 0.0, 0.0], color },
+            ];
+            vertices.extend_from_slice(&quad);
+        }
+        vertices
+    }
+    pub fn add_polyline(&mut self, vertices: Vec<Vector3<f32>>, color: [f32; 4], thickness: f32) {
+        let id = self.next_entity;
+        self.next_entity += 1;
+        self.entities.push(PolyLine {
+            id,
+            vertices,
+            color,
+            thickness,
+            selected: false,
+        })
+    }
     pub fn graph_handle_key(
         &mut self,
         code: KeyCode,
         is_pressed: bool
-    ) {
+    ) -> bool {
+        if !is_pressed {
+            return false;
+        }
         match code {
             KeyCode::KeyC => {
-                if is_pressed {
-                    self.clear();
-                }
+                self.clear();
+                true
             },
             KeyCode::Tab => {
-                if is_pressed {
-                    self.osnap = !self.osnap;
+                self.osnap = !self.osnap;
+                if let Some(window) = &self.window {
+                    window.request_redraw();
                 }
+                true
             }
-            _ => {}
+            _ => false,
         }
     }
     pub fn clear(&mut self) {
@@ -537,6 +684,9 @@ impl State {
             camera_controller,
             cursor_pos: PhysicalPosition::new(0.0, 0.0),
             holding_left: false,
+            entities: Vec::new(),
+            selected_entity: None,
+            next_entity: 0,
         })
     }
 
@@ -738,10 +888,13 @@ impl State {
             camera_controller,
             cursor_pos: PhysicalPosition::new(0.0, 0.0),
             holding_left: false,
+            entities: Vec::new(),
+            selected_entity: None,
+            next_entity: 0,
         })
     }
 
-    pub fn mouse_move(&mut self, x: f64, y: f64, code: KeyCode) {
+    pub fn mouse_move(&mut self, x: f64, y: f64) {
         self.cursor_pos = PhysicalPosition::new(x, y);
         if self.holding_left {
             self.drawing(
@@ -752,7 +905,7 @@ impl State {
         }
     }
 
-    pub fn mouse_button(&mut self, pressed: bool, code: KeyCode) {
+    pub fn mouse_button(&mut self, pressed: bool) {
         self.holding_left = pressed;
         if pressed {
             self.drawing(
@@ -774,13 +927,10 @@ impl State {
     }
 
     pub fn handle_key(&mut self, event_loop: &ActiveEventLoop, code: KeyCode, is_pressed: bool) {
-        self.camera_controller.handle_key(&mut self.camera, code, is_pressed);
-        match (code, is_pressed) {
-            (KeyCode::Escape, _) => {
-                event_loop.exit();
-            }
-            _ => {}
+        if self.graph_handle_key(code, is_pressed) {
+            return;
         }
+        self.camera_controller.handle_key(&mut self.camera, code, is_pressed);
     }
     pub fn render(&mut self) -> anyhow::Result<()> {
         self.camera_controller.update_camera(&mut self.camera);

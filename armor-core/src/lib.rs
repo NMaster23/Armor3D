@@ -109,6 +109,8 @@ impl ViewportRenderer {
             "a" | "A" => KeyCode::KeyA,
             "s" | "S" => KeyCode::KeyS,
             "d" | "D" => KeyCode::KeyD,
+            "c" | "C" => KeyCode::KeyC,
+            "Tab" | "tab" => KeyCode::Tab,
             "Up" => KeyCode::ArrowUp,
             "Down" => KeyCode::ArrowDown,
             "Left" => KeyCode::ArrowLeft,
@@ -116,6 +118,9 @@ impl ViewportRenderer {
             "2" | "KP_2" => KeyCode::Digit2,
             _ => return false,
         };
+        if self.state.graph_handle_key(code, pressed) {
+            return true;
+        }
         self.state.camera_controller.handle_key(&mut self.state.camera, code, pressed)
     }
 }

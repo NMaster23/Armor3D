@@ -9,6 +9,7 @@ use winit::event::{ElementState, KeyEvent, MouseButton, MouseScrollDelta, Window
 use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::Window;
+use cgmath::InnerSpace;
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -264,15 +265,23 @@ impl ApplicationHandler<State> for App {
                 }
             }
             WindowEvent::MouseInput { state: mouse_state, button, .. } => {
-                if button == MouseButton::Left {
-                    self.holding_left = mouse_state == ElementState::Pressed;
-                    if self.holding_left {
-                        state.drawing(
-                            self.cursor_pos,
-                            button,
-                            mouse_state == ElementState::Pressed,
-                        );
+                if button == MouseButton::Left && mouse_state == ElementState::Pressed {
+                    let cursor = cgmath::vec2(self.cursor_pos.x as f32, self.cursor_pos.y as f32);
+                    for (idx, entity) in state.entities.iter().enumerate() {
+                        for vertex in &entity.vertices {
+                            if let Some(screen_pos) = state.world_to_screen(*vertex) {
+                                let dist = (screen_pos - cursor).magnitude();
+                                if dist < 50.0 {
+                                    println!("Debug, Clicked near: {}, Dist: {dist:.1}px", idx);
+                                }
+                            }
+                        }
                     }
+                    state.drawing(
+                        self.cursor_pos,
+                        button,
+                        mouse_state == ElementState::Pressed,
+                    );
                 }
             }
             _ => {}
