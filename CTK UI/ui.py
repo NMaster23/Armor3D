@@ -203,6 +203,41 @@ def startpolyline(event=None):
     command.configure(placeholder_text = "Start polyline")
     writehistory("> Polyline\nStart polyline")
     viewport.focus_set()
+def startcurve(event=None):
+    global activecommand
+    activecommand = 'curve'
+    command.delete(0, 'end')
+    command.configure(placeholder_text="Start curve")
+    writehistory("> Curve\nStart curve")
+    viewport.focus_set()
+def startjoin(event=None):
+    global activecommand
+    activecommand = 'join'
+    command.delete(0, 'end')
+    command.configure(placeholder_text="Select objects to join")
+    writehistory("> Join\nSelect objects to join")
+    viewport.focus_set()
+def startexplode(event=None):
+    global activecommand
+    activecommand = "explode"
+    command.delete(0, "end")
+    command.configure(placeholder_text = "Select objects to explode")
+    writehistory("> Explode\nSelect objects to explode")
+    viewport.focus_set()
+def startrectangle(event=None):
+    global activecommand
+    activecommand = 'rectangle'
+    command.delete(0, 'end')
+    command.configure(placeholder_text = "Start rectangle")
+    writehistory("> Rectangle\nStart rectangle")
+    viewport.focus_set()
+def starttext(event=None):
+    global activecommand
+    activecommand = 'text'
+    command.delete(0, 'end')
+    command.configure(placeholder_text='Choose text position')
+    writehistory("> Text\nChoose text position")
+    viewport.focus_set()
 def cancelactivecommand(event=None):
     global activecommand
     if activecommand is None:
@@ -220,6 +255,16 @@ def runcmd(event):
     normalized = typed.lower().replace(" ", "")
     if normalized in ("polyline", 'pline'):
         startpolyline()
+    elif normalized in ("curve", "crv"):
+        startcurve()
+    elif normalized == 'join':
+        startjoin()
+    elif normalized in ("explode", 'exp'):
+        startexplode()
+    elif normalized in ('rectangle', 'rect'):
+        startrectangle()
+    elif normalized in ("text", 'txt'):
+        starttext()
     else:
         writehistory(f"> {typed}\nCommand not found")
         command.configure(placeholder_text = "Command:")
@@ -754,6 +799,8 @@ curve_normal = ImageTk.PhotoImage(curve_image)
 curve_hover = ImageTk.PhotoImage(ImageEnhance.Brightness(curve_image).enhance(0.6))
 curve_square = canvas.create_rectangle(53, 103, 96, 147, fill='', outline='')
 curve_icon = canvas.create_image(75, 125, image=curve_normal)
+canvas.tag_bind(curve_square, "<Button-1>", startcurve)
+canvas.tag_bind(curve_icon, "<Button-1>", startcurve)
 def curve_motion(event):
     hovering = 53 <= event.x <=97 and 103 <= event.y <=147
     canvas.itemconfig(curve_square, fill='#67442F' if hovering else '', outline="#E28B45" if hovering else "")
@@ -769,6 +816,8 @@ puzzle_normal = ImageTk.PhotoImage(puzzle_image)
 puzzle_hover= ImageTk.PhotoImage(ImageEnhance.Brightness(puzzle_image).enhance(0.6))
 puzzle_square  = canvas.create_rectangle(8, 148, 52, 192, fill='', outline='')
 puzzle_icon = canvas.create_image(30, 170, image=puzzle_normal)
+canvas.tag_bind(puzzle_square, "<Button-1>", startjoin)
+canvas.tag_bind(puzzle_icon, "<Button-1>", startjoin)
 def puzzlemotion(event):
     hovering = 8 <= event.x <= 52 and 148 <= event.y <= 192
     canvas.itemconfig(puzzle_square, fill='#67442F' if hovering else "", outline="#E28B45" if hovering else "")
@@ -784,6 +833,8 @@ explode_normal = ImageTk.PhotoImage(explode_image)
 explode_hover = ImageTk.PhotoImage(ImageEnhance.Brightness(explode_image).enhance(0.6))
 explode_square = canvas.create_rectangle(53, 148, 97, 192, fill='', outline='')
 explode_icon = canvas.create_image(75, 170, image=explode_normal)
+canvas.tag_bind(explode_square, "<Button-1>", startexplode)
+canvas.tag_bind(explode_icon, "<Button-1>", startexplode)
 def explode_motion(event):
     hovering = 53 <= event.x <= 97 and 148 <= event.y <=192
     canvas.itemconfig(explode_square, fill='#67442F' if hovering else "", outline="#E28B45" if hovering else "")
@@ -799,6 +850,8 @@ rectangle_normal = ImageTk.PhotoImage(rectangle_image)
 rectangle_hover = ImageTk.PhotoImage(ImageEnhance.Brightness(rectangle_image).enhance(0.6))
 rectangle_sqaure = canvas.create_rectangle(8, 193, 52, 237, fill='', outline='')
 rectangle_icon = canvas.create_image(30, 215, image=rectangle_normal)
+canvas.tag_bind(rectangle_sqaure, "<Button-1>", startrectangle)
+canvas.tag_bind(rectangle_icon, "<Button-1>", startrectangle)
 def rectangle_motion(event):
     hovering = 8 <= event.x <= 52 and 193 <= event.y <= 237
     canvas.itemconfig(rectangle_sqaure, fill="#67442F" if hovering else "",  outline="#E28B45" if hovering else "")
@@ -814,7 +867,8 @@ text_normal = ImageTk.PhotoImage(text_image)
 text_hover = ImageTk.PhotoImage(ImageEnhance.Brightness(text_image).enhance(0.6))
 text_square = canvas.create_rectangle(53, 193, 97, 237, fill="", outline="")
 text_icon = canvas.create_image(75, 215, image=text_normal)
-
+canvas.tag_bind(text_square, "<Button-1>", starttext)
+canvas.tag_bind(text_icon, "<Button-1>", starttext)
 def bindtoolhover(left, top, right, bottom, box, icon, normal, hover):
     canvas.itemconfig(box, fill="#242B23", outline="")
     def update():
