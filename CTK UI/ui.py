@@ -59,14 +59,23 @@ def viewport_mouse_up(event):
         renderer.mouse_button(False)
 last_right_drag = None
 def viewport_right_down(event):
-    global last_right_drag
-    cancelactivecommand()
+    global last_right_drag, rightpresspos, rightpresstime, rightdragged
     viewport.focus_set()
     last_right_drag = (event.x, event.y)
+    rightpresspos = (event.x, event.y)
+    rightpresstime = event.time
+    rightdragged= False
 def viewport_right_drag(event):
-    global last_right_drag
-    if renderer is not None and last_right_drag is not None:
-        dx = event.x - last_right_drag[0]
+    global last_right_drag, rightdragged
+    if last_right_drag is None:
+        return
+    if rightpresspos is not None:
+        total_x = event.x-rightpresspos[0]
+        total_y = event.y - rightpresspos[1]
+        if total_x*total_x*total_y*total_y > 25:
+            rightdragged = True
+    if renderer is not None:
+        dx  = event.x- last_right_drag[0]
         dy = event.y - last_right_drag[1]
         if event.state & 0x0001:
             renderer.orbit(dx, dy)
@@ -74,8 +83,13 @@ def viewport_right_drag(event):
             renderer.pan(dx, dy)
     last_right_drag = (event.x, event.y)
 def viewport_right_up(event):
-    global last_right_drag
+    global last_right_drag, rightpresspos, rightdragged
+    clicktime = event.time-rightpresstime
+    if not rightdragged and clicktime <350:
+        cancelactivecommand()
     last_right_drag = None
+    rightpresspos = None
+    rightdragged = False
 def viewport_wheel(event):
     if renderer is not None:
         renderer.zoom(event.delta / 120)
@@ -729,7 +743,7 @@ def polyline_motion(event):
     hovering = 8 <= event.x<= 52 and 103 <= event.y <= 147
     canvas.itemconfig(polyline_square, fill="#67442F"if hovering else  "", outline="#E28B45" if hovering else "")
     canvas.itemconfig(polyline_icon, image=polyline_hover if hovering else polylinenormal)
-canvas.bind("<Motion>", polyline_motion)
+
 
 curve_image = Image.open(getpath("Assets/curvez.png")).convert("RGBA")
 bounds = curve_image.getbbox()
@@ -744,7 +758,7 @@ def curve_motion(event):
     hovering = 53 <= event.x <=97 and 103 <= event.y <=147
     canvas.itemconfig(curve_square, fill='#67442F' if hovering else '', outline="#E28B45" if hovering else "")
     canvas.itemconfig(curve_icon, image=curve_hover if hovering else curve_normal)
-canvas.bind("<Motion>", curve_motion, add="+")
+
 
 puzzle_image = Image.open(getpath("Assets/joinz.png")).convert("RGBA")
 bounds = puzzle_image.getbbox()
@@ -759,7 +773,7 @@ def puzzlemotion(event):
     hovering = 8 <= event.x <= 52 and 148 <= event.y <= 192
     canvas.itemconfig(puzzle_square, fill='#67442F' if hovering else "", outline="#E28B45" if hovering else "")
     canvas.itemconfig(puzzle_icon, image=puzzle_hover if hovering else puzzle_normal)
-canvas.bind("<Motion>", puzzlemotion, add="+")
+
 
 explode_image = Image.open(getpath("Assets/explode.png")).convert("RGBA")
 bounds = explode_image.getbbox()
@@ -774,7 +788,7 @@ def explode_motion(event):
     hovering = 53 <= event.x <= 97 and 148 <= event.y <=192
     canvas.itemconfig(explode_square, fill='#67442F' if hovering else "", outline="#E28B45" if hovering else "")
     canvas.itemconfig(explode_icon, image=explode_hover if hovering else explode_normal)
-canvas.bind("<Motion>", explode_motion, add="+")
+
 
 rectangle_image = Image.open(getpath("Assets/rectangle.png")).convert("RGBA")
 bounds = rectangle_image.getbbox()
@@ -789,7 +803,7 @@ def rectangle_motion(event):
     hovering = 8 <= event.x <= 52 and 193 <= event.y <= 237
     canvas.itemconfig(rectangle_sqaure, fill="#67442F" if hovering else "",  outline="#E28B45" if hovering else "")
     canvas.itemconfig(rectangle_icon,  image=rectangle_hover if hovering else rectangle_normal)
-canvas.bind("<Motion>", rectangle_motion, add="+")
+
 
 text_image = Image.open(getpath("Assets/text.png")).convert("RGBA")
 bounds = text_image.getbbox()
@@ -800,42 +814,93 @@ text_normal = ImageTk.PhotoImage(text_image)
 text_hover = ImageTk.PhotoImage(ImageEnhance.Brightness(text_image).enhance(0.6))
 text_square = canvas.create_rectangle(53, 193, 97, 237, fill="", outline="")
 text_icon = canvas.create_image(75, 215, image=text_normal)
+
+def bindtoolhover(left, top, right, bottom, box, icon, normal, hover):
+    canvas.itemconfig(box, fill="#242B23", outline="")
+    def update():
+        mouse_x = canvas.winfo_pointerx() - canvas.winfo_rootx()
+        mouse_y = canvas.winfo_pointery() - canvas.winfo_rooty()
+        hovering = left <= mouse_x <= right and top <= mouse_y <= bottom
+        canvas.itemconfig(box, fill='#67442F' if hovering else "#242B23", outline="#E28B45" if hovering else "")
+        canvas.itemconfig(icon, image=hover if hovering else normal)
+    def enter(event):
+        canvas.itemconfig(box, fill="#67442F", outline="#E28B45")
+        canvas.itemconfig(icon, image=hover)
+        canvas.tag_raise(icon)
+    def leave(event):
+        app.after(10, update)
+    for item in (box, icon):
+        canvas.tag_bind(item, "<Enter>", enter)
+        canvas.tag_bind(item, "<Leave>", leave)
+bindtoolhover(8, 103, 52, 147, polyline_square, polyline_icon, polylinenormal, polyline_hover)
+bindtoolhover(53, 103, 97, 147, curve_square, curve_icon, curve_normal, curve_hover)
+bindtoolhover(8, 148, 52, 192, puzzle_square, puzzle_icon, puzzle_normal, puzzle_hover)
+bindtoolhover(53, 148, 97, 192, explode_square, explode_icon, explode_normal, explode_hover)
+bindtoolhover(8, 193, 52, 237, rectangle_sqaure, rectangle_icon, rectangle_normal, rectangle_hover)
+bindtoolhover(53, 193, 97, 237, text_square, text_icon, text_normal, text_hover)
+
+toolbarbuttons = [(8, 103, 52, 147, polyline_square, polyline_icon,
+     polylinenormal, polyline_hover), (53, 103, 97, 147, curve_square, curve_icon,
+     curve_normal, curve_hover), (8, 148, 52, 192, puzzle_square, puzzle_icon,
+     puzzle_normal, puzzle_hover),
+    (53, 148, 97, 192, explode_square, explode_icon,
+explode_normal, explode_hover), (8, 193, 52, 237, rectangle_sqaure, rectangle_icon, rectangle_normal, rectangle_hover), (53, 193, 97, 237, text_square, text_icon,text_normal, text_hover),]
+def toolbarhover(event):
+    overbutton = False
+    for left, top, right, bottom, box, icon, normal, hover in toolbarbuttons:
+        hovering = left <= event.x <= right and top <= event.y <= bottom
+        canvas.itemconfig(box, fill='#67442f' if hovering else "#242B23", outline="#E28B45" if hovering else "")
+        canvas.itemconfig(icon, image=hover if hovering else normal)
+        if hovering:
+            canvas.tag_raise(icon)
+            overbutton = True
+    canvas.configure(cursor='hand2' if overbutton else "")
+canvas.bind("<Motion>", toolbarhover, add="+")
 def text_motion(event):
     hovering = 53 <= event.x <= 97 and 193 <= event.y <= 237
     canvas.itemconfig(text_square, fill="#67442F" if hovering else "", outline="#E28B45" if hovering else "")
     canvas.itemconfig(text_icon, image=text_hover if hovering else text_normal)
-canvas.bind("<Motion>", text_motion, add="+")
 
-tooltips = [ (8, 103, 52, 147, "Polyline"), (53, 103, 97, 147, "Curve"), (8, 148, 52, 192, "Join"), (53, 148, 97, 192, "Explode"), (8, 193, 52, 237, "Rectangle"), (53, 193, 97, 237, "Text")]
+
+tooltips = [(8, 103, 52, 147, "Polyline"), (53, 103, 97, 147, "Curve"), (8, 148, 52, 192, "Join"), (53, 148, 97, 192, "Explode"), (8, 193, 52, 237, "Rectangle"), (53, 193, 97, 237, "Text")]
+
 tooltip_job = None
-tooltip_target = None
-def show_tooltip(name, top):
-    global tooltip_job
+tooltiptarget = None
+tooltipwindow = None
+def showtooltip(name, top):
+    global tooltip_job, tooltipwindow
     tooltip_job = None
-    background = canvas.create_rectangle(0, 0, 0, 0, fill="#34291F", outline="#E28B45", tags="tooltip")
-    label = canvas.create_text(111, top+22, text=name, anchor='w', fill='white', font=("Iceland", 11), tags='tooltip')
-    x1, y1, x2, y2 = canvas.bbox(label)
-    canvas.coords(background, x1-7, y1-5, x2+7, y2+5)
-    canvas.tag_raise('tooltip')
-def hide_tooltip(event=None):
-    global tooltip_job, tooltip_target
+    tooltipwindow = ctk.CTkToplevel(app)
+    tooltipwindow.overrideredirect(True)
+    tooltipwindow.attributes("-topmost", True)
+    tooltipwindow.configure(fg_color = "#34291f")
+    label = ctk.CTkLabel(tooltipwindow, text=name, font=("Iceland", 14), text_color="#F5E8D2", fg_color="#34291f", corner_radius=5)
+    label.pack(ipadx=9, ipady=5)
+    tooltipwindow.update_idletasks()
+    x = canvas.winfo_rootx() + 108
+    y = canvas.winfo_rooty() + top +10
+    tooltipwindow.geometry(f'+{x}+{y}')
+    tooltipwindow.lift()
+def hidetooltip(event=None):
+    global tooltip_job, tooltiptarget, tooltipwindow
     if tooltip_job is not None:
         app.after_cancel(tooltip_job)
         tooltip_job = None
-    tooltip_target = None
-    canvas.delete("tooltip")
+    if tooltipwindow is not None:
+        tooltipwindow.destroy()
+        tooltipwindow = None
+    tooltiptarget = None
 def tooltipmotion(event):
-    global tooltip_job, tooltip_target
-    target = next(((name, top) for left, top, right, bottom, name in tooltips if left <= event.x <= right and top <= event.y <= bottom), None)
-    if target == tooltip_target:
+    global tooltip_job, tooltiptarget
+    target = next(((name, top) for left, top, right, bottom, name in tooltips if left <= event.x <= right and top <= event.y <=bottom), None)
+    if target == tooltiptarget:
         return
-    hide_tooltip()
-    tooltip_target = target
+    hidetooltip()
+    tooltiptarget = target
     if target is not None:
-        tooltip_job = app.after(650, lambda: show_tooltip(*target))
+        tooltip_job = app.after(650, lambda current=target: showtooltip(*current))
 canvas.bind("<Motion>", tooltipmotion, add="+")
-canvas.bind("<Leave>", hide_tooltip)
-
+canvas.bind("<Leave>", hidetooltip, add="+")
 
 gridsnaptext = canvas.create_text(50, 270, text="Grid Snap", font=("Iceland", 13), fill='#F5E8D2', anchor='center')
 gridsnapon = False
