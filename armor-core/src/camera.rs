@@ -14,7 +14,7 @@ pub struct Camera {
 }
 
 impl Camera {
-    fn build_view_projection_matrix(&self) -> cgmath::Matrix4<f32> {
+    pub(crate) fn build_view_projection_matrix(&self) -> cgmath::Matrix4<f32> {
         let view = cgmath::Matrix4::look_at_rh(self.eye, self.target, self.up);
         let proj = if self.orthographic {
             let half_height = (self.eye - self.target).magnitude()
@@ -141,7 +141,7 @@ impl CameraController {
             self.scroll = delta_y * 0.5;
         }
     }
-    pub(crate) fn handle_key(
+    pub fn handle_key(
         &mut self,
         camera: &mut Camera,
         code: KeyCode,
@@ -181,7 +181,6 @@ impl CameraController {
                 self.is_rotate_right_pressed = is_pressed;
                 true
             }
-
             KeyCode::Digit2 => {
                 if is_pressed && !self.two_pressed {
                     self.is_locked = !self.is_locked;

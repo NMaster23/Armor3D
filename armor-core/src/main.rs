@@ -9,6 +9,7 @@ use winit::event::{ElementState, KeyEvent, MouseButton, MouseScrollDelta, Window
 use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::Window;
+use cgmath::InnerSpace;
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -122,6 +123,7 @@ pub struct App {
     state: Option<State>,
     cursor_pos: PhysicalPosition<f64>,
     holding_left: bool,
+    holding_right: bool,
 }
 
 impl App {
@@ -134,6 +136,7 @@ impl App {
             proxy,
             cursor_pos: PhysicalPosition::new(0.0, 0.0),
             holding_left: false,
+            holding_right: false,
         }
     }
 }
@@ -257,21 +260,38 @@ impl ApplicationHandler<State> for App {
                     state.drawing(
                         self.cursor_pos,
                         MouseButton::Left,
-                        MouseScrollDelta::LineDelta(0.0, 0.0),
                         true,
                     );
                 }
             }
             WindowEvent::MouseInput { state: mouse_state, button, .. } => {
-                if button == MouseButton::Left {
-                    self.holding_left = mouse_state == ElementState::Pressed;
-                    if self.holding_left {
-                        state.drawing(
-                            self.cursor_pos,
-                            button,
-                            MouseScrollDelta::LineDelta(0.0, 0.0),
-                            mouse_state == ElementState::Pressed,
-                        );
+                if let Some(state) = self.state.as_mut() {
+                    if mouse_state == ElementState::Pressed {
+                        match button {
+                            MouseButton::Middle => {
+                                let mouse_px = cgmath::Vector2::new(self.cursor_pos.x as f32, self.cursor_pos.y as f32);
+                                state.select_shape(mouse_px, 10.0);
+                            }
+                            MouseButton::Left => {
+                                let cursor = cgmath::vec2(self.cursor_pos.x as f32, self.cursor_pos.y as f32);
+                                for (idx, entity) in state.entities.iter().enumerate() {
+                                    for vertex in &entity.vertices {
+                                        if let Some(screen_pos) = state.world_to_screen(*vertex) {
+                                            let dist = (screen_pos - cursor).magnitude();
+                                            if dist < 50.0 {
+                                                println!("Debug, Clicked near: {}, Dist: {dist:.1}px", idx);
+                                            }
+                                        }
+                                    }
+                                }
+                                state.drawing(
+                                    self.cursor_pos,
+                                    button,
+                                    mouse_state == ElementState::Pressed,
+                                );
+                            }
+                            _ => {}
+                        }
                     }
                 }
             }
