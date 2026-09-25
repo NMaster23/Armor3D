@@ -69,6 +69,36 @@ pub struct Shape {
 }
 
 impl State {
+    pub fn tessellate_fill(points: &[cgmath::Vector3<f32>], color: [f32; 4]) -> Vec<Vertex> {
+        if points.len() < 3 {
+            return Vec::new();
+        }
+        let mut builder = Path::builder();
+        builder.begin(point(points[0].x, points[0].y));
+        for p in &points[1..] {
+            builder.line_to(point(p.x, p.y));
+        }
+        builder.close();
+        let path = builder.build();
+        let mut geometry: VertexBuffers<Vertex, u16> = VertexBuffers::new();
+        let mut tessellator = FillTessellator::new();
+        let result = tessellator.tessellate_path(
+            &path,
+            &FillOptions::default(),
+            &mut BuffersBuilder::new(&mut geometry, |vertex: FillVertex| {
+                let pos = vertex.position();
+                Vertex {
+                    position: [pos.x, 0.0, pos.y],
+                    coords: [0.0, 0.0, 0.0],
+                    color,
+                }
+            }),
+        );
+        if result.is_err() {
+            return Vec::new();
+        }
+        geometry.indices.iter().map(|&i| geometry.vertices[i as usize]).collect()
+    }
     pub fn dist_to_segment(p: cgmath::Vector2<f32>, a: cgmath::Vector2<f32>, b: cgmath::Vector2<f32>) -> f32 {
         let ab = b - a;
         let ap = p - a;
@@ -137,7 +167,11 @@ impl State {
             } else {
                 entity.color
             };
-
+            if entity.vertices.len() >= 3 {
+                let fill_color = [draw_color[0], draw_color[1], draw_color[2], draw_color[3]];
+                let fill_verts = Self::tessellate_fill(&entity.vertices, fill_color);
+                new_vertices.extend(fill_verts);
+            }
             let entity_verts = self.tessellate_polyline(&entity.vertices, entity.thickness, draw_color);
             new_vertices.extend_from_slice(&entity_verts);
         }
@@ -410,7 +444,7 @@ impl State {
             self.active_polyline.push(snap_pos);
             if self.active_polyline.len() > 1 {
                 let last = self.active_polyline[self.active_polyline.len() - 2];
-                self.add_line(last, snap_pos, 0.02);
+                self.add_line(last, snap_pos, 0.008);
             } else {
                 self.add_point(snap_pos);
             }
@@ -431,7 +465,7 @@ impl State {
         }
     }
     pub fn add_point(&mut self, point: Vector3<f32>) {
-        let size = 0.01;
+        let size = 0.005;
         let color = [0.4, 0.4, 0.4, 1.0];
         let forward = (self.camera.target - self.camera.eye).normalize();
         let right = forward.cross(self.camera.up).normalize();
