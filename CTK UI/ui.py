@@ -60,6 +60,7 @@ def viewport_mouse_up(event):
 last_right_drag = None
 def viewport_right_down(event):
     global last_right_drag
+    cancelactivecommand()
     viewport.focus_set()
     last_right_drag = (event.x, event.y)
 def viewport_right_drag(event):
@@ -174,19 +175,57 @@ def resizethings(event):
 canvas.bind("<Configure>", resizethings)
 past_commands= []
 history_index = 0
+
+activecommand = None
+def writehistory(text):
+    history.configure(state='normal')
+    history.insert('end', text+ '\n')
+    history.see("end")
+    history.configure(state='disabled')
+def startpolyline(event=None):
+    global activecommand
+    activecommand = 'polyline'
+    command.delete(0, 'end')
+    command.configure(placeholder_text = "Start polyline")
+    writehistory("> Polyline\nStart polyline")
+    viewport.focus_set()
+def cancelactivecommand(event=None):
+    global activecommand
+    if activecommand is None:
+        return
+    writehistory("Command ended")
+    activecommand = None
+    command.delete(0, 'end')
+    command.configure(placeholder_text = "Command:")
+    viewport.focus_set()
 def runcmd(event):
     typed = command.get().strip()
     if not typed:
-        return
-    global history_index
-    past_commands.append(typed)
-    history_index = len(past_commands)
-    history.configure(state='normal')
-    history.insert('end', f"> {typed}\nCommand not found\n")
-    history.see("end")
-    history.configure(state='disabled')
+        return 'break'
     command.delete(0, 'end')
+    normalized = typed.lower().replace(" ", "")
+    if normalized in ("polyline", 'pline'):
+        startpolyline()
+    else:
+        writehistory(f"> {typed}\nCommand not found")
+        command.configure(placeholder_text = "Command:")
+        viewport.focus_set()
+    return 'break'
 command.bind("<Return>", runcmd)
+def typecmduni(event):
+    global activecommand
+    if event.state & 0x0004:
+        return
+    focused = app.focus_get()
+    if focused is not None and focused.winfo_class() in ("Entry", "Text"):
+        return
+    if activecommand is not None:
+        return
+    if event.char and event.char.isprintable():
+        command.focus_set()
+        command.insert("end", event.char)
+        return "break"
+app.bind("<KeyPress>", typecmduni, add="+")
 def browse_commands(event):
     global history_index
     if not past_commands:
@@ -684,6 +723,8 @@ polylinenormal = ImageTk.PhotoImage(icon)
 polyline_hover = ImageTk.PhotoImage(ImageEnhance.Brightness(icon).enhance(0.6))
 polyline_square = canvas.create_rectangle(8, 103, 52, 147, fill='', outline='')
 polyline_icon = canvas.create_image(30, 125, image=polylinenormal)
+canvas.tag_bind(polyline_square, "<Button-1>", startpolyline)
+canvas.tag_bind(polyline_icon, "<Button-1>", startpolyline)
 def polyline_motion(event):
     hovering = 8 <= event.x<= 52 and 103 <= event.y <= 147
     canvas.itemconfig(polyline_square, fill="#67442F"if hovering else  "", outline="#E28B45" if hovering else "")
