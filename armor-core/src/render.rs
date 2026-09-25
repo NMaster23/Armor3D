@@ -115,10 +115,18 @@ impl State {
             return None;
         }
         let ndc = clip_pos.truncate() / clip_pos.w;
+        if ndc.z < 0.0 || ndc.z > 1.0 {
+            return None;
+        }
         let screen_x = (ndc.x + 1.0) * 0.5 * self.config.width as f32;
         let screen_y = (1.0 - ndc.y) * 0.5 * self.config.height as f32;
 
         Some(cgmath::Vector2::new(screen_x, screen_y))
+    }
+    pub fn click_sel_handle(&mut self, mouse_pos: PhysicalPosition<f64>) {
+        let mouse_px = cgmath::Vector2::new(mouse_pos.x as f32, mouse_pos.y as f32);
+        let hit_threshold = 10.0;
+        self.select_shape(mouse_px, hit_threshold);
     }
     pub fn rebuild_gpu_buffers(&mut self) {
         let mut new_vertices = Vec::new();
@@ -393,21 +401,19 @@ impl State {
             (hit_pos, false)
         };
         if shape_close {
-            let active_polyline = self.active_polyline.clone();
-            if let Some(&first_point) = active_polyline.first() {
-                if let Some(&last_point) = active_polyline.last() {
-                    self.add_line(last_point, first_point, 0.02);
-                }
-            }
-            self.fill_2d(&active_polyline);
+            self.active_polyline.push(self.active_polyline[0]);
+            let points = self.active_polyline.clone();
+            self.add_polyline(points, [0.4, 0.7, 0.4, 0.7], 0.05);
             self.active_polyline.clear();
+            self.rebuild_gpu_buffers();
         } else {
-            if let Some(&last_point) = self.active_polyline.last() {
-                self.add_line(last_point, snap_pos, 0.02);
+            self.active_polyline.push(snap_pos);
+            if self.active_polyline.len() > 1 {
+                let last = self.active_polyline[self.active_polyline.len() - 2];
+                self.add_line(last, snap_pos, 0.02);
             } else {
                 self.add_point(snap_pos);
             }
-            self.active_polyline.push(snap_pos);
         }
     }
     pub fn add_line(&mut self, point1: Vector3<f32>, point2: Vector3<f32>, step_size: f32) {

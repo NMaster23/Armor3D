@@ -265,23 +265,34 @@ impl ApplicationHandler<State> for App {
                 }
             }
             WindowEvent::MouseInput { state: mouse_state, button, .. } => {
-                if button == MouseButton::Left && mouse_state == ElementState::Pressed {
-                    let cursor = cgmath::vec2(self.cursor_pos.x as f32, self.cursor_pos.y as f32);
-                    for (idx, entity) in state.entities.iter().enumerate() {
-                        for vertex in &entity.vertices {
-                            if let Some(screen_pos) = state.world_to_screen(*vertex) {
-                                let dist = (screen_pos - cursor).magnitude();
-                                if dist < 50.0 {
-                                    println!("Debug, Clicked near: {}, Dist: {dist:.1}px", idx);
-                                }
+                if let Some(state) = self.state.as_mut() {
+                    if mouse_state == ElementState::Pressed {
+                        match button {
+                            MouseButton::Middle => {
+                                let mouse_px = cgmath::Vector2::new(self.cursor_pos.x as f32, self.cursor_pos.y as f32);
+                                state.select_shape(mouse_px, 10.0);
                             }
+                            MouseButton::Left => {
+                                let cursor = cgmath::vec2(self.cursor_pos.x as f32, self.cursor_pos.y as f32);
+                                for (idx, entity) in state.entities.iter().enumerate() {
+                                    for vertex in &entity.vertices {
+                                        if let Some(screen_pos) = state.world_to_screen(*vertex) {
+                                            let dist = (screen_pos - cursor).magnitude();
+                                            if dist < 50.0 {
+                                                println!("Debug, Clicked near: {}, Dist: {dist:.1}px", idx);
+                                            }
+                                        }
+                                    }
+                                }
+                                state.drawing(
+                                    self.cursor_pos,
+                                    button,
+                                    mouse_state == ElementState::Pressed,
+                                );
+                            }
+                            _ => {}
                         }
                     }
-                    state.drawing(
-                        self.cursor_pos,
-                        button,
-                        mouse_state == ElementState::Pressed,
-                    );
                 }
             }
             _ => {}
