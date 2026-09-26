@@ -240,6 +240,48 @@ def starttext(event=None):
     command.configure(placeholder_text='Choose text position')
     writehistory("> Text\nChoose text position")
     viewport.focus_set()
+def startplaceholdercmd(name, message):
+    global activecommand
+    activecommand = name.lower().replace(" ", "")
+    command.delete(0, "end")
+    command.configure(placeholder_text=message)
+    writehistory(F"> {name}\n{message}")
+    viewport.focus_set()
+def runnamedcommand(name):
+    normalized = name.lower().replace(" ", "")
+    actions = {
+        "polyline": startpolyline,
+        'pline': startpolyline,
+        'curve': startcurve,
+        'crv': startcurve,
+        "join": startjoin,
+        "explode": startexplode,
+        'exp': startexplode,
+        'rectangle': startrectangle,
+        "rect": startrectangle,
+        'text': starttext,
+        'txt': starttext,
+        'distance':lambda: startplaceholdercmd("Distance", "Select first point"),
+        "angle": lambda: startplaceholdercmd("Angle", "Select first point"),
+        "revolve": lambda: startplaceholdercmd("Revolve", "Select objects to revolve"),
+        "extrude": lambda: startplaceholdercmd("Extrude", "Select objects to extrude"),
+        "mirror": lambda: startplaceholdercmd("Mirror", "Select objects to mirror"),
+        "copy": lambda: startplaceholdercmd( "Copy", "Select objects to copy"),
+        "new": lambda: startplaceholdercmd("New", "New file is not implemented yet"),
+        "save": lambda: startplaceholdercmd("Save", "Save is not implemented"),
+        "3dm": lambda: startplaceholdercmd("3DM", "3DM export is not implemented yet"),
+        "dxf": lambda: startplaceholdercmd("DXF", "DXF export is not implemented yet"),
+        "file": open_file_menu,
+        "analyze": openanalyzemenu,
+        "tools": opentoolsmenu,
+        'saveas': opensaveascommand,
+        "png": savepngcommand,
+    }
+    action = actions.get(normalized)
+    if action is None:
+        return False
+    action()
+    return True
 def cancelactivecommand(event=None):
     global activecommand
     if activecommand is None:
@@ -254,31 +296,21 @@ app.bind("<Escape>", cancelactivecommand)
 command.bind("<Escape>", cancelactivecommand)
 viewport.bind("<Escape>", cancelactivecommand)
 def runcmd(event):
+    global history_index
     typed = command.get().strip()
     if not typed:
         return 'break'
     command.delete(0, 'end')
-    normalized = typed.lower().replace(" ", "")
-    if normalized in ("polyline", 'pline'):
-        startpolyline()
-    elif normalized in ("curve", "crv"):
-        startcurve()
-    elif normalized == 'join':
-        startjoin()
-    elif normalized in ("explode", 'exp'):
-        startexplode()
-    elif normalized in ('rectangle', 'rect'):
-        startrectangle()
-    elif normalized in ("text", 'txt'):
-        starttext()
-    else:
+    past_commands.append(typed)
+    history_index = len(past_commands)
+    if not runnamedcommand(typed):
         writehistory(f"> {typed}\nCommand not found")
         command.configure(placeholder_text = "Command:")
         viewport.focus_set()
     return 'break'
 command.bind("<Return>", runcmd)
+commandnames = ["Polyline", "Curve", "Join", "Explode", "Rectangle", "Text", "File", "New", "Save", "Save as", '3DM', "PNG", "DXF", "Analyze", "Distance", "Angle", "Tools", "Revolve", "Extrude", "Mirror", "Copy"]
 
-commandnames = ["Polyline", "Curve", "Join", "Explode", "Rectangle", "Text"]
 command._entry.configure(selectbackground="#666666", selectforeground="#f5E8D2")
 def updatecommandsuggestion(event=None):
     if activecommand is not None:
@@ -286,9 +318,11 @@ def updatecommandsuggestion(event=None):
     if event is not None and event.keysym in ( "Return", "Up", "Down", "Left", "Right", "Escape", "Tab", "bracketright"):
         return
     typed = command.get()
-    if not typed or " " in typed:
-        return
-    match = next((name for name in commandnames if name.lower().startswith(typed.lower())and name.lower() != typed.lower()), None)
+    if not typed:
+       return
+    typedkey = typed.lower().replace(" ", "")
+    match = next((name for name in commandnames if name.lower().replace(" ", "").startswith(typedkey) and 
+                  name.lower().replace(" ", "") != typedkey), None)
     if match is None:
         return
     typedlength = len(typed)
@@ -539,18 +573,28 @@ def showfilepage(page):
 def filemenuclick(event):
     if not (4 <= event.x <= 155):
         return
-    row = (event.y - 4) //32
-    if filepage == 'main' and row == 2 and 68 <= event.y <= 98:
-        showfilepage("formats")
-    elif filepage == 'formats' and row == 1 and 36 <= event.y <= 66:
-        saveviewportpng()
+    row = (event.y -4)// 32
+    if row not in (0, 1, 2):
+        return
+    if filepage =='main':
+        names=  ("New", "Save", "Save As")
+        if row == 2:
+            showfilepage("formats")
+        else:
+            closefilemenu()
+            runnamedcommand(names[row])
+    else:
+        names = ("3DM", "PNG", "DXF")
+        closefilemenu()
+        runnamedcommand(names[row])
 filemenu.bind("<Button-1>", filemenuclick)
 file_hover_job = None
 def open_file_menu():
-    showfilepage("main")
     global file_hover_job
     file_hover_job = None
     slidemenu(analyze_menu, 100, 72, False)
+    slidemenu(toolsmenu, 150, 136, False)
+    showfilepage("main")
     slidemenu(filemenu, 8, 104, True)
 def cancelfilehover(event=None):
     global file_hover_job
@@ -623,12 +667,22 @@ def analyzemenumotion(event):
         analyze_menu.itemconfig(box, fill='#67442F' if active else "")
         analyze_menu.itemconfig(label, fill='#F0AA60' if active else "#F5E8D2")
 analyze_menu.bind("<Motion>", analyzemenumotion)
+def analyzemenuclick(event):
+    if not (4<= event.x<= 155):
+        return
+    row = (event.y-4)//32
+    names = ("Distance", "Angle")
+    if 0<= row< len(names):
+        closeanalyzemenu()
+        runnamedcommand(names[row])
+analyze_menu.bind("<Button-1>", analyzemenuclick)
 analyzehoverjob = None
 analyzeclosejob = None
 def openanalyzemenu():
     global analyzehoverjob
     analyzehoverjob = None
     slidemenu(filemenu, 8, 104, False)
+    slidemenu(toolsmenu, 150, 136, False)
     slidemenu(analyze_menu, 100, 72, True)
 def analyze_enter(event):
     global analyzehoverjob
@@ -654,7 +708,7 @@ def analyzeclick(event):
 canvas.tag_bind(analyze, "<Button-1>", analyzeclick)
 def closeanalyzemenu():
     global analyzeclosejob
-    analyze = None
+    analyzeclosejob = None
     slidemenu(analyze_menu, 100, 72, False)
 def analyzepointermotion(event):
     if analyze_menu in menusliding:
@@ -690,6 +744,15 @@ def toolsmotion(event):
         toolsmenu.itemconfig(box, fill='#67442F' if active else "")
         toolsmenu.itemconfig(label, fill='#F0AA60' if active else "#F5E8D2")
 toolsmenu.bind("<Motion>", toolsmotion)
+def toolsmenuclick(event):
+    if not (4<= event.x <= 155):
+        return
+    row = (event.y-4)//32
+    names = ("Revolve", "Extrude", "Mirror", "Copy")
+    if 0<= row < len(names):
+        closetoolsmenu()
+        runnamedcommand(names[row])
+toolsmenu.bind("<Button-1>", toolsmenuclick)
 toolshoverjob = None
 toolsclosejob = None
 def opentoolsmenu():
@@ -1184,6 +1247,22 @@ def slidemenu(menu, x, height, opening):
             if not opening:
                 menu.place_forget()
     step(0)
+
+def opensaveascommand():
+    global activecommand
+    activecommand = None
+    command.delete(0, 'end')
+    command.configure(placeholder_text = "Command: ")
+    writehistory("> Save As\nChoose a format")
+    open_file_menu()
+    showfilepage("formats")
+def savepngcommand():
+    global activecommand
+    activecommand = None
+    command.delete(0, 'end')
+    command.configure(placeholder_text="Command: ")
+    writehistory("> PNG\nOpening PNG export")
+    saveviewportpng()
 
 
 
