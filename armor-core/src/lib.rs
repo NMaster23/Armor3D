@@ -1,5 +1,6 @@
 mod camera;
 mod render;
+mod viewport;
 
 use pyo3::prelude::*;
 use render::State;

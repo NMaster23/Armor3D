@@ -14,7 +14,7 @@ pub struct Camera {
 }
 
 impl Camera {
-    pub(crate) fn build_view_projection_matrix(&self) -> cgmath::Matrix4<f32> {
+    pub fn build_view_projection_matrix(&self) -> cgmath::Matrix4<f32> {
         let view = cgmath::Matrix4::look_at_rh(self.eye, self.target, self.up);
         let proj = if self.orthographic {
             let half_height = (self.eye - self.target).magnitude()
@@ -113,7 +113,7 @@ pub struct CameraController {
 }
 
 impl CameraController {
-    pub(crate) fn new(speed: f32) -> Self {
+    pub fn new(speed: f32) -> Self {
         Self {
             speed,
             scroll: 0.0,
