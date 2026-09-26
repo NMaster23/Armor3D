@@ -72,7 +72,7 @@ def viewport_right_drag(event):
     if rightpresspos is not None:
         total_x = event.x-rightpresspos[0]
         total_y = event.y - rightpresspos[1]
-        if total_x*total_x*total_y*total_y > 25:
+        if total_x * total_x + total_y * total_y > 25:
             rightdragged = True
     if renderer is not None:
         dx  = event.x- last_right_drag[0]
@@ -84,9 +84,12 @@ def viewport_right_drag(event):
     last_right_drag = (event.x, event.y)
 def viewport_right_up(event):
     global last_right_drag, rightpresspos, rightdragged
-    clicktime = event.time-rightpresstime
-    if not rightdragged and clicktime <350:
-        cancelactivecommand()
+    clicktime = event.time - rightpresstime
+    if not rightdragged and clicktime < 350:
+        if activecommand is not None:
+            cancelactivecommand()
+        elif lastcommand is not None:
+            repeatlastcommand()
     last_right_drag = None
     rightpresspos = None
     rightdragged = False
@@ -193,6 +196,7 @@ past_commands= []
 history_index = 0
 
 activecommand = None
+lastcommand = None
 def writehistory(text):
     history.configure(state='normal')
     history.insert('end', text+ '\n')
@@ -248,6 +252,7 @@ def startplaceholdercmd(name, message):
     writehistory(F"> {name}\n{message}")
     viewport.focus_set()
 def runnamedcommand(name):
+    global lastcommand
     normalized = name.lower().replace(" ", "")
     actions = {
         "polyline": startpolyline,
@@ -276,12 +281,23 @@ def runnamedcommand(name):
         "tools": opentoolsmenu,
         'saveas': opensaveascommand,
         "png": savepngcommand,
+        "circle": lambda: startplaceholdercmd("Circle", "Choose circle center"),
+        "fillet": lambda: startplaceholdercmd("Fillet", "Select curves to fillet"),
+        "trim": lambda: startplaceholdercmd("Trim", "Select objects to trim")
     }
     action = actions.get(normalized)
     if action is None:
         return False
+    if normalized not in ("file", "analyze", "tools"):
+        lastcommand = name
     action()
     return True
+def repeatlastcommand():
+    global lastcommand
+    if lastcommand is None:
+        return
+    previous = lastcommand
+    runnamedcommand(previous)
 def cancelactivecommand(event=None):
     global activecommand
     if activecommand is None:
@@ -309,7 +325,8 @@ def runcmd(event):
         viewport.focus_set()
     return 'break'
 command.bind("<Return>", runcmd)
-commandnames = ["Polyline", "Curve", "Join", "Explode", "Rectangle", "Text", "File", "New", "Save", "Save as", '3DM', "PNG", "DXF", "Analyze", "Distance", "Angle", "Tools", "Revolve", "Extrude", "Mirror", "Copy"]
+commandnames = ["Polyline", "Curve", "Join", "Explode", "Rectangle", "Text", "File", "New", "Save", "Save as", '3DM', "PNG", "DXF", "Analyze", "Distance", "Angle", "Tools", "Revolve", "Extrude", "Mirror", "Copy", 
+                'Circle', "Fillet", "Trim"]
 
 command._entry.configure(selectbackground="#666666", selectforeground="#f5E8D2")
 def updatecommandsuggestion(event=None):
@@ -896,8 +913,8 @@ polylinenormal = ImageTk.PhotoImage(icon)
 polyline_hover = ImageTk.PhotoImage(ImageEnhance.Brightness(icon).enhance(0.6))
 polyline_square = canvas.create_rectangle(8, 103, 52, 147, fill='', outline='')
 polyline_icon = canvas.create_image(30, 125, image=polylinenormal)
-canvas.tag_bind(polyline_square, "<Button-1>", startpolyline)
-canvas.tag_bind(polyline_icon, "<Button-1>", startpolyline)
+canvas.tag_bind(polyline_square, "<Button-1>", lambda event: runnamedcommand("Polyline"))
+canvas.tag_bind( polyline_icon, "<Button-1>",lambda event: runnamedcommand("Polyline"))
 def polyline_motion(event):
     hovering = 8 <= event.x<= 52 and 103 <= event.y <= 147
     canvas.itemconfig(polyline_square, fill="#67442F"if hovering else  "", outline="#E28B45" if hovering else "")
@@ -913,8 +930,8 @@ curve_normal = ImageTk.PhotoImage(curve_image)
 curve_hover = ImageTk.PhotoImage(ImageEnhance.Brightness(curve_image).enhance(0.6))
 curve_square = canvas.create_rectangle(53, 103, 96, 147, fill='', outline='')
 curve_icon = canvas.create_image(75, 125, image=curve_normal)
-canvas.tag_bind(curve_square, "<Button-1>", startcurve)
-canvas.tag_bind(curve_icon, "<Button-1>", startcurve)
+canvas.tag_bind( curve_square, "<Button-1>", lambda event: runnamedcommand("Curve"))
+canvas.tag_bind( curve_icon, "<Button-1>", lambda event: runnamedcommand("Curve"))
 def curve_motion(event):
     hovering = 53 <= event.x <=97 and 103 <= event.y <=147
     canvas.itemconfig(curve_square, fill='#67442F' if hovering else '', outline="#E28B45" if hovering else "")
@@ -930,8 +947,8 @@ puzzle_normal = ImageTk.PhotoImage(puzzle_image)
 puzzle_hover= ImageTk.PhotoImage(ImageEnhance.Brightness(puzzle_image).enhance(0.6))
 puzzle_square  = canvas.create_rectangle(8, 148, 52, 192, fill='', outline='')
 puzzle_icon = canvas.create_image(30, 170, image=puzzle_normal)
-canvas.tag_bind(puzzle_square, "<Button-1>", startjoin)
-canvas.tag_bind(puzzle_icon, "<Button-1>", startjoin)
+canvas.tag_bind(puzzle_square, "<Button-1>", lambda event: runnamedcommand("Join"))
+canvas.tag_bind(puzzle_icon, "<Button-1>", lambda event: runnamedcommand("Join"))
 def puzzlemotion(event):
     hovering = 8 <= event.x <= 52 and 148 <= event.y <= 192
     canvas.itemconfig(puzzle_square, fill='#67442F' if hovering else "", outline="#E28B45" if hovering else "")
@@ -947,8 +964,8 @@ explode_normal = ImageTk.PhotoImage(explode_image)
 explode_hover = ImageTk.PhotoImage(ImageEnhance.Brightness(explode_image).enhance(0.6))
 explode_square = canvas.create_rectangle(53, 148, 97, 192, fill='', outline='')
 explode_icon = canvas.create_image(75, 170, image=explode_normal)
-canvas.tag_bind(explode_square, "<Button-1>", startexplode)
-canvas.tag_bind(explode_icon, "<Button-1>", startexplode)
+canvas.tag_bind(explode_square, "<Button-1>", lambda event: runnamedcommand("Explode"))
+canvas.tag_bind(explode_icon, "<Button-1>", lambda event: runnamedcommand("Explode"))
 def explode_motion(event):
     hovering = 53 <= event.x <= 97 and 148 <= event.y <=192
     canvas.itemconfig(explode_square, fill='#67442F' if hovering else "", outline="#E28B45" if hovering else "")
@@ -964,8 +981,8 @@ rectangle_normal = ImageTk.PhotoImage(rectangle_image)
 rectangle_hover = ImageTk.PhotoImage(ImageEnhance.Brightness(rectangle_image).enhance(0.6))
 rectangle_sqaure = canvas.create_rectangle(8, 193, 52, 237, fill='', outline='')
 rectangle_icon = canvas.create_image(30, 215, image=rectangle_normal)
-canvas.tag_bind(rectangle_sqaure, "<Button-1>", startrectangle)
-canvas.tag_bind(rectangle_icon, "<Button-1>", startrectangle)
+canvas.tag_bind(rectangle_sqaure, "<Button-1>", lambda event: runnamedcommand("Rectangle"))
+canvas.tag_bind(rectangle_icon, "<Button-1>", lambda event: runnamedcommand("Rectangle"))
 def rectangle_motion(event):
     hovering = 8 <= event.x <= 52 and 193 <= event.y <= 237
     canvas.itemconfig(rectangle_sqaure, fill="#67442F" if hovering else "",  outline="#E28B45" if hovering else "")
@@ -981,11 +998,10 @@ text_normal = ImageTk.PhotoImage(text_image)
 text_hover = ImageTk.PhotoImage(ImageEnhance.Brightness(text_image).enhance(0.6))
 text_square = canvas.create_rectangle(53, 193, 97, 237, fill="", outline="")
 text_icon = canvas.create_image(75, 215, image=text_normal)
-canvas.tag_bind(text_square, "<Button-1>", starttext)
-canvas.tag_bind(text_icon, "<Button-1>", starttext)
-
+canvas.tag_bind(text_square, "<Button-1>", lambda event: runnamedcommand("Text"))
+canvas.tag_bind(text_icon, "<Button-1>", lambda event: runnamedcommand("Text"))
 extrabox = canvas.create_rectangle(8, 248, 92, 284, fill='#242b23', outline='', width=2)
-extratext = canvas.create_text(50, 266, tex="Extra", font=("Iceland", 14), fill="#F5E8D2")
+extratext = canvas.create_text(50, 266, text="Extra", font=("Iceland", 14), fill="#F5E8D2")
 def extraenter(event):
     canvas.itemconfig(extrabox, fill="#67442f", outline="#E28B45")
     canvas.itemconfig(extratext, fill='#F0AA60')
@@ -1264,10 +1280,77 @@ def savepngcommand():
     writehistory("> PNG\nOpening PNG export")
     saveviewportpng()
 
-
-
-
-app.after_idle(initialize_renderer)
+extraoverlay = Toplevel(app)
+extraoverlay.withdraw()
+extraoverlay.overrideredirect(True)
+extraoverlay.configure(bg="black")
+extraoverlay.attributes("-alpha", 0.55)
+extraoverlay.transient(app)
+extradialog = ctk.CTkToplevel(app)
+extradialog.withdraw()
+extradialog.overrideredirect(True)
+extradialog.configure(fg_color="#3B322A")
+extradialog.transient(app)
+extrapanel = ctk.CTkFrame(extradialog, fg_color="#3B322A",  border_color="#A66B3E", border_width=2, corner_radius=8)
+extrapanel.pack(fill="both", expand=True, padx=3, pady=3)
+extratitle = ctk.CTkLabel(extrapanel, text="Extra Tools", font=("Iceland", 24), text_color="#F5E8D2")
+extratitle.place(x=28, y=20)
+def positionextramenu(event=None):
+    if event is not None and event.widget is not app:
+        return
+    app.update_idletasks()
+    app_x = app.winfo_rootx()
+    app_y = app.winfo_rooty()
+    app_width = app.winfo_width()
+    app_height = app.winfo_height()
+    panel_width = min(720, app_width - 80)
+    panel_height = min(360, app_height - 80)
+    panel_x = app_x + (app_width - panel_width) // 2
+    panel_y = app_y + (app_height - panel_height) // 2
+    extraoverlay.geometry(f"{app_width}x{app_height}+{app_x}+{app_y}")
+    extradialog.geometry( f"{panel_width}x{panel_height}+{panel_x}+{panel_y}")
+def closeextramenu(event=None):
+    extradialog.withdraw()
+    extraoverlay.withdraw()
+def extratoolbutton(name, x, y):
+    button = Canvas( extrapanel,  width=112, height=44, bg="#3B322A",  highlightthickness=0, cursor="hand2")
+    background = button.create_rectangle(2, 2, 110, 42, fill="#242B23", outline="#67442F", width=2)
+    label = button.create_text(56, 22, text=name, fill="#F5E8D2", font=("Iceland", 15))
+    def enter(event):
+        button.itemconfig(background, fill="#67442F", outline="#E28B45")
+        button.itemconfig(label, fill="#F0AA60")
+    def leave(event):
+        button.itemconfig( background, fill="#242B23", outline="#67442F")
+        button.itemconfig(label, fill="#F5E8D2")
+    def clicked(event):
+        closeextramenu()
+        runnamedcommand(name)
+    button.bind("<Enter>", enter)
+    button.bind("<Leave>", leave)
+    button.bind("<Button-1>", clicked)
+    button.place(x=x, y=y)
+extratoolbutton("Circle", 30, 85)
+extratoolbutton("Fillet", 160, 85)
+extratoolbutton("Trim", 290, 85)
+closeextra = Canvas(extrapanel,  width=38, height=38,  bg="#3B322A", highlightthickness=0, cursor="hand2")
+closeextralabel = closeextra.create_text( 19, 19,  text="×", fill="#F5E8D2", font=("Iceland", 25))
+closeextra.place(relx=1, x=-52, y=14)
+closeextra.bind(  "<Enter>",lambda event: closeextra.itemconfig(closeextralabel, fill="#F0AA60"))
+closeextra.bind(  "<Leave>",lambda event: closeextra.itemconfig(closeextralabel, fill="#F5E8D2"))
+closeextra.bind("<Button-1>", closeextramenu)
+def openextramenu(event=None):
+    positionextramenu()
+    extraoverlay.deiconify()
+    extraoverlay.lift()
+    extradialog.deiconify()
+    extradialog.lift()
+    extradialog.focus_force()
+extraoverlay.bind("<Button-1>", closeextramenu)
+extradialog.bind("<Escape>", closeextramenu)
+app.bind("<Configure>", positionextramenu, add="+")
+for item in (extrabox, extratext):
+    canvas.tag_bind(item, "<Button-1>", openextramenu)
+app.after_idle(initialize_renderer)#
 app.mainloop()
 
 
