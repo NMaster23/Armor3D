@@ -1,5 +1,12 @@
-use cgmath::{perspective, InnerSpace, Matrix4, Vector3, Vector4, Deg, SquareMatrix, Zero, EuclideanSpace};
-use lyon::lyon_tessellation::{BuffersBuilder, FillOptions, FillTessellator, FillVertex, VertexBuffers};
+use crate::Vertex;
+use crate::camera::{Camera, CameraController, OPENGL_TO_WGPU_MATRIX};
+use cgmath::{
+    Deg, EuclideanSpace, InnerSpace, Matrix4, SquareMatrix, Vector3, Vector4, Zero, perspective,
+};
+use env_logger::Builder;
+use lyon::lyon_tessellation::{
+    BuffersBuilder, FillOptions, FillTessellator, FillVertex, VertexBuffers,
+};
 use lyon::math::point;
 use lyon::path::Path;
 use wgpu::wgt::BufferDescriptor;
@@ -7,8 +14,6 @@ use winit::dpi::PhysicalPosition;
 use winit::event::MouseButton;
 use winit::event_loop::ActiveEventLoop;
 use winit::keyboard::KeyCode;
-use crate::camera::{Camera, CameraController, OPENGL_TO_WGPU_MATRIX};
-use crate::Vertex;
 
 pub const SNAP_RADIUS: f32 = 0.05;
 
@@ -75,6 +80,13 @@ impl Viewport {
 }
 
 impl Viewport {
+    pub fn extrude(points: &[cgmath::Vector3<f32>], color: [f32; 4]) -> Vec<Vertex> {
+        if points.len() < 3 {
+            return Vec::new();
+        }
+        let mut builder = Path::builder();
+        builder.begin(point(x, y))
+    }
     pub fn tessellate_fill(points: &[cgmath::Vector3<f32>], color: [f32; 4]) -> Vec<Vertex> {
         if points.len() < 3 {
             return Vec::new();
@@ -103,9 +115,17 @@ impl Viewport {
         if result.is_err() {
             return Vec::new();
         }
-        geometry.indices.iter().map(|&i| geometry.vertices[i as usize]).collect()
+        geometry
+            .indices
+            .iter()
+            .map(|&i| geometry.vertices[i as usize])
+            .collect()
     }
-    pub fn dist_to_segment(p: cgmath::Vector2<f32>, a: cgmath::Vector2<f32>, b: cgmath::Vector2<f32>) -> f32 {
+    pub fn dist_to_segment(
+        p: cgmath::Vector2<f32>,
+        a: cgmath::Vector2<f32>,
+        b: cgmath::Vector2<f32>,
+    ) -> f32 {
         let ab = b - a;
         let ap = p - a;
         let len_sq = ab.magnitude2();
@@ -114,9 +134,13 @@ impl Viewport {
         }
         let t = (ap.dot(ab) / len_sq).clamp(0.0, 1.0);
         let projection = a + ab * t;
-        (p-projection).magnitude2()
+        (p - projection).magnitude2()
     }
-    pub fn select_shape(&mut self, mouse_px: cgmath::Vector2<f32>, hit_threshold_px: f32) -> Option<usize> {
+    pub fn select_shape(
+        &mut self,
+        mouse_px: cgmath::Vector2<f32>,
+        hit_threshold_px: f32,
+    ) -> Option<usize> {
         let threshold_sq = hit_threshold_px * hit_threshold_px;
         let mut closest = None;
         let mut min_dist_sq = threshold_sq;
@@ -124,13 +148,14 @@ impl Viewport {
             if entity.vertices.len() < 2 {
                 continue;
             }
-            let screen_vertices: Vec<cgmath::Vector2<f32>> = entity.vertices.iter().filter_map(|p| self.world_to_screen(*p)).collect();
+            let screen_vertices: Vec<cgmath::Vector2<f32>> = entity
+                .vertices
+                .iter()
+                .filter_map(|p| self.world_to_screen(*p))
+                .collect();
             for i in 0..screen_vertices.len().saturating_sub(1) {
-                let dist_sq = Self::dist_to_segment(
-                    mouse_px,
-                    screen_vertices[i],
-                    screen_vertices[i + 1],
-                );
+                let dist_sq =
+                    Self::dist_to_segment(mouse_px, screen_vertices[i], screen_vertices[i + 1]);
                 if dist_sq < min_dist_sq {
                     min_dist_sq = dist_sq;
                     closest = Some(entity.id);
@@ -177,7 +202,8 @@ impl Viewport {
                 let fill_verts = Self::tessellate_fill(&entity.vertices, fill_color);
                 new_vertices.extend(fill_verts);
             }
-            let entity_verts = self.tessellate_polyline(&entity.vertices, entity.thickness, draw_color);
+            let entity_verts =
+                self.tessellate_polyline(&entity.vertices, entity.thickness, draw_color);
             new_vertices.extend_from_slice(&entity_verts);
         }
         self.point_vertices = new_vertices;
@@ -205,12 +231,36 @@ impl Viewport {
             let v2 = p2 + normal;
             let v3 = p2 - normal;
             let quad = [
-                Vertex { position: [v0.x, v0.y, v0.z], coords: [0.0, 0.0, 0.0], color },
-                Vertex { position: [v1.x, v1.y, v1.z], coords: [0.0, 0.0, 0.0], color },
-                Vertex { position: [v2.x, v2.y, v2.z], coords: [0.0, 0.0, 0.0], color },
-                Vertex { position: [v2.x, v2.y, v2.z], coords: [0.0, 0.0, 0.0], color },
-                Vertex { position: [v1.x, v1.y, v1.z], coords: [0.0, 0.0, 0.0], color },
-                Vertex { position: [v3.x, v3.y, v3.z], coords: [0.0, 0.0, 0.0], color },
+                Vertex {
+                    position: [v0.x, v0.y, v0.z],
+                    coords: [0.0, 0.0, 0.0],
+                    color,
+                },
+                Vertex {
+                    position: [v1.x, v1.y, v1.z],
+                    coords: [0.0, 0.0, 0.0],
+                    color,
+                },
+                Vertex {
+                    position: [v2.x, v2.y, v2.z],
+                    coords: [0.0, 0.0, 0.0],
+                    color,
+                },
+                Vertex {
+                    position: [v2.x, v2.y, v2.z],
+                    coords: [0.0, 0.0, 0.0],
+                    color,
+                },
+                Vertex {
+                    position: [v1.x, v1.y, v1.z],
+                    coords: [0.0, 0.0, 0.0],
+                    color,
+                },
+                Vertex {
+                    position: [v3.x, v3.y, v3.z],
+                    coords: [0.0, 0.0, 0.0],
+                    color,
+                },
             ];
             vertices.extend_from_slice(&quad);
         }
@@ -227,11 +277,7 @@ impl Viewport {
             selected: false,
         })
     }
-    pub fn graph_handle_key(
-        &mut self,
-        code: KeyCode,
-        is_pressed: bool
-    ) -> bool {
+    pub fn graph_handle_key(&mut self, code: KeyCode, is_pressed: bool) -> bool {
         if !is_pressed {
             return false;
         }
@@ -239,7 +285,7 @@ impl Viewport {
             KeyCode::KeyC => {
                 self.clear();
                 true
-            },
+            }
             KeyCode::Tab => {
                 self.osnap = !self.osnap;
                 self.redraw = true;
@@ -253,10 +299,7 @@ impl Viewport {
         self.active_polyline.clear();
         self.redraw = true;
     }
-    pub fn get_snap_pos(
-        &mut self,
-        point: Vector3<f32>,
-    ) -> (Vector3<f32>, bool) {
+    pub fn get_snap_pos(&mut self, point: Vector3<f32>) -> (Vector3<f32>, bool) {
         if self.active_polyline.len() >= 3 {
             if let Some(&start) = self.active_polyline.first() {
                 if (point - start).magnitude() <= SNAP_RADIUS {
@@ -325,10 +368,7 @@ impl Viewport {
         self.point_vertices.extend_from_slice(vertices);
         self.redraw = true;
     }
-    pub fn fill_2d(
-        &mut self,
-        points: &[Vector3<f32>],
-    ) {
+    pub fn fill_2d(&mut self, points: &[Vector3<f32>]) {
         if points.len() < 3 {
             return;
         }
@@ -363,10 +403,7 @@ impl Viewport {
         }
         self.vertice_append(&flat_vertices);
     }
-    pub fn polyline(
-        &mut self,
-        mouse_pos: PhysicalPosition<f64>,
-    ) {
+    pub fn polyline(&mut self, mouse_pos: PhysicalPosition<f64>) {
         let hit_pos = match self.fetch_point(mouse_pos) {
             Some(hit_pos) => hit_pos,
             None => return,
@@ -402,7 +439,7 @@ impl Viewport {
         let steps = (distance / step_size).ceil() as usize;
         for i in 0..=steps {
             let t = i as f32 / steps as f32;
-            let point = point1 + dir *t;
+            let point = point1 + dir * t;
             self.add_point(point);
         }
     }
@@ -417,12 +454,36 @@ impl Viewport {
         let p2 = point - right * size + up * size;
         let p3 = point + right * size + up * size;
         self.point_vertices.extend_from_slice(&[
-            Vertex { position: p0.into(), coords: [0.0, 0.0, 0.0], color },
-            Vertex { position: p1.into(), coords: [0.0, 0.0, 0.0], color },
-            Vertex { position: p2.into(), coords: [0.0, 0.0, 0.0], color },
-            Vertex { position: p2.into(), coords: [0.0, 0.0, 0.0], color },
-            Vertex { position: p1.into(), coords: [0.0, 0.0, 0.0], color },
-            Vertex { position: p3.into(), coords: [0.0, 0.0, 0.0], color },
+            Vertex {
+                position: p0.into(),
+                coords: [0.0, 0.0, 0.0],
+                color,
+            },
+            Vertex {
+                position: p1.into(),
+                coords: [0.0, 0.0, 0.0],
+                color,
+            },
+            Vertex {
+                position: p2.into(),
+                coords: [0.0, 0.0, 0.0],
+                color,
+            },
+            Vertex {
+                position: p2.into(),
+                coords: [0.0, 0.0, 0.0],
+                color,
+            },
+            Vertex {
+                position: p1.into(),
+                coords: [0.0, 0.0, 0.0],
+                color,
+            },
+            Vertex {
+                position: p3.into(),
+                coords: [0.0, 0.0, 0.0],
+                color,
+            },
         ]);
         self.redraw = true;
     }
@@ -430,22 +491,14 @@ impl Viewport {
     pub fn mouse_move(&mut self, x: f64, y: f64) {
         self.cursor_pos = PhysicalPosition::new(x, y);
         if self.holding_left {
-            self.drawing(
-                self.cursor_pos,
-                MouseButton::Left,
-                true,
-            );
+            self.drawing(self.cursor_pos, MouseButton::Left, true);
         }
     }
 
     pub fn mouse_button(&mut self, pressed: bool) {
         self.holding_left = pressed;
         if pressed {
-            self.drawing(
-                self.cursor_pos,
-                MouseButton::Left,
-                true,
-            );
+            self.drawing(self.cursor_pos, MouseButton::Left, true);
         }
     }
 
@@ -453,6 +506,8 @@ impl Viewport {
         if self.graph_handle_key(code, is_pressed) {
             return;
         }
-        self.camera_controller.handle_key(&mut self.camera, code, is_pressed);
+        self.camera_controller
+            .handle_key(&mut self.camera, code, is_pressed);
     }
 }
+
