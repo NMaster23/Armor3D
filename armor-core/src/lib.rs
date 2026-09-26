@@ -42,14 +42,46 @@ impl Vertex {
 
 pub const COLOR: [f32; 4] = [200.0 / 255.0, 200.0 / 255.0, 200.0 / 255.0, 1.0];
 pub const GRAPH_VERTICES: &[Vertex] = &[
-    Vertex { position: [-1000.0, -1000.0, 0.0], coords: [0.0, 1.0, 0.0], color: COLOR },
-    Vertex { position: [1000.0, -1000.0, 0.0], coords: [1.0, 1.0, 0.0], color: COLOR },
-    Vertex { position: [-1000.0, 1000.0, 0.0], coords: [0.0, 0.0, 0.0], color: COLOR },
-    Vertex { position: [1000.0, 1000.0, 0.0], coords: [1.0, 0.0, 0.0], color: COLOR },
-    Vertex { position: [-1000.0, 0.0, -1000.0], coords: [0.0, 1.0, 0.0], color: COLOR },
-    Vertex { position: [1000.0, 0.0, -1000.0], coords: [1.0, 1.0, 0.0], color: COLOR },
-    Vertex { position: [-1000.0, 0.0, 1000.0], coords: [0.0, 0.0, 0.0], color: COLOR },
-    Vertex { position: [1000.0, 0.0, 1000.0], coords: [1.0, 0.0, 0.0], color: COLOR },
+    Vertex {
+        position: [-1000.0, -1000.0, 0.0],
+        coords: [0.0, 1.0, 0.0],
+        color: COLOR,
+    },
+    Vertex {
+        position: [1000.0, -1000.0, 0.0],
+        coords: [1.0, 1.0, 0.0],
+        color: COLOR,
+    },
+    Vertex {
+        position: [-1000.0, 1000.0, 0.0],
+        coords: [0.0, 0.0, 0.0],
+        color: COLOR,
+    },
+    Vertex {
+        position: [1000.0, 1000.0, 0.0],
+        coords: [1.0, 0.0, 0.0],
+        color: COLOR,
+    },
+    Vertex {
+        position: [-1000.0, 0.0, -1000.0],
+        coords: [0.0, 1.0, 0.0],
+        color: COLOR,
+    },
+    Vertex {
+        position: [1000.0, 0.0, -1000.0],
+        coords: [1.0, 1.0, 0.0],
+        color: COLOR,
+    },
+    Vertex {
+        position: [-1000.0, 0.0, 1000.0],
+        coords: [0.0, 0.0, 0.0],
+        color: COLOR,
+    },
+    Vertex {
+        position: [1000.0, 0.0, 1000.0],
+        coords: [1.0, 0.0, 0.0],
+        color: COLOR,
+    },
 ];
 pub const GRAPH_INDICES: &[u16] = &[0, 1, 2, 2, 1, 3, 4, 6, 5, 6, 7, 5];
 
@@ -67,9 +99,9 @@ impl ViewportRenderer {
         Ok(Self { state })
     }
     fn clear(&mut self) {
-        self.state.clear();
+        self.state.viewport.clear();
     }
-    
+
     fn resize(&mut self, width: u32, height: u32) {
         self.state.resize(width, height);
     }
@@ -81,15 +113,15 @@ impl ViewportRenderer {
     }
 
     fn add_point(&mut self, x: f32, y: f32, z: f32) {
-        self.state.add_point(cgmath::Vector3::new(x, y, z));
+        self.state.viewport.add_point(cgmath::Vector3::new(x, y, z));
     }
 
     fn mouse_move(&mut self, x: f64, y: f64) {
-        self.state.mouse_move(x, y);
+        self.state.viewport.mouse_move(x, y);
     }
 
     fn mouse_button(&mut self, pressed: bool) {
-        self.state.mouse_button(pressed);
+        self.state.viewport.mouse_button(pressed);
     }
 
     fn pan(&mut self, dx: f32, dy: f32) {
@@ -119,10 +151,12 @@ impl ViewportRenderer {
             "2" | "KP_2" => KeyCode::Digit2,
             _ => return false,
         };
-        if self.state.graph_handle_key(code, pressed) {
+        if self.state.viewport.graph_handle_key(code, pressed) {
             return true;
         }
-        self.state.camera_controller.handle_key(&mut self.state.camera, code, pressed)
+        self.state
+            .camera_controller
+            .handle_key(&mut self.state.camera, code, pressed)
     }
 }
 
