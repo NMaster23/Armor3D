@@ -22,7 +22,7 @@ app = ctk.CTk()
 from tkinter import font
 app.title("Armor 3D")
 app.geometry("1100x700")
-app.minsize(850, 500)
+app.minsize(850, 560)
 canvas = Canvas(app, bg="#242B23", highlightthickness=0)
 canvas.pack(fill='both', expand=True)
 command = ctk.CTkEntry(canvas, placeholder_text="Command:", font=("Lexend", 12), fg_color="#3B322A", border_color="#70543B")
@@ -184,7 +184,7 @@ def resizethings(event):
     resize_cmd_boxes(event.width)
     update_shadow(event.width, event.height, current_offset)
     if snapwindow is not None:
-        canvas.itemconfig(snapwindow, height=max(25, event.height-470))
+        canvas.itemconfig(snapwindow, height=max(25, event.height - 515))
     # draw_grid(event.width, event.height)
 canvas.bind("<Configure>", resizethings)
 past_commands= []
@@ -271,6 +271,12 @@ def runcmd(event):
         viewport.focus_set()
     return 'break'
 command.bind("<Return>", runcmd)
+def toggle2dshort(event=None):
+    if renderer is not None:
+        renderer.key_event("2", True)
+        renderer.key_event("2", False)
+    viewport.focus_set()
+    return 'break'
 def typecmduni(event):
     global activecommand
     if event.state & 0x0004:
@@ -278,12 +284,22 @@ def typecmduni(event):
     focused = app.focus_get()
     if focused is not None and focused.winfo_class() in ("Entry", "Text"):
         return
+    if event.keysym in ("2", "KP_2"):
+        if focused is viewport:
+            return "break"
+        return toggle2dshort(event)
     if activecommand is not None:
         return
     if event.char and event.char.isprintable():
         command.focus_set()
         command.insert("end", event.char)
+        return 'break'
+    if event.char and event.char.isprintable():
+        command.focus_set()
+        command.insert("end", event.char)
         return "break"
+command.bind("KeyPress-2>", toggle2dshort)
+command.bind("<KeyPress-KP_2>", toggle2dshort)
 app.bind("<KeyPress>", typecmduni, add="+")
 def browse_commands(event):
     global history_index
@@ -869,6 +885,19 @@ text_square = canvas.create_rectangle(53, 193, 97, 237, fill="", outline="")
 text_icon = canvas.create_image(75, 215, image=text_normal)
 canvas.tag_bind(text_square, "<Button-1>", starttext)
 canvas.tag_bind(text_icon, "<Button-1>", starttext)
+
+extrabox = canvas.create_rectangle(8, 248, 92, 284, fill='#242b23', outline='', width=2)
+extratext = canvas.create_text(50, 266, tex="Extra", font=("Iceland", 14), fill="#F5E8D2")
+def extraenter(event):
+    canvas.itemconfig(extrabox, fill="#67442f", outline="#E28B45")
+    canvas.itemconfig(extratext, fill='#F0AA60')
+def extraleave(event):
+    canvas.itemconfig(extrabox, fill="#242b23", outline="")
+    canvas.itemconfig(extratext, fill='#F5E8D2')
+for item in (extrabox, extratext):
+    canvas.tag_bind(item, "<Enter>", extraenter)
+    canvas.tag_bind(item, "<Leave>", extraleave)
+
 def bindtoolhover(left, top, right, bottom, box, icon, normal, hover):
     canvas.itemconfig(box, fill="#242B23", outline="")
     def update():
@@ -956,49 +985,49 @@ def tooltipmotion(event):
 canvas.bind("<Motion>", tooltipmotion, add="+")
 canvas.bind("<Leave>", hidetooltip, add="+")
 
-gridsnaptext = canvas.create_text(50, 270, text="Grid Snap", font=("Iceland", 13), fill='#F5E8D2', anchor='center')
+gridsnaptext = canvas.create_text(50, 315, text="Grid Snap", font=("Iceland", 13), fill='#F5E8D2', anchor='center')
 gridsnapon = False
 def showgridsnap(hovering=False):
     color = "#F0AA60" if gridsnapon else "#E28B45" if hovering else "#f5e8d2"
     canvas.itemconfig(gridsnaptext, fill=color)
 def gridsnapmotion(event):
-    hovering = 8 <= event.x <= 92 and 252 <= event.y <= 288
+    hovering = 8 <= event.x <= 92 and 297 <= event.y <= 333
     showgridsnap(hovering)
 def gridsnapclick(event):
     global gridsnapon
-    if 8 <= event.x <= 92 and 252 <= event.y <= 288:
+    if 8 <= event.x <= 92 and 297 <= event.y <= 333:
         gridsnapon = not gridsnapon
         showgridsnap(True)
 canvas.bind("<Motion>", gridsnapmotion, add="+")
 canvas.bind("<Button-1>", gridsnapclick, add="+")
 canvas.bind("<Leave>", lambda event: showgridsnap(False), add="+")
 
-orthotext = canvas.create_text(50, 310, text='Ortho', font=("Iceland", 13), fill='#F5E8D2', anchor='center')
+orthotext = canvas.create_text(50, 355, text='Ortho', font=("Iceland", 13), fill='#F5E8D2', anchor='center')
 orthoon = False
 def showortho(hovering=False):
     color = "#f0aa60" if orthoon else "#e28b45" if hovering else "#F5E8d2"
     canvas.itemconfig(orthotext, fill=color)
 def orthomotion(event):
-    showortho(8 <= event.x <= 92 and 292 <= event.y <= 328)
+    showortho(8 <= event.x <= 92 and 337 <= event.y <= 373)
 def orthoclick(event):
     global orthoon
-    if 8 <= event.x <= 92 and 292 <= event.y <= 328:
+    if 8 <= event.x <= 92 and 337 <= event.y <= 373:
         orthoon = not orthoon
         showortho(True)
 canvas.bind("<Motion>", orthomotion, add="+")
 canvas.bind("<Button-1>", orthoclick, add="+")
 canvas.bind("<Leave>", lambda event: showortho(False), add="+")
 
-osnaptext = canvas.create_text(50, 350, text='Osnap', font=("Iceland", 13), fill='#F5E8d2', anchor='center')
+osnaptext = canvas.create_text(50, 395, text='Osnap', font=("Iceland", 13), fill='#F5E8d2', anchor='center')
 onsapon = False
 def showosnap(hovering=False):
     color = "#F0AA60" if onsapon else "#e28b45" if hovering else "#F5E8D2"
     canvas.itemconfig(osnaptext, fill=color)
 def onsapmotion(event):
-    showosnap(8 <= event.x <= 92 and 332 <= event.y <= 368)
+    showosnap(8 <= 8 <= event.x <= 92 and 377 <= event.y <= 413)
 def osnapclick(event):
     global onsapon
-    if 8 <= event.x <= 92 and 332 <= event.y <=368:
+    if 8 <= event.x <= 92 and 377 <= event.y <= 413:
         onsapon = not onsapon
         showosnap(True)
         refreshosnap()
@@ -1006,14 +1035,14 @@ canvas.bind("<Motion>", onsapmotion, add="+")
 canvas.bind("<Button-1>", osnapclick, add="+")
 canvas.bind("<Leave>", lambda event: showosnap(False), add="+")
 
-canvas.create_line(0, 377, 100, 377, fill='#70543B', width=2)
-canvas.create_line(0, 247, 100, 247, fill='#70543b', width=2)
-canvas.create_line(0, 465, 100, 465, fill='#70543b', width=2)
-canvas.create_text(50, 400, text="Layers", font=("Iceland", 15), fill='#F5E8D2', anchor='center')
-layername = canvas.create_text(60, 440, text='Default', font=("Iceland", 11), fill='#F5E8D2', anchor='center')
+canvas.create_line(0, 292, 100, 292, fill="#70543B", width=2)
+canvas.create_line(0, 422, 100, 422, fill="#70543B", width=2)
+canvas.create_line(0, 510, 100, 510, fill="#70543B", width=2)
+canvas.create_text(50, 445, text="Layers", font=("Iceland", 15), fill="#F5E8D2", anchor="center")
+layername = canvas.create_text(60, 485, text="Default", font=("Iceland", 11), fill="#F5E8D2", anchor="center")
 
 layer_color = "#000000"
-layer_swatch = canvas.create_rectangle(17, 432, 33, 448, fill=layer_color, outline="#70543b", width=1)
+layer_swatch = canvas.create_rectangle(17, 477, 33, 493, fill=layer_color, outline="#70543B", width=1)
 def swatch_enter(event):
     canvas.itemconfig(layer_swatch, outline="#E28B45", width=2)
 def swatch_leave(event):
@@ -1045,12 +1074,12 @@ def toggle_layer_menu(event):
     if layermenu.winfo_manager():
         layermenu.place_forget()
     else:
-        menu_y = 452 if app.winfo_height() >= 590 else 298
+        menu_y = 497 if app.winfo_height() >= 635 else 298
         layermenu.place(x=8, y=menu_y)
 def close_layer_outside(event):
     if event.widget == layermenu:
         return
-    if event.widget == canvas and 17 <= event.x <= 33 and 432 <= event.y <= 448:
+    if event.widget == canvas and 17 <= event.x <= 33 and 477 <= event.y <= 493:
         return
     layermenu.place_forget()
 canvas.tag_bind(layer_swatch, "<Enter>", swatch_enter)
@@ -1061,7 +1090,7 @@ layermenu.bind("<Button-1>", chooselayercolor)
 app.bind_all("<Button-1>", close_layer_outside, add="+")
 
 snapcanvas = Canvas(canvas, bg="#242B23", highlightthickness=0)
-snapwindow = canvas.create_window(0, 470, window=snapcanvas, anchor='nw', width=100, height=230)
+snapwindow = canvas.create_window( 0, 515, window=snapcanvas,  anchor="nw", width=100, height=230)
 snapheading = snapcanvas.create_text(50, 15, text='Osnap', fill='#F5E8D2', font=("Iceland", 14))
 snapenabled = {}
 snapitems = {}
