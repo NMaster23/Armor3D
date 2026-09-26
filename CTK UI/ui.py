@@ -94,6 +94,8 @@ def viewport_wheel(event):
     if renderer is not None:
         renderer.zoom(event.delta / 120)
 def viewport_key(event, pressed):
+    if event.keysym in ("2", "K_2", 'bracketright'):
+        return
     if renderer is not None:
         renderer.key_event(event.keysym, pressed)
 def viewport_focus_out(event):
@@ -247,6 +249,10 @@ def cancelactivecommand(event=None):
     command.delete(0, 'end')
     command.configure(placeholder_text = "Command:")
     viewport.focus_set()
+    return "break"
+app.bind("<Escape>", cancelactivecommand)
+command.bind("<Escape>", cancelactivecommand)
+viewport.bind("<Escape>", cancelactivecommand)
 def runcmd(event):
     typed = command.get().strip()
     if not typed:
@@ -271,12 +277,50 @@ def runcmd(event):
         viewport.focus_set()
     return 'break'
 command.bind("<Return>", runcmd)
+
+commandnames = ["Polyline", "Curve", "Join", "Explode", "Rectangle", "Text"]
+command._entry.configure(selectbackground="#666666", selectforeground="#f5E8D2")
+def updatecommandsuggestion(event=None):
+    if activecommand is not None:
+        return
+    if event is not None and event.keysym in ( "Return", "Up", "Down", "Left", "Right", "Escape", "Tab", "bracketright"):
+        return
+    typed = command.get()
+    if not typed or " " in typed:
+        return
+    match = next((name for name in commandnames if name.lower().startswith(typed.lower())and name.lower() != typed.lower()), None)
+    if match is None:
+        return
+    typedlength = len(typed)
+    command.delete(0, "end")
+    command.insert(0, match)
+    command._entry.selection_range(typedlength, "end")
+    command._entry.icursor(typedlength)
+def commandbackspace(event):
+    try:
+        selectionstart = int(command._entry.index("sel.first"))
+    except Exception:
+        return
+    typedpart = command.get()[:selectionstart]
+    if typedpart:
+        typedpart = typedpart[:-1]
+    command.delete(0, 'end')
+    command.insert(0, typedpart)
+    command._entry.icursor('end')
+    app.after_idle(updatecommandsuggestion)
+    return 'break'
+command.bind("<KeyRelease>", updatecommandsuggestion, add="+")
+command.bind("<KeyPress-BackSpace>", commandbackspace, add="+")
+
+
 def toggle2dshort(event=None):
     if renderer is not None:
         renderer.key_event("2", True)
         renderer.key_event("2", False)
     viewport.focus_set()
-    return 'break'
+    return "break"
+command.bind("<KeyPress-bracketright>", toggle2dshort)
+app.bind("<KeyPress-bracketright>", toggle2dshort)
 def typecmduni(event):
     global activecommand
     if event.state & 0x0004:
@@ -284,22 +328,13 @@ def typecmduni(event):
     focused = app.focus_get()
     if focused is not None and focused.winfo_class() in ("Entry", "Text"):
         return
-    if event.keysym in ("2", "KP_2"):
-        if focused is viewport:
-            return "break"
-        return toggle2dshort(event)
     if activecommand is not None:
         return
     if event.char and event.char.isprintable():
         command.focus_set()
         command.insert("end", event.char)
+        app.after_idle(updatecommandsuggestion)
         return 'break'
-    if event.char and event.char.isprintable():
-        command.focus_set()
-        command.insert("end", event.char)
-        return "break"
-command.bind("KeyPress-2>", toggle2dshort)
-command.bind("<KeyPress-KP_2>", toggle2dshort)
 app.bind("<KeyPress>", typecmduni, add="+")
 def browse_commands(event):
     global history_index
