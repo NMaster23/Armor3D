@@ -113,6 +113,15 @@ pub struct CameraController {
 }
 
 impl CameraController {
+    pub fn unlock_to_3d(&mut self, camera: &mut Camera) {
+        if !self.is_locked {
+            return;
+        }
+        self.is_locked = false;
+        camera.unlock();
+        let dist = (camera.eye - camera.target).magnitude().max(2.0);
+        camera.eye = camera.target + cgmath::Vector3::new(0.0, dist * 0.707, dist * 0.707);
+    }
     pub fn new(speed: f32) -> Self {
         Self {
             speed,
@@ -147,6 +156,14 @@ impl CameraController {
         code: KeyCode,
         is_pressed: bool,
     ) -> bool {
+        if is_pressed && self.is_locked {
+            match code {
+                KeyCode::ArrowUp | KeyCode::ArrowDown | KeyCode::ArrowLeft | KeyCode::ArrowRight => {
+                    self.unlock_to_3d(camera);
+                }
+                _ => {}
+            }
+        }
         match code {
             KeyCode::ArrowUp => {
                 self.is_move_forward_pressed = is_pressed;

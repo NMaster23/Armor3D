@@ -53,7 +53,7 @@ impl Viewport {
             fov_y: 45.0,
             z_near: 0.1,
             z_far: 100.0,
-            orthographic: false,
+            orthographic: true,
         };
         let camera_controller = CameraController::new(0.02);
         Self {
@@ -280,46 +280,23 @@ impl Viewport {
         let ndc_x = (2.0 * mouse_x / width as f64) - 1.0;
         let ndc_y = 1.0 - (2.0 * mouse_y / height as f64);
         let ndc = Vector4::new(ndc_x as f32, ndc_y as f32, 1.0, 1.0);
-        let view = Matrix4::look_at_rh(
-            self.camera.eye,
-            self.camera.target,
-            Vector3::unit_y(),
-        );
-        let projection = perspective(
-            Deg(45.0),
-            self.camera.aspect,
-            0.1,
-            100.0,
-        );
-        let view_projection = OPENGL_TO_WGPU_MATRIX * projection * view;
-        let inverse = view_projection.invert().expect("inverse projection");
-        let world = inverse * ndc;
-        let world_point = world.truncate() / world.w;
-        let ray_origin = self.camera.eye.to_vec();
-        let ray_dir = (world_point - ray_origin).normalize();
-        let horizontal = if ray_dir.y.abs() > f32::EPSILON {
-            -ray_origin.y / ray_dir.y
-        } else {
-            -1.0
-        };
-        let vertical = if ray_dir.z.abs() > f32::EPSILON {
-            -ray_origin.z / ray_dir.z
-        } else {
-            -1.0
-        };
-        let hit_pos = match (horizontal >= 0.0, vertical >= 0.0) {
-            (true, true) => {
-                if horizontal < vertical {
-                    ray_origin + ray_dir * horizontal
-                } else {
-                    ray_origin + ray_dir * vertical
-                }
-            }
-            (true, false) => ray_origin + ray_dir * horizontal,
-            (false, true) => ray_origin + ray_dir * vertical,
-            (false, false) => return Some(Vector3::zero()),
-        };
-        Some(hit_pos)
+        let view_projection = self.camera.build_view_projection_matrix();
+        let inverse = view_projection.invert()?;
+        let near_ndc = Vector4::new(ndc_x as f32, ndc_y as f32, 0.0, 1.0);
+        let far_ndc = Vector4::new(ndc_x as f32, ndc_y as f32, 1.0, 1.0);
+        let near_world = inverse * near_ndc;
+        let far_world = inverse * far_ndc;
+        if near_world.w == 0.0 || far_world.w == 0.0 {
+            return None;
+        }
+        let ray_origin = near_world.truncate() / near_world.w;
+        let far_point = far_world.truncate() / far_world.w;
+        let ray_dir = (far_point - ray_origin).normalize();
+        if ray_dir.y.abs() > 1e-6 {
+            let t = -ray_origin.y / ray_dir.y;
+            return Some(ray_origin + ray_dir * t);
+        }
+        Some(Vector3::zero())
     }
     pub fn drawing(
         &mut self,
