@@ -22,7 +22,7 @@ app = ctk.CTk()
 from tkinter import font
 app.title("Armor 3D")
 app.geometry("1100x700")
-app.minsize(850, 500)
+app.minsize(850, 560)
 canvas = Canvas(app, bg="#242B23", highlightthickness=0)
 canvas.pack(fill='both', expand=True)
 command = ctk.CTkEntry(canvas, placeholder_text="Command:", font=("Lexend", 12), fg_color="#3B322A", border_color="#70543B")
@@ -59,13 +59,23 @@ def viewport_mouse_up(event):
         renderer.mouse_button(False)
 last_right_drag = None
 def viewport_right_down(event):
-    global last_right_drag
+    global last_right_drag, rightpresspos, rightpresstime, rightdragged
     viewport.focus_set()
     last_right_drag = (event.x, event.y)
+    rightpresspos = (event.x, event.y)
+    rightpresstime = event.time
+    rightdragged= False
 def viewport_right_drag(event):
-    global last_right_drag
-    if renderer is not None and last_right_drag is not None:
-        dx = event.x - last_right_drag[0]
+    global last_right_drag, rightdragged
+    if last_right_drag is None:
+        return
+    if rightpresspos is not None:
+        total_x = event.x-rightpresspos[0]
+        total_y = event.y - rightpresspos[1]
+        if total_x * total_x + total_y * total_y > 25:
+            rightdragged = True
+    if renderer is not None:
+        dx  = event.x- last_right_drag[0]
         dy = event.y - last_right_drag[1]
         if event.state & 0x0001:
             renderer.orbit(dx, dy)
@@ -73,12 +83,22 @@ def viewport_right_drag(event):
             renderer.pan(dx, dy)
     last_right_drag = (event.x, event.y)
 def viewport_right_up(event):
-    global last_right_drag
+    global last_right_drag, rightpresspos, rightdragged
+    clicktime = event.time - rightpresstime
+    if not rightdragged and clicktime < 350:
+        if activecommand is not None:
+            cancelactivecommand()
+        elif lastcommand is not None:
+            repeatlastcommand()
     last_right_drag = None
+    rightpresspos = None
+    rightdragged = False
 def viewport_wheel(event):
     if renderer is not None:
         renderer.zoom(event.delta / 120)
 def viewport_key(event, pressed):
+    if event.keysym in ("2", "K_2", 'bracketright'):
+        return
     if renderer is not None:
         renderer.key_event(event.keysym, pressed)
 def viewport_focus_out(event):
@@ -169,24 +189,204 @@ def resizethings(event):
     resize_cmd_boxes(event.width)
     update_shadow(event.width, event.height, current_offset)
     if snapwindow is not None:
-        canvas.itemconfig(snapwindow, height=max(25, event.height-470))
+        canvas.itemconfig(snapwindow, height=max(25, event.height - 515))
     # draw_grid(event.width, event.height)
 canvas.bind("<Configure>", resizethings)
 past_commands= []
 history_index = 0
-def runcmd(event):
-    typed = command.get().strip()
-    if not typed:
-        return
-    global history_index
-    past_commands.append(typed)
-    history_index = len(past_commands)
+
+activecommand = None
+lastcommand = None
+def writehistory(text):
     history.configure(state='normal')
-    history.insert('end', f"> {typed}\nCommand not found\n")
+    history.insert('end', text+ '\n')
     history.see("end")
     history.configure(state='disabled')
+def startpolyline(event=None):
+    global activecommand
+    activecommand = 'polyline'
     command.delete(0, 'end')
+    command.configure(placeholder_text = "Start polyline")
+    writehistory("> Polyline\nStart polyline")
+    viewport.focus_set()
+def startcurve(event=None):
+    global activecommand
+    activecommand = 'curve'
+    command.delete(0, 'end')
+    command.configure(placeholder_text="Start curve")
+    writehistory("> Curve\nStart curve")
+    viewport.focus_set()
+def startjoin(event=None):
+    global activecommand
+    activecommand = 'join'
+    command.delete(0, 'end')
+    command.configure(placeholder_text="Select objects to join")
+    writehistory("> Join\nSelect objects to join")
+    viewport.focus_set()
+def startexplode(event=None):
+    global activecommand
+    activecommand = "explode"
+    command.delete(0, "end")
+    command.configure(placeholder_text = "Select objects to explode")
+    writehistory("> Explode\nSelect objects to explode")
+    viewport.focus_set()
+def startrectangle(event=None):
+    global activecommand
+    activecommand = 'rectangle'
+    command.delete(0, 'end')
+    command.configure(placeholder_text = "Start rectangle")
+    writehistory("> Rectangle\nStart rectangle")
+    viewport.focus_set()
+def starttext(event=None):
+    global activecommand
+    activecommand = 'text'
+    command.delete(0, 'end')
+    command.configure(placeholder_text='Choose text position')
+    writehistory("> Text\nChoose text position")
+    viewport.focus_set()
+def startplaceholdercmd(name, message):
+    global activecommand
+    activecommand = name.lower().replace(" ", "")
+    command.delete(0, "end")
+    command.configure(placeholder_text=message)
+    writehistory(F"> {name}\n{message}")
+    viewport.focus_set()
+def runnamedcommand(name):
+    global lastcommand
+    normalized = name.lower().replace(" ", "")
+    actions = {
+        "polyline": startpolyline,
+        'pline': startpolyline,
+        'curve': startcurve,
+        'crv': startcurve,
+        "join": startjoin,
+        "explode": startexplode,
+        'exp': startexplode,
+        'rectangle': startrectangle,
+        "rect": startrectangle,
+        'text': starttext,
+        'txt': starttext,
+        'distance':lambda: startplaceholdercmd("Distance", "Select first point"),
+        "angle": lambda: startplaceholdercmd("Angle", "Select first point"),
+        "revolve": lambda: startplaceholdercmd("Revolve", "Select objects to revolve"),
+        "extrude": lambda: startplaceholdercmd("Extrude", "Select objects to extrude"),
+        "mirror": lambda: startplaceholdercmd("Mirror", "Select objects to mirror"),
+        "copy": lambda: startplaceholdercmd( "Copy", "Select objects to copy"),
+        "new": lambda: startplaceholdercmd("New", "New file is not implemented yet"),
+        "save": lambda: startplaceholdercmd("Save", "Save is not implemented"),
+        "3dm": lambda: startplaceholdercmd("3DM", "3DM export is not implemented yet"),
+        "dxf": lambda: startplaceholdercmd("DXF", "DXF export is not implemented yet"),
+        "file": open_file_menu,
+        "analyze": openanalyzemenu,
+        "tools": opentoolsmenu,
+        'saveas': opensaveascommand,
+        "png": savepngcommand,
+        "circle": lambda: startplaceholdercmd("Circle", "Choose circle center"),
+        "fillet": lambda: startplaceholdercmd("Fillet", "Select curves to fillet"),
+        "trim": lambda: startplaceholdercmd("Trim", "Select objects to trim")
+    }
+    action = actions.get(normalized)
+    if action is None:
+        return False
+    if normalized not in ("file", "analyze", "tools"):
+        lastcommand = name
+    action()
+    return True
+def repeatlastcommand():
+    global lastcommand
+    if lastcommand is None:
+        return
+    previous = lastcommand
+    runnamedcommand(previous)
+def cancelactivecommand(event=None):
+    global activecommand
+    if activecommand is None:
+        return
+    writehistory("Command ended")
+    activecommand = None
+    command.delete(0, 'end')
+    command.configure(placeholder_text = "Command:")
+    viewport.focus_set()
+    return "break"
+app.bind("<Escape>", cancelactivecommand)
+command.bind("<Escape>", cancelactivecommand)
+viewport.bind("<Escape>", cancelactivecommand)
+def runcmd(event):
+    global history_index
+    typed = command.get().strip()
+    if not typed:
+        return 'break'
+    command.delete(0, 'end')
+    past_commands.append(typed)
+    history_index = len(past_commands)
+    if not runnamedcommand(typed):
+        writehistory(f"> {typed}\nCommand not found")
+        command.configure(placeholder_text = "Command:")
+        viewport.focus_set()
+    return 'break'
 command.bind("<Return>", runcmd)
+commandnames = ["Polyline", "Curve", "Join", "Explode", "Rectangle", "Text", "File", "New", "Save", "Save as", '3DM', "PNG", "DXF", "Analyze", "Distance", "Angle", "Tools", "Revolve", "Extrude", "Mirror", "Copy", 
+                'Circle', "Fillet", "Trim"]
+
+command._entry.configure(selectbackground="#666666", selectforeground="#f5E8D2")
+def updatecommandsuggestion(event=None):
+    if activecommand is not None:
+        return
+    if event is not None and event.keysym in ( "Return", "Up", "Down", "Left", "Right", "Escape", "Tab", "bracketright"):
+        return
+    typed = command.get()
+    if not typed:
+       return
+    typedkey = typed.lower().replace(" ", "")
+    match = next((name for name in commandnames if name.lower().replace(" ", "").startswith(typedkey) and 
+                  name.lower().replace(" ", "") != typedkey), None)
+    if match is None:
+        return
+    typedlength = len(typed)
+    command.delete(0, "end")
+    command.insert(0, match)
+    command._entry.selection_range(typedlength, "end")
+    command._entry.icursor(typedlength)
+def commandbackspace(event):
+    try:
+        selectionstart = int(command._entry.index("sel.first"))
+    except Exception:
+        return
+    typedpart = command.get()[:selectionstart]
+    if typedpart:
+        typedpart = typedpart[:-1]
+    command.delete(0, 'end')
+    command.insert(0, typedpart)
+    command._entry.icursor('end')
+    app.after_idle(updatecommandsuggestion)
+    return 'break'
+command.bind("<KeyRelease>", updatecommandsuggestion, add="+")
+command.bind("<KeyPress-BackSpace>", commandbackspace, add="+")
+
+
+def toggle2dshort(event=None):
+    if renderer is not None:
+        renderer.key_event("2", True)
+        renderer.key_event("2", False)
+    viewport.focus_set()
+    return "break"
+command.bind("<KeyPress-bracketright>", toggle2dshort)
+app.bind("<KeyPress-bracketright>", toggle2dshort)
+def typecmduni(event):
+    global activecommand
+    if event.state & 0x0004:
+        return
+    focused = app.focus_get()
+    if focused is not None and focused.winfo_class() in ("Entry", "Text"):
+        return
+    if activecommand is not None:
+        return
+    if event.char and event.char.isprintable():
+        command.focus_set()
+        command.insert("end", event.char)
+        app.after_idle(updatecommandsuggestion)
+        return 'break'
+app.bind("<KeyPress>", typecmduni, add="+")
 def browse_commands(event):
     global history_index
     if not past_commands:
@@ -390,18 +590,28 @@ def showfilepage(page):
 def filemenuclick(event):
     if not (4 <= event.x <= 155):
         return
-    row = (event.y - 4) //32
-    if filepage == 'main' and row == 2 and 68 <= event.y <= 98:
-        showfilepage("formats")
-    elif filepage == 'formats' and row == 1 and 36 <= event.y <= 66:
-        saveviewportpng()
+    row = (event.y -4)// 32
+    if row not in (0, 1, 2):
+        return
+    if filepage =='main':
+        names=  ("New", "Save", "Save As")
+        if row == 2:
+            showfilepage("formats")
+        else:
+            closefilemenu()
+            runnamedcommand(names[row])
+    else:
+        names = ("3DM", "PNG", "DXF")
+        closefilemenu()
+        runnamedcommand(names[row])
 filemenu.bind("<Button-1>", filemenuclick)
 file_hover_job = None
 def open_file_menu():
-    showfilepage("main")
     global file_hover_job
     file_hover_job = None
     slidemenu(analyze_menu, 100, 72, False)
+    slidemenu(toolsmenu, 150, 136, False)
+    showfilepage("main")
     slidemenu(filemenu, 8, 104, True)
 def cancelfilehover(event=None):
     global file_hover_job
@@ -474,12 +684,22 @@ def analyzemenumotion(event):
         analyze_menu.itemconfig(box, fill='#67442F' if active else "")
         analyze_menu.itemconfig(label, fill='#F0AA60' if active else "#F5E8D2")
 analyze_menu.bind("<Motion>", analyzemenumotion)
+def analyzemenuclick(event):
+    if not (4<= event.x<= 155):
+        return
+    row = (event.y-4)//32
+    names = ("Distance", "Angle")
+    if 0<= row< len(names):
+        closeanalyzemenu()
+        runnamedcommand(names[row])
+analyze_menu.bind("<Button-1>", analyzemenuclick)
 analyzehoverjob = None
 analyzeclosejob = None
 def openanalyzemenu():
     global analyzehoverjob
     analyzehoverjob = None
     slidemenu(filemenu, 8, 104, False)
+    slidemenu(toolsmenu, 150, 136, False)
     slidemenu(analyze_menu, 100, 72, True)
 def analyze_enter(event):
     global analyzehoverjob
@@ -505,7 +725,7 @@ def analyzeclick(event):
 canvas.tag_bind(analyze, "<Button-1>", analyzeclick)
 def closeanalyzemenu():
     global analyzeclosejob
-    analyze = None
+    analyzeclosejob = None
     slidemenu(analyze_menu, 100, 72, False)
 def analyzepointermotion(event):
     if analyze_menu in menusliding:
@@ -541,6 +761,15 @@ def toolsmotion(event):
         toolsmenu.itemconfig(box, fill='#67442F' if active else "")
         toolsmenu.itemconfig(label, fill='#F0AA60' if active else "#F5E8D2")
 toolsmenu.bind("<Motion>", toolsmotion)
+def toolsmenuclick(event):
+    if not (4<= event.x <= 155):
+        return
+    row = (event.y-4)//32
+    names = ("Revolve", "Extrude", "Mirror", "Copy")
+    if 0<= row < len(names):
+        closetoolsmenu()
+        runnamedcommand(names[row])
+toolsmenu.bind("<Button-1>", toolsmenuclick)
 toolshoverjob = None
 toolsclosejob = None
 def opentoolsmenu():
@@ -684,11 +913,13 @@ polylinenormal = ImageTk.PhotoImage(icon)
 polyline_hover = ImageTk.PhotoImage(ImageEnhance.Brightness(icon).enhance(0.6))
 polyline_square = canvas.create_rectangle(8, 103, 52, 147, fill='', outline='')
 polyline_icon = canvas.create_image(30, 125, image=polylinenormal)
+canvas.tag_bind(polyline_square, "<Button-1>", lambda event: runnamedcommand("Polyline"))
+canvas.tag_bind( polyline_icon, "<Button-1>",lambda event: runnamedcommand("Polyline"))
 def polyline_motion(event):
     hovering = 8 <= event.x<= 52 and 103 <= event.y <= 147
     canvas.itemconfig(polyline_square, fill="#67442F"if hovering else  "", outline="#E28B45" if hovering else "")
     canvas.itemconfig(polyline_icon, image=polyline_hover if hovering else polylinenormal)
-canvas.bind("<Motion>", polyline_motion)
+
 
 curve_image = Image.open(getpath("Assets/curvez.png")).convert("RGBA")
 bounds = curve_image.getbbox()
@@ -699,11 +930,13 @@ curve_normal = ImageTk.PhotoImage(curve_image)
 curve_hover = ImageTk.PhotoImage(ImageEnhance.Brightness(curve_image).enhance(0.6))
 curve_square = canvas.create_rectangle(53, 103, 96, 147, fill='', outline='')
 curve_icon = canvas.create_image(75, 125, image=curve_normal)
+canvas.tag_bind( curve_square, "<Button-1>", lambda event: runnamedcommand("Curve"))
+canvas.tag_bind( curve_icon, "<Button-1>", lambda event: runnamedcommand("Curve"))
 def curve_motion(event):
     hovering = 53 <= event.x <=97 and 103 <= event.y <=147
     canvas.itemconfig(curve_square, fill='#67442F' if hovering else '', outline="#E28B45" if hovering else "")
     canvas.itemconfig(curve_icon, image=curve_hover if hovering else curve_normal)
-canvas.bind("<Motion>", curve_motion, add="+")
+
 
 puzzle_image = Image.open(getpath("Assets/joinz.png")).convert("RGBA")
 bounds = puzzle_image.getbbox()
@@ -714,11 +947,13 @@ puzzle_normal = ImageTk.PhotoImage(puzzle_image)
 puzzle_hover= ImageTk.PhotoImage(ImageEnhance.Brightness(puzzle_image).enhance(0.6))
 puzzle_square  = canvas.create_rectangle(8, 148, 52, 192, fill='', outline='')
 puzzle_icon = canvas.create_image(30, 170, image=puzzle_normal)
+canvas.tag_bind(puzzle_square, "<Button-1>", lambda event: runnamedcommand("Join"))
+canvas.tag_bind(puzzle_icon, "<Button-1>", lambda event: runnamedcommand("Join"))
 def puzzlemotion(event):
     hovering = 8 <= event.x <= 52 and 148 <= event.y <= 192
     canvas.itemconfig(puzzle_square, fill='#67442F' if hovering else "", outline="#E28B45" if hovering else "")
     canvas.itemconfig(puzzle_icon, image=puzzle_hover if hovering else puzzle_normal)
-canvas.bind("<Motion>", puzzlemotion, add="+")
+
 
 explode_image = Image.open(getpath("Assets/explode.png")).convert("RGBA")
 bounds = explode_image.getbbox()
@@ -729,11 +964,13 @@ explode_normal = ImageTk.PhotoImage(explode_image)
 explode_hover = ImageTk.PhotoImage(ImageEnhance.Brightness(explode_image).enhance(0.6))
 explode_square = canvas.create_rectangle(53, 148, 97, 192, fill='', outline='')
 explode_icon = canvas.create_image(75, 170, image=explode_normal)
+canvas.tag_bind(explode_square, "<Button-1>", lambda event: runnamedcommand("Explode"))
+canvas.tag_bind(explode_icon, "<Button-1>", lambda event: runnamedcommand("Explode"))
 def explode_motion(event):
     hovering = 53 <= event.x <= 97 and 148 <= event.y <=192
     canvas.itemconfig(explode_square, fill='#67442F' if hovering else "", outline="#E28B45" if hovering else "")
     canvas.itemconfig(explode_icon, image=explode_hover if hovering else explode_normal)
-canvas.bind("<Motion>", explode_motion, add="+")
+
 
 rectangle_image = Image.open(getpath("Assets/rectangle.png")).convert("RGBA")
 bounds = rectangle_image.getbbox()
@@ -744,11 +981,13 @@ rectangle_normal = ImageTk.PhotoImage(rectangle_image)
 rectangle_hover = ImageTk.PhotoImage(ImageEnhance.Brightness(rectangle_image).enhance(0.6))
 rectangle_sqaure = canvas.create_rectangle(8, 193, 52, 237, fill='', outline='')
 rectangle_icon = canvas.create_image(30, 215, image=rectangle_normal)
+canvas.tag_bind(rectangle_sqaure, "<Button-1>", lambda event: runnamedcommand("Rectangle"))
+canvas.tag_bind(rectangle_icon, "<Button-1>", lambda event: runnamedcommand("Rectangle"))
 def rectangle_motion(event):
     hovering = 8 <= event.x <= 52 and 193 <= event.y <= 237
     canvas.itemconfig(rectangle_sqaure, fill="#67442F" if hovering else "",  outline="#E28B45" if hovering else "")
     canvas.itemconfig(rectangle_icon,  image=rectangle_hover if hovering else rectangle_normal)
-canvas.bind("<Motion>", rectangle_motion, add="+")
+
 
 text_image = Image.open(getpath("Assets/text.png")).convert("RGBA")
 bounds = text_image.getbbox()
@@ -759,86 +998,150 @@ text_normal = ImageTk.PhotoImage(text_image)
 text_hover = ImageTk.PhotoImage(ImageEnhance.Brightness(text_image).enhance(0.6))
 text_square = canvas.create_rectangle(53, 193, 97, 237, fill="", outline="")
 text_icon = canvas.create_image(75, 215, image=text_normal)
+canvas.tag_bind(text_square, "<Button-1>", lambda event: runnamedcommand("Text"))
+canvas.tag_bind(text_icon, "<Button-1>", lambda event: runnamedcommand("Text"))
+extrabox = canvas.create_rectangle(8, 248, 92, 284, fill='#242b23', outline='', width=2)
+extratext = canvas.create_text(50, 266, text="Extra", font=("Iceland", 14), fill="#F5E8D2")
+def extraenter(event):
+    canvas.itemconfig(extrabox, fill="#67442f", outline="#E28B45")
+    canvas.itemconfig(extratext, fill='#F0AA60')
+def extraleave(event):
+    canvas.itemconfig(extrabox, fill="#242b23", outline="")
+    canvas.itemconfig(extratext, fill='#F5E8D2')
+for item in (extrabox, extratext):
+    canvas.tag_bind(item, "<Enter>", extraenter)
+    canvas.tag_bind(item, "<Leave>", extraleave)
+
+def bindtoolhover(left, top, right, bottom, box, icon, normal, hover):
+    canvas.itemconfig(box, fill="#242B23", outline="")
+    def update():
+        mouse_x = canvas.winfo_pointerx() - canvas.winfo_rootx()
+        mouse_y = canvas.winfo_pointery() - canvas.winfo_rooty()
+        hovering = left <= mouse_x <= right and top <= mouse_y <= bottom
+        canvas.itemconfig(box, fill='#67442F' if hovering else "#242B23", outline="#E28B45" if hovering else "")
+        canvas.itemconfig(icon, image=hover if hovering else normal)
+    def enter(event):
+        canvas.itemconfig(box, fill="#67442F", outline="#E28B45")
+        canvas.itemconfig(icon, image=hover)
+        canvas.tag_raise(icon)
+    def leave(event):
+        app.after(10, update)
+    for item in (box, icon):
+        canvas.tag_bind(item, "<Enter>", enter)
+        canvas.tag_bind(item, "<Leave>", leave)
+bindtoolhover(8, 103, 52, 147, polyline_square, polyline_icon, polylinenormal, polyline_hover)
+bindtoolhover(53, 103, 97, 147, curve_square, curve_icon, curve_normal, curve_hover)
+bindtoolhover(8, 148, 52, 192, puzzle_square, puzzle_icon, puzzle_normal, puzzle_hover)
+bindtoolhover(53, 148, 97, 192, explode_square, explode_icon, explode_normal, explode_hover)
+bindtoolhover(8, 193, 52, 237, rectangle_sqaure, rectangle_icon, rectangle_normal, rectangle_hover)
+bindtoolhover(53, 193, 97, 237, text_square, text_icon, text_normal, text_hover)
+
+toolbarbuttons = [(8, 103, 52, 147, polyline_square, polyline_icon,
+     polylinenormal, polyline_hover), (53, 103, 97, 147, curve_square, curve_icon,
+     curve_normal, curve_hover), (8, 148, 52, 192, puzzle_square, puzzle_icon,
+     puzzle_normal, puzzle_hover),
+    (53, 148, 97, 192, explode_square, explode_icon,
+explode_normal, explode_hover), (8, 193, 52, 237, rectangle_sqaure, rectangle_icon, rectangle_normal, rectangle_hover), (53, 193, 97, 237, text_square, text_icon,text_normal, text_hover),]
+def toolbarhover(event):
+    overbutton = False
+    for left, top, right, bottom, box, icon, normal, hover in toolbarbuttons:
+        hovering = left <= event.x <= right and top <= event.y <= bottom
+        canvas.itemconfig(box, fill='#67442f' if hovering else "#242B23", outline="#E28B45" if hovering else "")
+        canvas.itemconfig(icon, image=hover if hovering else normal)
+        if hovering:
+            canvas.tag_raise(icon)
+            overbutton = True
+    canvas.configure(cursor='hand2' if overbutton else "")
+canvas.bind("<Motion>", toolbarhover, add="+")
 def text_motion(event):
     hovering = 53 <= event.x <= 97 and 193 <= event.y <= 237
     canvas.itemconfig(text_square, fill="#67442F" if hovering else "", outline="#E28B45" if hovering else "")
     canvas.itemconfig(text_icon, image=text_hover if hovering else text_normal)
-canvas.bind("<Motion>", text_motion, add="+")
 
-tooltips = [ (8, 103, 52, 147, "Polyline"), (53, 103, 97, 147, "Curve"), (8, 148, 52, 192, "Join"), (53, 148, 97, 192, "Explode"), (8, 193, 52, 237, "Rectangle"), (53, 193, 97, 237, "Text")]
+
+tooltips = [(8, 103, 52, 147, "Polyline"), (53, 103, 97, 147, "Curve"), (8, 148, 52, 192, "Join"), (53, 148, 97, 192, "Explode"), (8, 193, 52, 237, "Rectangle"), (53, 193, 97, 237, "Text")]
+
 tooltip_job = None
-tooltip_target = None
-def show_tooltip(name, top):
-    global tooltip_job
+tooltiptarget = None
+tooltipwindow = None
+def showtooltip(name, top):
+    global tooltip_job, tooltipwindow
     tooltip_job = None
-    background = canvas.create_rectangle(0, 0, 0, 0, fill="#34291F", outline="#E28B45", tags="tooltip")
-    label = canvas.create_text(111, top+22, text=name, anchor='w', fill='white', font=("Iceland", 11), tags='tooltip')
-    x1, y1, x2, y2 = canvas.bbox(label)
-    canvas.coords(background, x1-7, y1-5, x2+7, y2+5)
-    canvas.tag_raise('tooltip')
-def hide_tooltip(event=None):
-    global tooltip_job, tooltip_target
+    tooltipwindow = ctk.CTkToplevel(app)
+    tooltipwindow.overrideredirect(True)
+    tooltipwindow.attributes("-topmost", True)
+    tooltipwindow.configure(fg_color = "#34291f")
+    label = ctk.CTkLabel(tooltipwindow, text=name, font=("Iceland", 14), text_color="#F5E8D2", fg_color="#34291f", corner_radius=5)
+    label.pack(ipadx=9, ipady=5)
+    tooltipwindow.update_idletasks()
+    x = canvas.winfo_rootx() + 108
+    y = canvas.winfo_rooty() + top +10
+    tooltipwindow.geometry(f'+{x}+{y}')
+    tooltipwindow.lift()
+def hidetooltip(event=None):
+    global tooltip_job, tooltiptarget, tooltipwindow
     if tooltip_job is not None:
         app.after_cancel(tooltip_job)
         tooltip_job = None
-    tooltip_target = None
-    canvas.delete("tooltip")
+    if tooltipwindow is not None:
+        tooltipwindow.destroy()
+        tooltipwindow = None
+    tooltiptarget = None
 def tooltipmotion(event):
-    global tooltip_job, tooltip_target
-    target = next(((name, top) for left, top, right, bottom, name in tooltips if left <= event.x <= right and top <= event.y <= bottom), None)
-    if target == tooltip_target:
+    global tooltip_job, tooltiptarget
+    target = next(((name, top) for left, top, right, bottom, name in tooltips if left <= event.x <= right and top <= event.y <=bottom), None)
+    if target == tooltiptarget:
         return
-    hide_tooltip()
-    tooltip_target = target
+    hidetooltip()
+    tooltiptarget = target
     if target is not None:
-        tooltip_job = app.after(650, lambda: show_tooltip(*target))
+        tooltip_job = app.after(650, lambda current=target: showtooltip(*current))
 canvas.bind("<Motion>", tooltipmotion, add="+")
-canvas.bind("<Leave>", hide_tooltip)
+canvas.bind("<Leave>", hidetooltip, add="+")
 
-
-gridsnaptext = canvas.create_text(50, 270, text="Grid Snap", font=("Iceland", 13), fill='#F5E8D2', anchor='center')
+gridsnaptext = canvas.create_text(50, 315, text="Grid Snap", font=("Iceland", 13), fill='#F5E8D2', anchor='center')
 gridsnapon = False
 def showgridsnap(hovering=False):
     color = "#F0AA60" if gridsnapon else "#E28B45" if hovering else "#f5e8d2"
     canvas.itemconfig(gridsnaptext, fill=color)
 def gridsnapmotion(event):
-    hovering = 8 <= event.x <= 92 and 252 <= event.y <= 288
+    hovering = 8 <= event.x <= 92 and 297 <= event.y <= 333
     showgridsnap(hovering)
 def gridsnapclick(event):
     global gridsnapon
-    if 8 <= event.x <= 92 and 252 <= event.y <= 288:
+    if 8 <= event.x <= 92 and 297 <= event.y <= 333:
         gridsnapon = not gridsnapon
         showgridsnap(True)
 canvas.bind("<Motion>", gridsnapmotion, add="+")
 canvas.bind("<Button-1>", gridsnapclick, add="+")
 canvas.bind("<Leave>", lambda event: showgridsnap(False), add="+")
 
-orthotext = canvas.create_text(50, 310, text='Ortho', font=("Iceland", 13), fill='#F5E8D2', anchor='center')
+orthotext = canvas.create_text(50, 355, text='Ortho', font=("Iceland", 13), fill='#F5E8D2', anchor='center')
 orthoon = False
 def showortho(hovering=False):
     color = "#f0aa60" if orthoon else "#e28b45" if hovering else "#F5E8d2"
     canvas.itemconfig(orthotext, fill=color)
 def orthomotion(event):
-    showortho(8 <= event.x <= 92 and 292 <= event.y <= 328)
+    showortho(8 <= event.x <= 92 and 337 <= event.y <= 373)
 def orthoclick(event):
     global orthoon
-    if 8 <= event.x <= 92 and 292 <= event.y <= 328:
+    if 8 <= event.x <= 92 and 337 <= event.y <= 373:
         orthoon = not orthoon
         showortho(True)
 canvas.bind("<Motion>", orthomotion, add="+")
 canvas.bind("<Button-1>", orthoclick, add="+")
 canvas.bind("<Leave>", lambda event: showortho(False), add="+")
 
-osnaptext = canvas.create_text(50, 350, text='Osnap', font=("Iceland", 13), fill='#F5E8d2', anchor='center')
+osnaptext = canvas.create_text(50, 395, text='Osnap', font=("Iceland", 13), fill='#F5E8d2', anchor='center')
 onsapon = False
 def showosnap(hovering=False):
     color = "#F0AA60" if onsapon else "#e28b45" if hovering else "#F5E8D2"
     canvas.itemconfig(osnaptext, fill=color)
 def onsapmotion(event):
-    showosnap(8 <= event.x <= 92 and 332 <= event.y <= 368)
+    showosnap(8 <= 8 <= event.x <= 92 and 377 <= event.y <= 413)
 def osnapclick(event):
     global onsapon
-    if 8 <= event.x <= 92 and 332 <= event.y <=368:
+    if 8 <= event.x <= 92 and 377 <= event.y <= 413:
         onsapon = not onsapon
         showosnap(True)
         refreshosnap()
@@ -846,14 +1149,14 @@ canvas.bind("<Motion>", onsapmotion, add="+")
 canvas.bind("<Button-1>", osnapclick, add="+")
 canvas.bind("<Leave>", lambda event: showosnap(False), add="+")
 
-canvas.create_line(0, 377, 100, 377, fill='#70543B', width=2)
-canvas.create_line(0, 247, 100, 247, fill='#70543b', width=2)
-canvas.create_line(0, 465, 100, 465, fill='#70543b', width=2)
-canvas.create_text(50, 400, text="Layers", font=("Iceland", 15), fill='#F5E8D2', anchor='center')
-layername = canvas.create_text(60, 440, text='Default', font=("Iceland", 11), fill='#F5E8D2', anchor='center')
+canvas.create_line(0, 292, 100, 292, fill="#70543B", width=2)
+canvas.create_line(0, 422, 100, 422, fill="#70543B", width=2)
+canvas.create_line(0, 510, 100, 510, fill="#70543B", width=2)
+canvas.create_text(50, 445, text="Layers", font=("Iceland", 15), fill="#F5E8D2", anchor="center")
+layername = canvas.create_text(60, 485, text="Default", font=("Iceland", 11), fill="#F5E8D2", anchor="center")
 
 layer_color = "#000000"
-layer_swatch = canvas.create_rectangle(17, 432, 33, 448, fill=layer_color, outline="#70543b", width=1)
+layer_swatch = canvas.create_rectangle(17, 477, 33, 493, fill=layer_color, outline="#70543B", width=1)
 def swatch_enter(event):
     canvas.itemconfig(layer_swatch, outline="#E28B45", width=2)
 def swatch_leave(event):
@@ -885,12 +1188,12 @@ def toggle_layer_menu(event):
     if layermenu.winfo_manager():
         layermenu.place_forget()
     else:
-        menu_y = 452 if app.winfo_height() >= 590 else 298
+        menu_y = 497 if app.winfo_height() >= 635 else 298
         layermenu.place(x=8, y=menu_y)
 def close_layer_outside(event):
     if event.widget == layermenu:
         return
-    if event.widget == canvas and 17 <= event.x <= 33 and 432 <= event.y <= 448:
+    if event.widget == canvas and 17 <= event.x <= 33 and 477 <= event.y <= 493:
         return
     layermenu.place_forget()
 canvas.tag_bind(layer_swatch, "<Enter>", swatch_enter)
@@ -901,7 +1204,7 @@ layermenu.bind("<Button-1>", chooselayercolor)
 app.bind_all("<Button-1>", close_layer_outside, add="+")
 
 snapcanvas = Canvas(canvas, bg="#242B23", highlightthickness=0)
-snapwindow = canvas.create_window(0, 470, window=snapcanvas, anchor='nw', width=100, height=230)
+snapwindow = canvas.create_window( 0, 515, window=snapcanvas,  anchor="nw", width=100, height=230)
 snapheading = snapcanvas.create_text(50, 15, text='Osnap', fill='#F5E8D2', font=("Iceland", 14))
 snapenabled = {}
 snapitems = {}
@@ -961,10 +1264,93 @@ def slidemenu(menu, x, height, opening):
                 menu.place_forget()
     step(0)
 
+def opensaveascommand():
+    global activecommand
+    activecommand = None
+    command.delete(0, 'end')
+    command.configure(placeholder_text = "Command: ")
+    writehistory("> Save As\nChoose a format")
+    open_file_menu()
+    showfilepage("formats")
+def savepngcommand():
+    global activecommand
+    activecommand = None
+    command.delete(0, 'end')
+    command.configure(placeholder_text="Command: ")
+    writehistory("> PNG\nOpening PNG export")
+    saveviewportpng()
 
-
-
-app.after_idle(initialize_renderer)
+extraoverlay = Toplevel(app)
+extraoverlay.withdraw()
+extraoverlay.overrideredirect(True)
+extraoverlay.configure(bg="black")
+extraoverlay.attributes("-alpha", 0.55)
+extraoverlay.transient(app)
+extradialog = ctk.CTkToplevel(app)
+extradialog.withdraw()
+extradialog.overrideredirect(True)
+extradialog.configure(fg_color="#3B322A")
+extradialog.transient(app)
+extrapanel = ctk.CTkFrame(extradialog, fg_color="#3B322A",  border_color="#A66B3E", border_width=2, corner_radius=8)
+extrapanel.pack(fill="both", expand=True, padx=3, pady=3)
+extratitle = ctk.CTkLabel(extrapanel, text="Extra Tools", font=("Iceland", 24), text_color="#F5E8D2")
+extratitle.place(x=28, y=20)
+def positionextramenu(event=None):
+    if event is not None and event.widget is not app:
+        return
+    app.update_idletasks()
+    app_x = app.winfo_rootx()
+    app_y = app.winfo_rooty()
+    app_width = app.winfo_width()
+    app_height = app.winfo_height()
+    panel_width = min(720, app_width - 80)
+    panel_height = min(360, app_height - 80)
+    panel_x = app_x + (app_width - panel_width) // 2
+    panel_y = app_y + (app_height - panel_height) // 2
+    extraoverlay.geometry(f"{app_width}x{app_height}+{app_x}+{app_y}")
+    extradialog.geometry( f"{panel_width}x{panel_height}+{panel_x}+{panel_y}")
+def closeextramenu(event=None):
+    extradialog.withdraw()
+    extraoverlay.withdraw()
+def extratoolbutton(name, x, y):
+    button = Canvas( extrapanel,  width=112, height=44, bg="#3B322A",  highlightthickness=0, cursor="hand2")
+    background = button.create_rectangle(2, 2, 110, 42, fill="#242B23", outline="#67442F", width=2)
+    label = button.create_text(56, 22, text=name, fill="#F5E8D2", font=("Iceland", 15))
+    def enter(event):
+        button.itemconfig(background, fill="#67442F", outline="#E28B45")
+        button.itemconfig(label, fill="#F0AA60")
+    def leave(event):
+        button.itemconfig( background, fill="#242B23", outline="#67442F")
+        button.itemconfig(label, fill="#F5E8D2")
+    def clicked(event):
+        closeextramenu()
+        runnamedcommand(name)
+    button.bind("<Enter>", enter)
+    button.bind("<Leave>", leave)
+    button.bind("<Button-1>", clicked)
+    button.place(x=x, y=y)
+extratoolbutton("Circle", 30, 85)
+extratoolbutton("Fillet", 160, 85)
+extratoolbutton("Trim", 290, 85)
+closeextra = Canvas(extrapanel,  width=38, height=38,  bg="#3B322A", highlightthickness=0, cursor="hand2")
+closeextralabel = closeextra.create_text( 19, 19,  text="×", fill="#F5E8D2", font=("Iceland", 25))
+closeextra.place(relx=1, x=-52, y=14)
+closeextra.bind(  "<Enter>",lambda event: closeextra.itemconfig(closeextralabel, fill="#F0AA60"))
+closeextra.bind(  "<Leave>",lambda event: closeextra.itemconfig(closeextralabel, fill="#F5E8D2"))
+closeextra.bind("<Button-1>", closeextramenu)
+def openextramenu(event=None):
+    positionextramenu()
+    extraoverlay.deiconify()
+    extraoverlay.lift()
+    extradialog.deiconify()
+    extradialog.lift()
+    extradialog.focus_force()
+extraoverlay.bind("<Button-1>", closeextramenu)
+extradialog.bind("<Escape>", closeextramenu)
+app.bind("<Configure>", positionextramenu, add="+")
+for item in (extrabox, extratext):
+    canvas.tag_bind(item, "<Button-1>", openextramenu)
+app.after_idle(initialize_renderer)#
 app.mainloop()
 
 
