@@ -93,4 +93,4 @@ We brought the treasure theme into the app's visual design with chest-wood panel
 - Nihaal Mysore Bharath - Rust viewport and grid work
 
 ## DEMO
-<img width="1087" height="715" alt="image" src="https://github.com/user-attachments/assets/f5baa85c-80d2-49cc-b563-624c7bcad145" />
+<img width="1099" height="728" alt="image" src="https://github.com/user-attachments/assets/83f01f06-dffd-4aa2-ad75-efb1b0462f7f" />
