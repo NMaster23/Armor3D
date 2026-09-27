@@ -16,7 +16,11 @@ use winit::event::MouseButton;
 use winit::event_loop::ActiveEventLoop;
 use winit::keyboard::KeyCode;
 
-pub const SNAP_RADIUS: f32 = 0.05;
+const END_SNAP_RADIUS_PIXELS: f32 = 12.0;
+const NEAR_SNAP_RADIUS_PIXELS: f32 = 10.0;
+const POLYLINE_WIDTH_PIXELS: f32 = 1.5;
+const POLYLINE_HEIGHT: f32 = 0.002;
+const DEFAULT_POLYLINE_COLOR: [f32; 4] = [0.0, 0.0, 0.0, 1.0];
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -35,12 +39,12 @@ pub struct PolyLine {
 }
 
 pub struct ShapeUndoStore<T> {
-    current: Vec<Vec<T>>,
+    current: Vec<T>,
     undo: Vec<Vec<T>>,
     redo: Vec<Vec<T>>,
 }
 
-impl <T: Clone> ShapeUndoStore<T> {
+impl<T: Clone> ShapeUndoStore<T> {
     pub fn new(current: Vec<T>) -> Self {
         Self {
             current,
@@ -52,7 +56,7 @@ impl <T: Clone> ShapeUndoStore<T> {
         self.undo.push(self.current.clone());
         self.redo.clear();
     }
-    pub fn undo(&mut self) {
+    pub fn undo(&mut self) -> bool {
         if let Some(prev) = self.undo.pop() {
             let old = mem::replace(&mut self.current, prev);
             self.redo.push(old);
@@ -75,10 +79,15 @@ impl <T: Clone> ShapeUndoStore<T> {
 pub struct Viewport {
     pub entities: Vec<PolyLine>,
     pub active_polyline: Vec<Vector3<f32>>,
+    pub preview_point: Option<Vector3<f32>>,
     pub selected_entity: Option<usize>,
     pub osnap: bool,
+    pub end_snap_enabled: bool,
+    pub near_snap_enabled: bool,
     pub cursor_pos: PhysicalPosition<f64>,
     pub holding_left: bool,
+    pub polyline_active: bool,
+    pub polyline_color: [f32; 4],
     pub point_vertices: Vec<Vertex>,
     next_entity: usize,
     pub camera: Camera,
@@ -98,16 +107,21 @@ impl Viewport {
             fov_y: 45.0,
             z_near: 0.1,
             z_far: 100.0,
-            orthographic: true,
+            orthographic: false,
         };
         let camera_controller = CameraController::new(0.02);
         Self {
             entities: Vec::new(),
             active_polyline: Vec::new(),
+            preview_point: None,
             selected_entity: None,
             osnap: true,
+            end_snap_enabled: false,
+            near_snap_enabled: false,
             cursor_pos: PhysicalPosition::new(0.0, 0.0),
             holding_left: false,
+            polyline_active: false,
+            polyline_color: DEFAULT_POLYLINE_COLOR,
             point_vertices: Vec::new(),
             next_entity: 0,
             camera,
@@ -131,12 +145,10 @@ impl Viewport {
             self.rebuild_vertices();
         }
     }
-    pub fn edit_shape(point: cgmath::Vector3<f32>, color: [f32; 4]) -> Vec<Vertex> {
-
+    pub fn edit_shape(_point: cgmath::Vector3<f32>, _color: [f32; 4]) -> Vec<Vertex> {
+        Vec::new()
     }
-    pub fn store_shape(points: &[cgmath::Vector3<f32>], color: [f32; 4]) {
-        let mut vertices = Vec::new();
-        vertices.push(points);
+    pub fn store_shape(_points: &[cgmath::Vector3<f32>], _color: [f32; 4]) {
     }
     pub fn extrude(points: &[cgmath::Vector3<f32>], color: [f32; 4], height: f32) -> Vec<Vertex> {
         let mut vertices = Vec::new();
@@ -277,6 +289,98 @@ impl Viewport {
         self.rebuild_vertices();
         closest
     }
+
+    fn point_in_rect(point: cgmath::Vector2<f32>, min: cgmath::Vector2<f32>, max: cgmath::Vector2<f32>) -> bool {
+        point.x >= min.x && point.x <= max.x && point.y >= min.y && point.y <= max.y
+    }
+
+    fn segment_intersects_rect(
+        start: cgmath::Vector2<f32>,
+        end: cgmath::Vector2<f32>,
+        min: cgmath::Vector2<f32>,
+        max: cgmath::Vector2<f32>,
+    ) -> bool {
+        if Self::point_in_rect(start, min, max) || Self::point_in_rect(end, min, max) {
+            return true;
+        }
+
+        let delta = end - start;
+        let checks = [
+            (-delta.x, start.x - min.x),
+            (delta.x, max.x - start.x),
+            (-delta.y, start.y - min.y),
+            (delta.y, max.y - start.y),
+        ];
+        let mut enter: f32 = 0.0;
+        let mut leave: f32 = 1.0;
+        for (direction, distance) in checks {
+            if direction.abs() <= f32::EPSILON {
+                if distance < 0.0 {
+                    return false;
+                }
+                continue;
+            }
+            let ratio = distance / direction;
+            if direction < 0.0 {
+                enter = enter.max(ratio);
+            } else {
+                leave = leave.min(ratio);
+            }
+            if enter > leave {
+                return false;
+            }
+        }
+        true
+    }
+
+    pub fn select_box(&mut self, start_x: f32, start_y: f32, end_x: f32, end_y: f32) -> usize {
+        let min = cgmath::Vector2::new(start_x.min(end_x), start_y.min(end_y));
+        let max = cgmath::Vector2::new(start_x.max(end_x), start_y.max(end_y));
+        let window_selection = end_x >= start_x;
+        let mut selected_ids = Vec::new();
+
+        for entity in &self.entities {
+            let screen_vertices: Vec<cgmath::Vector2<f32>> = entity
+                .vertices
+                .iter()
+                .filter_map(|point| self.world_to_screen(*point))
+                .collect();
+            if screen_vertices.len() < 2 {
+                continue;
+            }
+
+            let selected = if window_selection {
+                screen_vertices
+                    .iter()
+                    .all(|point| Self::point_in_rect(*point, min, max))
+            } else {
+                screen_vertices.windows(2).any(|segment| {
+                    Self::segment_intersects_rect(segment[0], segment[1], min, max)
+                })
+            };
+            if selected {
+                selected_ids.push(entity.id);
+            }
+        }
+
+        for entity in &mut self.entities {
+            entity.selected = selected_ids.contains(&entity.id);
+        }
+        self.selected_entity = selected_ids.first().copied();
+        self.rebuild_vertices();
+        selected_ids.len()
+    }
+
+    pub fn delete_selected(&mut self) -> usize {
+        let previous_len = self.entities.len();
+        self.entities.retain(|entity| !entity.selected);
+        let deleted = previous_len - self.entities.len();
+        if deleted > 0 {
+            self.selected_entity = None;
+            self.rebuild_vertices();
+        }
+        deleted
+    }
     pub fn world_to_screen(&self, world_pos: cgmath::Vector3<f32>) -> Option<cgmath::Vector2<f32>> {
         let view_proj = self.camera.build_view_projection_matrix();
         let clip_pos = view_proj * cgmath::Vector4::new(world_pos.x, world_pos.y, world_pos.z, 1.0);
@@ -305,18 +409,37 @@ impl Viewport {
             } else {
                 entity.color
             };
-            if entity.vertices.len() >= 3 {
+            if entity.vertices.len() >= 3 && entity.height > 0.0 {
                 let fill_color = [draw_color[0], draw_color[1], draw_color[2], draw_color[3]];
-                if entity.height > 0.0 {
-                    let mesh_vertices = Self::extrude(&entity.vertices, fill_color, entity.height);
-                    new_vertices.extend_from_slice(&mesh_vertices);
-                } else {
-                    let fill_vertices = Self::tessellate_fill(&entity.vertices, fill_color);
-                    new_vertices.extend_from_slice(&fill_vertices);
-                }
+                let mesh_vertices = Self::extrude(&entity.vertices, fill_color, entity.height);
+                new_vertices.extend_from_slice(&mesh_vertices);
             }
             let entity_vertices = self.tessellate_polyline(&entity.vertices, entity.thickness, draw_color);
             new_vertices.extend_from_slice(&entity_vertices);
+        }
+        let mut preview_polyline = self.active_polyline.clone();
+        if let Some(preview_point) = self.preview_point {
+            let should_append = preview_polyline
+                .last()
+                .map(|last| (*last - preview_point).magnitude2() > f32::EPSILON)
+                .unwrap_or(false);
+            if should_append {
+                preview_polyline.push(preview_point);
+            }
+        }
+        if preview_polyline.len() == 1 {
+            let marker_size = self.world_width_for_pixels(POLYLINE_WIDTH_PIXELS * 3.0) * 0.5;
+            new_vertices.extend_from_slice(&Self::tessellate_ground_point(
+                preview_polyline[0],
+                marker_size,
+                self.polyline_color,
+            ));
+        } else if preview_polyline.len() > 1 {
+            new_vertices.extend(self.tessellate_polyline(
+                &preview_polyline,
+                POLYLINE_WIDTH_PIXELS,
+                self.polyline_color,
+            ));
         }
         self.point_vertices = new_vertices;
         self.redraw = true;
@@ -343,52 +466,106 @@ impl Viewport {
         if points.len() < 2 {
             return vertices;
         }
-        let half_w = thickness * 0.5;
-        for window in points.windows(2) {
-            let p1 = window[0];
-            let p2 = window[1];
-            let dir = (p2 - p1).normalize();
-            let normal = cgmath::Vector3::new(-dir.z, 0.0, dir.x) * half_w;
+        let closed = points.len() > 2
+            && (points[0] - points[points.len() - 1]).magnitude2() <= f32::EPSILON;
+        let point_count = if closed { points.len() - 1 } else { points.len() };
+        if point_count < 2 {
+            return vertices;
+        }
 
-            let v0 = p1 + normal;
-            let v1 = p1 - normal;
-            let v2 = p2 + normal;
-            let v3 = p2 - normal;
-            let quad = [
-                Vertex {
-                    position: [v0.x, v0.y, v0.z],
-                    coords: [0.0, 0.0, 0.0],
+        let half_width = self.world_width_for_pixels(thickness) * 0.5;
+        let lift = Vector3::new(0.0, POLYLINE_HEIGHT, 0.0);
+        let normal_for = |segment: Vector3<f32>| {
+            let flat = Vector3::new(segment.x, 0.0, segment.z);
+            if flat.magnitude2() <= f32::EPSILON {
+                None
+            } else {
+                let direction = flat.normalize();
+                Some(Vector3::new(-direction.z, 0.0, direction.x))
+            }
+        };
+
+        let mut edges = Vec::with_capacity(point_count);
+        for index in 0..point_count {
+            let current = points[index];
+            let previous = if index == 0 {
+                if closed { points[point_count - 1] } else { current }
+            } else {
+                points[index - 1]
+            };
+            let next = if index + 1 == point_count {
+                if closed { points[0] } else { current }
+            } else {
+                points[index + 1]
+            };
+
+            let previous_normal = normal_for(current - previous);
+            let next_normal = normal_for(next - current);
+            let offset = match (previous_normal, next_normal) {
+                (Some(previous_normal), Some(next_normal)) => {
+                    let combined = previous_normal + next_normal;
+                    if combined.magnitude2() <= f32::EPSILON {
+                        next_normal * half_width
+                    } else {
+                        let miter = combined.normalize();
+                        let denominator = miter.dot(next_normal).abs().max(0.25);
+                        miter * (half_width / denominator).min(half_width * 4.0)
+                    }
+                }
+                (Some(normal), None) | (None, Some(normal)) => normal * half_width,
+                (None, None) => Vector3::new(half_width, 0.0, 0.0),
+            };
+            edges.push((current + offset + lift, current - offset + lift));
+        }
+
+        let segment_count = if closed { point_count } else { point_count - 1 };
+        for index in 0..segment_count {
+            let next = (index + 1) % point_count;
+            let (left_start, right_start) = edges[index];
+            let (left_end, right_end) = edges[next];
+            for position in [
+                left_start,
+                right_start,
+                left_end,
+                left_end,
+                right_start,
+                right_end,
+            ] {
+                vertices.push(Vertex {
+                    position: position.into(),
+                    coords: [0.0; 3],
                     color,
-                },
-                Vertex {
-                    position: [v1.x, v1.y, v1.z],
-                    coords: [0.0, 0.0, 0.0],
-                    color,
-                },
-                Vertex {
-                    position: [v2.x, v2.y, v2.z],
-                    coords: [0.0, 0.0, 0.0],
-                    color,
-                },
-                Vertex {
-                    position: [v2.x, v2.y, v2.z],
-                    coords: [0.0, 0.0, 0.0],
-                    color,
-                },
-                Vertex {
-                    position: [v1.x, v1.y, v1.z],
-                    coords: [0.0, 0.0, 0.0],
-                    color,
-                },
-                Vertex {
-                    position: [v3.x, v3.y, v3.z],
-                    coords: [0.0, 0.0, 0.0],
-                    color,
-                },
-            ];
-            vertices.extend_from_slice(&quad);
+                });
+            }
         }
         vertices
+    }
+
+    fn world_width_for_pixels(&self, pixel_width: f32) -> f32 {
+        let camera_distance = (self.camera.eye - self.camera.target).magnitude().max(0.001);
+        let visible_height =
+            2.0 * camera_distance * (self.camera.fov_y.to_radians() * 0.5).tan();
+        pixel_width * visible_height / self.height.max(1) as f32
+    }
+
+    fn tessellate_ground_point(
+        point: Vector3<f32>,
+        half_size: f32,
+        color: [f32; 4],
+    ) -> [Vertex; 6] {
+        let y = point.y + POLYLINE_HEIGHT;
+        let p0 = [point.x - half_size, y, point.z - half_size];
+        let p1 = [point.x + half_size, y, point.z - half_size];
+        let p2 = [point.x - half_size, y, point.z + half_size];
+        let p3 = [point.x + half_size, y, point.z + half_size];
+        [
+            Vertex { position: p0, coords: [0.0; 3], color },
+            Vertex { position: p1, coords: [0.0; 3], color },
+            Vertex { position: p2, coords: [0.0; 3], color },
+            Vertex { position: p2, coords: [0.0; 3], color },
+            Vertex { position: p1, coords: [0.0; 3], color },
+            Vertex { position: p3, coords: [0.0; 3], color },
+        ]
     }
     pub fn add_polyline(&mut self, vertices: Vec<Vector3<f32>>, color: [f32; 4], thickness: f32) {
         let id = self.next_entity;
@@ -426,22 +603,133 @@ impl Viewport {
     pub fn clear(&mut self) {
         self.point_vertices.clear();
         self.active_polyline.clear();
+        self.preview_point = None;
         self.redraw = true;
     }
-    pub fn get_snap_pos(&mut self, point: Vector3<f32>) -> (Vector3<f32>, bool) {
-        if self.active_polyline.len() >= 3 {
-            if let Some(&start) = self.active_polyline.first() {
-                if (point - start).magnitude() <= SNAP_RADIUS {
-                    return (point, true);
+
+    pub fn start_polyline(&mut self) {
+        self.active_polyline.clear();
+        self.preview_point = None;
+        self.holding_left = false;
+        self.polyline_active = true;
+        self.rebuild_vertices();
+    }
+
+    pub fn finish_polyline(&mut self) {
+        self.holding_left = false;
+        self.polyline_active = false;
+        self.preview_point = None;
+        if self.active_polyline.len() >= 2 {
+            let points = mem::take(&mut self.active_polyline);
+            self.add_polyline(points, self.polyline_color, POLYLINE_WIDTH_PIXELS);
+        } else {
+            self.active_polyline.clear();
+        }
+        self.rebuild_vertices();
+    }
+
+    pub fn cancel_polyline(&mut self) {
+        self.holding_left = false;
+        self.polyline_active = false;
+        self.active_polyline.clear();
+        self.preview_point = None;
+        self.rebuild_vertices();
+    }
+    pub fn set_osnap_modes(&mut self, end_enabled: bool, near_enabled: bool) {
+        self.osnap = end_enabled || near_enabled;
+        self.end_snap_enabled = end_enabled;
+        self.near_snap_enabled = near_enabled;
+        if !self.osnap {
+            self.preview_point = None;
+            self.rebuild_vertices();
+        }
+    }
+
+    pub fn set_polyline_color(&mut self, red: f32, green: f32, blue: f32, alpha: f32) {
+        let color = [
+            red.clamp(0.0, 1.0),
+            green.clamp(0.0, 1.0),
+            blue.clamp(0.0, 1.0),
+            alpha.clamp(0.0, 1.0),
+        ];
+        self.polyline_color = color;
+        for entity in &mut self.entities {
+            if entity.selected {
+                entity.color = color;
+            }
+        }
+        self.rebuild_vertices();
+    }
+
+    pub fn get_snap_pos(
+        &self,
+        point: Vector3<f32>,
+    ) -> (Vector3<f32>, bool, Option<&'static str>) {
+        if !self.osnap {
+            return (point, false, None);
+        }
+
+        if self.end_snap_enabled {
+            let radius = self.world_width_for_pixels(END_SNAP_RADIUS_PIXELS);
+            let mut best_end: Option<(f32, Vector3<f32>, bool)> = None;
+            let mut consider_end = |candidate: Vector3<f32>, closes_active: bool| {
+                let distance = (point - candidate).magnitude();
+                if distance <= radius
+                    && best_end
+                        .as_ref()
+                        .map(|(best_distance, _, _)| distance < *best_distance)
+                        .unwrap_or(true)
+                {
+                    best_end = Some((distance, candidate, closes_active));
+                }
+            };
+
+            if self.active_polyline.len() >= 3 {
+                consider_end(self.active_polyline[0], true);
+            }
+            for entity in &self.entities {
+                if let Some(&first) = entity.vertices.first() {
+                    consider_end(first, false);
+                }
+                if let Some(&last) = entity.vertices.last() {
+                    consider_end(last, false);
                 }
             }
-        }
-        for &vertex in &self.active_polyline {
-            if (point - vertex).magnitude() <= SNAP_RADIUS {
-                return (point, false);
+            if let Some((_, position, closes)) = best_end {
+                return (position, closes, Some("End"));
             }
         }
-        (point, false)
+
+        if self.near_snap_enabled {
+            let radius = self.world_width_for_pixels(NEAR_SNAP_RADIUS_PIXELS);
+            let mut best_near: Option<(f32, Vector3<f32>)> = None;
+            for entity in &self.entities {
+                for segment in entity.vertices.windows(2) {
+                    let start = segment[0];
+                    let direction = segment[1] - start;
+                    let length_squared = direction.magnitude2();
+                    if length_squared <= f32::EPSILON {
+                        continue;
+                    }
+                    let amount = ((point - start).dot(direction) / length_squared).clamp(0.0, 1.0);
+                    let candidate = start + direction * amount;
+                    let distance = (point - candidate).magnitude();
+                    if distance <= radius
+                        && best_near
+                            .as_ref()
+                            .map(|(best_distance, _)| distance < *best_distance)
+                            .unwrap_or(true)
+                    {
+                        best_near = Some((distance, candidate));
+                    }
+                }
+            }
+            if let Some((_, position)) = best_near {
+                return (position, false, Some("Near"));
+            }
+        }
+
+        (point, false, None)
     }
     pub fn fetch_point(&mut self, mouse_pos: PhysicalPosition<f64>) -> Option<Vector3<f32>> {
         let (mouse_x, mouse_y) = (mouse_pos.x, mouse_pos.y);
@@ -485,7 +773,7 @@ impl Viewport {
                 self.add_point(hit_pos.expect("Error unwrapping hit_pos"));
             }
             MouseButton::Left => {
-                self.polyline(mouse_pos);
+                let _ = self.polyline(mouse_pos);
             }
             _ => {}
         }
@@ -532,30 +820,27 @@ impl Viewport {
         }
         self.vertice_append(&flat_vertices);
     }
-    pub fn polyline(&mut self, mouse_pos: PhysicalPosition<f64>) {
+    pub fn polyline(&mut self, mouse_pos: PhysicalPosition<f64>) -> bool {
         let hit_pos = match self.fetch_point(mouse_pos) {
             Some(hit_pos) => hit_pos,
-            None => return,
+            None => return false,
         };
-        let (snap_pos, shape_close) = if self.osnap {
-            self.get_snap_pos(hit_pos)
-        } else {
-            (hit_pos, false)
-        };
+        let (snap_pos, shape_close, _) = self.get_snap_pos(hit_pos);
         if shape_close {
             self.active_polyline.push(self.active_polyline[0]);
             let points = self.active_polyline.clone();
-            self.add_polyline(points, [0.4, 0.7, 0.4, 0.7], 0.05);
+            self.add_polyline(points, self.polyline_color, POLYLINE_WIDTH_PIXELS);
             self.active_polyline.clear();
+            self.preview_point = None;
+            self.polyline_active = false;
+            self.holding_left = false;
             self.rebuild_vertices();
+            true
         } else {
             self.active_polyline.push(snap_pos);
-            if self.active_polyline.len() > 1 {
-                let last = self.active_polyline[self.active_polyline.len() - 2];
-                self.add_line(last, snap_pos, 0.008);
-            } else {
-                self.add_point(snap_pos);
-            }
+            self.preview_point = None;
+            self.rebuild_vertices();
+            false
         }
     }
     pub fn add_line(&mut self, point1: Vector3<f32>, point2: Vector3<f32>, step_size: f32) {
@@ -617,18 +902,27 @@ impl Viewport {
         self.redraw = true;
     }
 
-    pub fn mouse_move(&mut self, x: f64, y: f64) {
+    pub fn mouse_move(&mut self, x: f64, y: f64) -> Option<String> {
         self.cursor_pos = PhysicalPosition::new(x, y);
-        if self.holding_left {
-            self.drawing(self.cursor_pos, MouseButton::Left, true);
+        if !self.polyline_active {
+            return None;
         }
+
+        let point = self.fetch_point(self.cursor_pos)?;
+        let (position, _, snap_kind) = self.get_snap_pos(point);
+        if !self.active_polyline.is_empty() {
+            self.preview_point = Some(position);
+            self.rebuild_vertices();
+        }
+        snap_kind.map(str::to_owned)
     }
 
-    pub fn mouse_button(&mut self, pressed: bool) {
+    pub fn mouse_button(&mut self, pressed: bool) -> bool {
         self.holding_left = pressed;
-        if pressed {
-            self.drawing(self.cursor_pos, MouseButton::Left, true);
+        if pressed && self.polyline_active {
+            return self.polyline(self.cursor_pos);
         }
+        false
     }
 
     pub fn handle_key(&mut self, event_loop: &ActiveEventLoop, code: KeyCode, is_pressed: bool) {
@@ -639,4 +933,3 @@ impl Viewport {
             .handle_key(&mut self.camera, code, is_pressed);
     }
 }
-

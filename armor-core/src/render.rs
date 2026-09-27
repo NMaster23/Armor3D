@@ -502,6 +502,7 @@ impl State {
             self.viewport.width = width;
             self.viewport.height = height;
             self.viewport.camera.aspect = width as f32 / height as f32;
+            self.viewport.rebuild_vertices();
             self.surface.configure(&self.device, &self.config);
             self.is_surface_configured = true;
         }
