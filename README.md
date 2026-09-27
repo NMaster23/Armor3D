@@ -84,6 +84,7 @@ We didn't have time to implement the week 2 theme, however, we will find a way t
 - Nihaal Mysore Bharath - Rust viewport and grid work
 
 ## DEMO
-<img width="1097" height="734" alt="Screenshot 2026-09-20 201748" src="https://github.com/user-attachments/assets/cb7e91e4-4478-4a00-b9bb-7285fbdbad4e" />
+<img width="1087" height="715" alt="image" src="https://github.com/user-attachments/assets/f5baa85c-80d2-49cc-b563-624c7bcad145" />
+
 
 
