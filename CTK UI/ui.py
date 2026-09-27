@@ -867,6 +867,76 @@ def roundedrectangle(canvas, x1, y1, x2, y2, radius, **options):
 sendbutton = Canvas(sidebar, width=44, height=40, bg="#3b322a", highlightthickness=0, cursor='hand2')
 sendbox = roundedrectangle(sendbutton, 3, 2, 41, 38, radius=9, fill='#242b23', outline="#A66b3e", width=2)
 sendtext = sendbutton.create_text(22, 20, text="↑", fill="#F5E8d2", font=("Segoe UI Symbol", 18, "bold"))
+senddots = [sendbutton.create_oval( x - 2, 18, x + 2, 22, fill="#F0AA60", outline="",  state="hidden" ) for x in (15, 22, 29)]
+sendanimation = {"job": None, "frame": 0}
+def updatesendanimation():
+    if sendanimation["job"] is None:
+        return
+    wave = (0, -2, -4, -2, 0, 1)
+    for index, dot in enumerate(senddots):
+        x = (15, 22, 29)[index]
+        offset = wave[(sendanimation["frame"] + index * 2) % len(wave)]
+        sendbutton.coords( dot,  x - 2, 18 + offset, x + 2, 22 + offset)
+    sendanimation["frame"] += 1
+    sendanimation["job"] = app.after( 110,  updatesendanimation )
+def startsendanimation():
+    if sendanimation["job"] is not None:
+        return
+    sendanimation["frame"] = 0
+    sendbutton.itemconfig(sendtext, state="hidden")
+    for dot in senddots:
+        sendbutton.itemconfig(dot, state="normal")
+    sendanimation["job"] = app.after( 0, updatesendanimation)
+def stopsendanimation():
+    job = sendanimation["job"]
+    sendanimation["job"] = None
+    if job is not None:
+        app.after_cancel(job)
+    for dot in senddots:
+        sendbutton.itemconfig(dot, state="hidden")
+    sendbutton.itemconfig( sendtext, text="↑",  state="normal")
+aichat._textbox.tag_configure( "thinkingtext", foreground="#C5B29A", font=("Lexend", 11, "italic"), lmargin1=8)
+aichat._textbox.tag_configure("thinkingdots", foreground="#F0AA60", font=("Lexend", 12, "bold"))
+thinkinganimation = {"job": None,  "dots": 1}
+def updatethinkingdots():
+    if thinkinganimation["job"] is None:
+        return
+    thinkinganimation["dots"] = ( thinkinganimation["dots"] % 3 ) + 1
+    dots = "." * thinkinganimation["dots"]
+    aichat.configure(state="normal")
+    aichat._textbox.delete( "thinking_dots_start",  "thinking_dots_end"  )
+    aichat._textbox.insert( "thinking_dots_start", dots,  ("thinkingdots",))
+    aichat._textbox.mark_set( "thinking_dots_end", "end-1c")
+    aichat.configure(state="disabled")
+    thinkinganimation["job"] = app.after(350, updatethinkingdots )
+def startthinkingmessage():
+    thinkinganimation["dots"] = 1
+    aichat.configure(state="normal")
+    aichat.insert("end", "ARMOR AI\n", ("ailabel",))
+    aichat._textbox.mark_set("thinking_message_start",  "end-1c" )
+    aichat._textbox.mark_gravity( "thinking_message_start", "left"  )
+    aichat.insert("end", "Thinking", ("thinkingtext",))
+    aichat._textbox.mark_set("thinking_dots_start", "end-1c")
+    aichat._textbox.mark_gravity("thinking_dots_start", "left")
+    aichat.insert("end", ".", ("thinkingdots",))
+    aichat._textbox.mark_set( "thinking_dots_end", "end-1c")
+    aichat._textbox.mark_set( "thinking_message_end", "end-1c")
+    aichat.see("end")
+    aichat.configure(state="disabled")
+    thinkinganimation["job"] = app.after( 350, updatethinkingdots)
+def finishthinkingmessage(message, error=False):
+    job = thinkinganimation["job"]
+    thinkinganimation["job"] = None
+    if job is not None:
+        app.after_cancel(job)
+    aichat.configure(state="normal")
+    aichat._textbox.delete( "thinking_message_start", "thinking_message_end")
+    aichat._textbox.insert("thinking_message_start",  message.strip() + "\n", ("error" if error else "message",))
+    for mark in (
+        "thinking_message_start", "thinking_message_end", "thinking_dots_start", "thinking_dots_end"):
+        aichat._textbox.mark_unset(mark)
+    aichat.see("end")
+    aichat.configure(state="disabled")
 aichat._textbox.tag_configure("userlabel", foreground="#F0AA60", font=("Iceland", 13), spacing1=8)
 aichat._textbox.tag_configure("ailabel", foreground="#9db58f", font=("Iceland", 13), spacing1=8)
 aichat._textbox.tag_configure("message", foreground="#F5E8D2", font=("Lexend", 11), lmargin1=8, lmargin2=8, rmargin=8, spacing3=12)
@@ -1429,13 +1499,13 @@ def finishairesponse():
     except queue.Empty:
         app.after(50, finishairesponse)
         return
-    if response_type =='sucess':
-        addchatmessage("Armor AI", message)
+    if response_type == "success":
+        finishthinkingmessage(message)
     else:
-        addchatmessage("Error", message)
+        finishthinkingmessage(message, error=True)
     aibusy = False
-    ai_input.configure(state='normal')
-    sendbutton.itemconfig(sendtext, text="↑")
+    ai_input.configure(state="normal")
+    stopsendanimation()
     ai_input.focus_set()
 def sendai(event=None):
     global aibusy
@@ -1451,13 +1521,14 @@ def sendai(event=None):
     model = saveaimodel
     ai_input.delete(0, 'end')
     addchatmessage("You", message)
+    startthinkingmessage()
     aibusy = True
     ai_input.configure(state='disabled')
-    sendbutton.itemconfig(sendtext, text="…")
+    startsendanimation()
     def worker():
         try:
             response = sendmessage(message, api_key=api_key, model=model) 
-            airesults.put(("sucess", response))
+            airesults.put(("success", response))
         except HackAIError as error:
             airesults.put(("error", str(error)))
         except Exception as error:
