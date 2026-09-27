@@ -23,7 +23,7 @@ The rust side utilizes wgpu for closer system level access, but is harder to cod
 Week 2 - This release allows for the ability to draw different figures and shapes using the polyline feauture, but doesn't have all of the main features the actual Rhino includes; we need to add that in the next week.
 
 ## Download
-Downlaod the EXE from the latest release: (https://github.com/NMaster23/Armor3D/releases/tag/v1). After that is completed, ignore the Windows security feature, and then you're in the app!
+Downlaod the EXE from the latest release: (https://github.com/NMaster23/Armor3D/releases/tag/v2). After that is completed, ignore the Windows security feature, and then you're in the app!
 
 ## Run locally
 This version is specifically built for Windows.
