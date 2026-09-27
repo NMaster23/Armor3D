@@ -1,16 +1,14 @@
-use std::mem;
 use crate::Vertex;
-use crate::camera::{Camera, CameraController, OPENGL_TO_WGPU_MATRIX};
+use crate::camera::{Camera, CameraController};
 use cgmath::{
-    Deg, EuclideanSpace, InnerSpace, Matrix4, SquareMatrix, Vector3, Vector4, Zero, perspective,
+    InnerSpace, SquareMatrix, Vector3, Vector4, Zero,
 };
-use env_logger::Builder;
 use lyon::lyon_tessellation::{
     BuffersBuilder, FillOptions, FillTessellator, FillVertex, VertexBuffers,
 };
 use lyon::math::point;
 use lyon::path::Path;
-use wgpu::wgt::BufferDescriptor;
+use std::mem;
 use winit::dpi::PhysicalPosition;
 use winit::event::MouseButton;
 use winit::event_loop::ActiveEventLoop;
@@ -35,7 +33,7 @@ pub struct PolyLine {
 }
 
 pub struct ShapeUndoStore<T> {
-    current: Vec<Vec<T>>,
+    current: Vec<T>,
     undo: Vec<Vec<T>>,
     redo: Vec<Vec<T>>,
 }
@@ -52,7 +50,7 @@ impl <T: Clone> ShapeUndoStore<T> {
         self.undo.push(self.current.clone());
         self.redo.clear();
     }
-    pub fn undo(&mut self) {
+    pub fn undo(&mut self) -> bool {
         if let Some(prev) = self.undo.pop() {
             let old = mem::replace(&mut self.current, prev);
             self.redo.push(old);
@@ -73,6 +71,7 @@ impl <T: Clone> ShapeUndoStore<T> {
 }
 
 pub struct Viewport {
+    pub hist_entities: ShapeUndoStore<PolyLine>,
     pub entities: Vec<PolyLine>,
     pub active_polyline: Vec<Vector3<f32>>,
     pub selected_entity: Option<usize>,
@@ -86,6 +85,9 @@ pub struct Viewport {
     pub width: u32,
     pub height: u32,
     pub redraw: bool,
+    grab_mode: bool,
+    grab_origin: Option<Vector3<f32>>,
+    grab_snapshot: Vec<Vector3<f32>>,
 }
 
 impl Viewport {
@@ -102,6 +104,7 @@ impl Viewport {
         };
         let camera_controller = CameraController::new(0.02);
         Self {
+            hist_entities: ShapeUndoStore::new(Vec::new()),
             entities: Vec::new(),
             active_polyline: Vec::new(),
             selected_entity: None,
@@ -115,6 +118,9 @@ impl Viewport {
             width,
             height,
             redraw: true,
+            grab_mode: false,
+            grab_origin: None,
+            grab_snapshot: Vec::new(),
         }
     }
 }
@@ -132,11 +138,21 @@ impl Viewport {
         }
     }
     pub fn edit_shape(point: cgmath::Vector3<f32>, color: [f32; 4]) -> Vec<Vertex> {
-
+        Vec::new()
     }
-    pub fn store_shape(points: &[cgmath::Vector3<f32>], color: [f32; 4]) {
-        let mut vertices = Vec::new();
-        vertices.push(points);
+    pub fn store_shape(&mut self, points: &[cgmath::Vector3<f32>], color: [f32; 4]) {
+        self.hist_entities.save_undo();
+        let shape = PolyLine {
+            id: self.next_entity,
+            vertices: points.to_vec(),
+            color,
+            thickness: 1.0,
+            selected: false,
+            height: 0.0,
+        };
+        self.next_entity += 1;
+        self.hist_entities.current.push(shape);
+        self.redraw = true;
     }
     pub fn extrude(points: &[cgmath::Vector3<f32>], color: [f32; 4], height: f32) -> Vec<Vertex> {
         let mut vertices = Vec::new();
@@ -420,6 +436,16 @@ impl Viewport {
                 self.extrude_step(0.5);
                 true
             }
+            KeyCode::KeyG => {
+                if let Some(selected) = self.selected_entity {
+                    if let Some(entity) = self.entities.iter_mut().find(|e| e.id == selected) {
+                        self.grab_snapshot = entity.vertices.clone();
+                    }
+                    self.grab_origin = self.fetch_point(self.cursor_pos);
+                    self.grab_mode = true;
+                }
+                true
+            }
             _ => false,
         }
     }
@@ -621,6 +647,13 @@ impl Viewport {
         self.cursor_pos = PhysicalPosition::new(x, y);
         if self.holding_left {
             self.drawing(self.cursor_pos, MouseButton::Left, true);
+        } else if self.grab_mode {
+            let mouse_pos = self.fetch_point(self.cursor_pos);
+            let delta = mouse_pos.expect("Error unwrapping") - self.grab_origin.expect("Error unwrapping");
+            let preview_pos: Vec<_> = self.grab_snapshot.iter().map(|p| p + delta).collect();
+            self.rebuild_vertices();
+        } else {
+            return;
         }
     }
 
