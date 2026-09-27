@@ -857,15 +857,33 @@ sidebar.pack_propagate(False)
 prompt_label = ctk.CTkLabel(sidebar, text="", font=("Iceland", 35), width=300, height=82, justify='center')
 prompt_label.pack(pady=(24, 10))
 ai_input = ctk.CTkEntry( sidebar, placeholder_text="Start typing...", font=("Lexend", 12), fg_color="#3B322A", border_color="#E28B45",  text_color="#F5E8D2", placeholder_text_color="#C5B29A")
-ai_input.place(relx= 0.06, rely=1, y=-15, anchor='sw', relwidth=0.72)
 ai_input.configure(height=38)
 aichat = ctk.CTkTextbox(sidebar, font=("Lexend", 12), fg_color="#242B23", border_color="#67442F", border_width = 2, text_color="#F5E8D2", wrap='word')
 aichat.place(relx=0.06, y=115, relwidth=0.88, relheight=0.60)
 aichat.configure(state='disabled')
-sendbutton = Canvas(sidebar, width=76, height=38, bg="#3B322a", highlightthickness=0, cursor='hand2')
-sendbox = sendbutton.create_rectangle(2, 2, 74, 36, fill="#242B23", outline="#A66B3E", width=2)
-sendtext = sendbutton.create_text(38, 19, text='Send', fill="#F5E8D2", font=("Iceland", 16))
-sendbutton.place(relx=0.80, rely=1, x=5, y=-53)
+def roundedrectangle(canvas, x1, y1, x2, y2, radius, **options):
+    points = [ x1 + radius, y1, x2 - radius, y1,  x2, y1,  x2, y1 + radius, x2, y2 - radius,  x2, y2, x2 - radius, y2, x1 + radius, y2,x1, y2,  x1, y2 - radius, x1, y1 + radius, x1, y1]
+    return canvas.create_polygon(points, smooth=True, splinesteps=24, **options)
+sendbutton = Canvas(sidebar, width=44, height=40, bg="#3b322a", highlightthickness=0, cursor='hand2')
+sendbox = roundedrectangle(sendbutton, 3, 2, 41, 38, radius=9, fill='#242b23', outline="#A66b3e", width=2)
+sendtext = sendbutton.create_text(22, 20, text="↑", fill="#F5E8d2", font=("Segoe UI Symbol", 18, "bold"))
+aichat._textbox.tag_configure("userlabel", foreground="#F0AA60", font=("Iceland", 13), spacing1=8)
+aichat._textbox.tag_configure("ailabel", foreground="#9db58f", font=("Iceland", 13), spacing1=8)
+aichat._textbox.tag_configure("message", foreground="#F5E8D2", font=("Lexend", 11), lmargin1=8, lmargin2=8, rmargin=8, spacing3=12)
+aichat._textbox.tag_configure("error", foreground="#E28b45", font=("Lexend", 11), lmargin1=8, lmargin2=8, spacing3=12)
+def positionaicomposer(event=None):
+    width = sidebar.winfo_width()
+    if width <= 1:
+        return
+    margin = max(16, round(width * 0.06))
+    gap = 8
+    button_width= 44
+    entry_width = max(120, width-(margin*2) - gap -button_width)
+    ai_input.configure(width=entry_width)
+    ai_input.place(x=margin, rely=1, y=-15, anchor='sw')
+    sendbutton.place(x=margin + entry_width + gap, rely=1, y=-15, anchor='sw')
+sidebar.bind("<Configure>", positionaicomposer, add="+")
+app.after_idle(positionaicomposer)
 
 typingjob = None
 def start_typing():
@@ -1393,7 +1411,15 @@ airesults = queue.Queue()
 aibusy = False
 def addchatmessage(sender, message):
     aichat.configure(state='normal')
-    aichat.insert("end", f"{sender}: {message}\n\n")
+    if sender=='You':
+        aichat.insert('end', "YOU\n", ("userlabel",))
+        aichat.insert("end", message.strip() + "\n", ("message",))
+    elif sender == 'Armor AI':
+        aichat.insert("end", "ARMOR AI\n", ("ailabel",))
+        aichat.insert("end", message.strip() + "\n", ("message",))
+    else:
+        aichat.insert('end', "NOTICE\n", ("userlabel",))
+        aichat.insert('end', message.strip() + "\n", ("error",))
     aichat.see('end')
     aichat.configure(state='disabled')
 def finishairesponse():
@@ -1409,7 +1435,7 @@ def finishairesponse():
         addchatmessage("Error", message)
     aibusy = False
     ai_input.configure(state='normal')
-    sendbutton.itemconfig(sendtext, text='Send')
+    sendbutton.itemconfig(sendtext, text="↑")
     ai_input.focus_set()
 def sendai(event=None):
     global aibusy
@@ -1427,7 +1453,7 @@ def sendai(event=None):
     addchatmessage("You", message)
     aibusy = True
     ai_input.configure(state='disabled')
-    sendbutton.itemconfig(sendtext, text='...')
+    sendbutton.itemconfig(sendtext, text="…")
     def worker():
         try:
             response = sendmessage(message, api_key=api_key, model=model) 
@@ -1441,11 +1467,11 @@ def sendai(event=None):
     return 'break'
 def sendenter(event):
     if not aibusy:
-        sendbutton.itemconfig(sendbox, fill="#67442f")
-        sendbutton.itemconfig(sendtext, fill="#F0AA60")
+        sendbutton.itemconfig(sendbox, fill='#e28b45', outline="#f0aa60")
+        sendbutton.itemconfig(sendtext, fill="#242b23")
 def sendleave(event):
-    sendbutton.itemconfig(sendbox, fill="#242B23")
-    sendbutton.itemconfig(sendtext, fill="#F5e8d2")
+    sendbutton.itemconfig(sendbox, fill="#242b23", outline='#A66b3e')
+    sendbutton.itemconfig(sendtext, fill="#f5e8d2")
 sendbutton.bind("<Enter>", sendenter)
 sendbutton.bind("<Leave>", sendleave)
 sendbutton.bind("<Button-1>", sendai)

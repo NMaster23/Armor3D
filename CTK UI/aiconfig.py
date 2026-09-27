@@ -12,6 +12,14 @@ def sendmessage(message, api_key=None, model=DEFAULTMODEL):
         raise HackAIError("No HackAI API key is configured.")
     payload = {"model": model, "messages": [
         {
+            "role": 'system',
+            'content': (
+                "You are Armor AI, the assistance built into Armor3D."
+                "Give clear, concise answers, and prefer short paragraphs"
+                "and only provide detailed steps when requested."
+            )
+        },
+        {
             "role": 'user',
             'content': message
         }
