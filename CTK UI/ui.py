@@ -4,13 +4,56 @@ from tkinter import Canvas, Frame, filedialog, Toplevel, StringVar
 import sys
 import re
 import threading
+import json
 import queue
 from PIL import Image, ImageEnhance, ImageTk, ImageDraw, ImageGrab
-from aiconfig import sendmessage, HackAIError
+import aiconfig
+import inspect
+print("Loaded AI file:", aiconfig.__file__)
+print("Loaded signature:", inspect.signature(aiconfig.sendmessage))
 from pathlib import Path
 import os
 from armor_core import ViewportRenderer
 ctk.set_appearance_mode('dark')
+
+MEMORYPATH = (
+    Path(os.getenv("APPDATA", Path.home()))
+    / "Armor3D"
+    / "chat_memory.json")
+MAXMEMORYMESSAGES = 12
+def loadchatmemory():
+    if not MEMORYPATH.exists():
+        return []
+    try:
+        data = json.loads(MEMORYPATH.read_text(encoding="utf-8"))
+        if not isinstance(data, list):
+            return []
+        return [
+            {
+                "role": item["role"],
+                "content": str(item["content"])[:4000],
+            }
+            for item in data
+            if isinstance(item, dict)
+            and item.get("role") in ("user", "assistant")
+            and isinstance(item.get("content"), str)
+        ][-MAXMEMORYMESSAGES:]
+    except (OSError, json.JSONDecodeError):
+        return []
+def savechatmemory():
+    MEMORYPATH.parent.mkdir(parents=True, exist_ok=True)
+    temporary = MEMORYPATH.with_suffix(".tmp")
+    temporary.write_text(
+        json.dumps(chatmemory, indent=2),
+        encoding="utf-8",)
+    temporary.replace(MEMORYPATH)
+def rememberchatmessage(role, content):
+    global chatmemory
+    chatmemory.append({
+        "role": role,
+        "content": content[:4000]})
+    chatmemory = chatmemory[-MAXMEMORYMESSAGES:]
+    savechatmemory()
 
 def getenvpath():
     if getattr(sys, "frozen", False):
@@ -1488,6 +1531,7 @@ for item in (extrabox, extratext):
     canvas.tag_bind(item, "<Button-1>", openextramenu)
 
 savedapikey, saveaimodel = loadaisettings()
+chatmemory = loadchatmemory()
 airesults = queue.Queue()
 aibusy = False
 
@@ -1498,9 +1542,9 @@ def insertinline(text):
         aichat.insert('end', text[position:match.start()],("message",))
         token = match.group()
         if token.startswith("**"):
-            aichat.insert('end', token[2:-2], ("mdcode",))
-        elif token.startswith("`"):
             aichat.insert("end", token[2:-2], ("mdbold",))
+        elif token.startswith("`"):
+            aichat.insert("end", token[1:-1], ("mdcode",))
         else:
             aichat.insert('end', token[1:-1], ("mditalic",))
         position = match.end()
@@ -1544,6 +1588,11 @@ def addchatmessage(sender, message):
         aichat.insert('end', message.strip() + "\n", ("error",))
     aichat.see('end')
     aichat.configure(state='disabled')
+def restorechat():
+    for item in chatmemory:
+        sender = 'You' if item ['role'] == 'user' else "Armor AI"    
+        addchatmessage(sender, item['content'])
+app.after_idle(restorechat)
 def finishairesponse():
     global aibusy
     try:
@@ -1553,12 +1602,14 @@ def finishairesponse():
         return
     if response_type == "success":
         finishthinkingmessage(message)
+        rememberchatmessage("assistant", message)
     else:
         finishthinkingmessage(message, error=True)
     aibusy = False
     ai_input.configure(state="normal")
     stopsendanimation()
     ai_input.focus_set()
+
 def sendai(event=None):
     global aibusy
     if aibusy:
@@ -1571,6 +1622,8 @@ def sendai(event=None):
         return 'break'
     api_key = savedapikey
     model = saveaimodel
+    requesthistory = list(chatmemory)
+    rememberchatmessage("user", message)
     ai_input.delete(0, 'end')
     addchatmessage("You", message)
     startthinkingmessage()
@@ -1579,9 +1632,9 @@ def sendai(event=None):
     startsendanimation()
     def worker():
         try:
-            response = sendmessage(message, api_key=api_key, model=model) 
+            response = aiconfig.sendmessage(message, api_key=api_key, model=model, history=requesthistory)
             airesults.put(("success", response))
-        except HackAIError as error:
+        except aiconfig.HackAIError as error:
             airesults.put(("error", str(error)))
         except Exception as error:
             airesults.put(("error", f"Unexpected error: {error}"))
@@ -1599,7 +1652,9 @@ sendbutton.bind("<Enter>", sendenter)
 sendbutton.bind("<Leave>", sendleave)
 sendbutton.bind("<Button-1>", sendai)
 ai_input.bind("<Return>", sendai)
-
+import inspect
+print("Loaded AI file:", aiconfig.__file__)
+print("Loaded signature:", inspect.signature(aiconfig.sendmessage))
 settingshade  = Toplevel(app)
 settingshade.withdraw()
 settingshade.overrideredirect(True)
