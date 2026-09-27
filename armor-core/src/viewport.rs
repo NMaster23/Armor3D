@@ -1,3 +1,4 @@
+use std::mem;
 use crate::Vertex;
 use crate::camera::{Camera, CameraController, OPENGL_TO_WGPU_MATRIX};
 use cgmath::{
@@ -31,6 +32,44 @@ pub struct PolyLine {
     pub thickness: f32,
     pub selected: bool,
     pub height: f32,
+}
+
+pub struct ShapeUndoStore<T> {
+    current: Vec<Vec<T>>,
+    undo: Vec<Vec<T>>,
+    redo: Vec<Vec<T>>,
+}
+
+impl <T: Clone> ShapeUndoStore<T> {
+    pub fn new(current: Vec<T>) -> Self {
+        Self {
+            current,
+            undo: Vec::new(),
+            redo: Vec::new(),
+        }
+    }
+    pub fn save_undo(&mut self) {
+        self.undo.push(self.current.clone());
+        self.redo.clear();
+    }
+    pub fn undo(&mut self) {
+        if let Some(prev) = self.undo.pop() {
+            let old = mem::replace(&mut self.current, prev);
+            self.redo.push(old);
+            true
+        } else {
+            false
+        }
+    }
+    pub fn redo(&mut self) -> bool {
+        if let Some(next) = self.redo.pop() {
+            let old = mem::replace(&mut self.current, next);
+            self.undo.push(old);
+            true
+        } else {
+            false
+        }
+    }
 }
 
 pub struct Viewport {
@@ -91,6 +130,13 @@ impl Viewport {
             entity.height += step;
             self.rebuild_vertices();
         }
+    }
+    pub fn edit_shape(point: cgmath::Vector3<f32>, color: [f32; 4]) -> Vec<Vertex> {
+
+    }
+    pub fn store_shape(points: &[cgmath::Vector3<f32>], color: [f32; 4]) {
+        let mut vertices = Vec::new();
+        vertices.push(points);
     }
     pub fn extrude(points: &[cgmath::Vector3<f32>], color: [f32; 4], height: f32) -> Vec<Vertex> {
         let mut vertices = Vec::new();
