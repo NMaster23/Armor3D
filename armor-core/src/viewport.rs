@@ -16,9 +16,9 @@ use winit::keyboard::KeyCode;
 
 const END_SNAP_RADIUS_PIXELS: f32 = 12.0;
 const NEAR_SNAP_RADIUS_PIXELS: f32 = 10.0;
-const POLYLINE_WIDTH_PIXELS: f32 = 1.5;
+const POLYLINE_WIDTH_PIXELS: f32 = 2.5;
 const POLYLINE_HEIGHT: f32 = 0.002;
-const DEFAULT_POLYLINE_COLOR: [f32; 4] = [0.0, 0.0, 0.0, 1.0];
+const DEFAULT_POLYLINE_COLOR: [f32; 4] = [214.0 / 255.0, 166.0 / 255.0, 64.0 / 255.0, 1.0];
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -153,9 +153,9 @@ impl Viewport {
             self.rebuild_vertices();
         }
     }
-    pub fn edit_shape(_point: cgmath::Vector3<f32>, _color: [f32; 4]) -> Vec<Vertex> {
-        Vec::new()
-    }
+    // pub fn edit_shape(_point: cgmath::Vector3<f32>, _color: [f32; 4]) -> Vec<Vertex> {
+    //     Vec::new()
+    // }
     pub fn store_shape(&mut self, points: &[cgmath::Vector3<f32>], color: [f32; 4]) {
         self.hist_entities.save_undo();
         let shape = PolyLine {
@@ -169,8 +169,6 @@ impl Viewport {
         self.next_entity += 1;
         self.hist_entities.current.push(shape);
         self.redraw = true;
-    }
-
     }
     pub fn extrude(points: &[cgmath::Vector3<f32>], color: [f32; 4], height: f32) -> Vec<Vertex> {
         let mut vertices = Vec::new();
@@ -512,14 +510,12 @@ impl Viewport {
         self.redraw = true;
     }
     pub fn extrude_selected(&mut self, height: f32) {
-        if let Some(selected_id) = self.selected_entity {
-            if let Some(entity) = self.entities.iter_mut().find(|e| e.id == selected_id) {
-                entity.height = height;
-                self.rebuild_vertices();
-            }
-        }
-        if let Some(last_entity) = self.entities.last_mut() {
-            last_entity.height = height;
+        let entity = match self.selected_entity {
+            Some(selected_id) => self.entities.iter_mut().find(|entity| entity.id == selected_id),
+            None => self.entities.last_mut(),
+        };
+        if let Some(entity) = entity {
+            entity.height = height;
             self.rebuild_vertices();
         }
     }
@@ -647,6 +643,24 @@ impl Viewport {
         })
     }
     pub fn graph_handle_key(&mut self, code: KeyCode, is_pressed: bool) -> bool {
+        if code == KeyCode::KeyG {
+            if is_pressed {
+                if !self.grab_mode {
+                    if let Some(selected_id) = self.selected_entity {
+                        if let Some(entity) = self.entities.iter().find(|entity| entity.id == selected_id) {
+                            self.grab_snapshot = entity.vertices.clone();
+                            self.grab_origin = self.fetch_point(self.cursor_pos);
+                            self.grab_mode = self.grab_origin.is_some();
+                        }
+                    }
+                }
+            } else {
+                self.grab_mode = false;
+                self.grab_origin = None;
+                self.grab_snapshot.clear();
+            }
+            return true;
+        }
         if !is_pressed {
             return false;
         }
@@ -662,16 +676,6 @@ impl Viewport {
             }
             KeyCode::KeyE => {
                 self.extrude_step(0.5);
-                true
-            }
-            KeyCode::KeyG => {
-                if let Some(selected) = self.selected_entity {
-                    if let Some(entity) = self.entities.iter_mut().find(|e| e.id == selected) {
-                        self.grab_snapshot = entity.vertices.clone();
-                    }
-                    self.grab_origin = self.fetch_point(self.cursor_pos);
-                    self.grab_mode = true;
-                }
                 true
             }
             _ => false,
@@ -981,23 +985,24 @@ impl Viewport {
 
     pub fn mouse_move(&mut self, x: f64, y: f64) -> Option<String> {
         self.cursor_pos = PhysicalPosition::new(x, y);
+        if self.grab_mode {
+            let current = self.fetch_point(self.cursor_pos)?;
+            let origin = self.grab_origin?;
+            let offset = current - origin;
+            if let Some(selected_id) = self.selected_entity {
+                if let Some(entity) = self.entities.iter_mut().find(|entity| entity.id == selected_id) {
+                    entity.vertices = self
+                        .grab_snapshot
+                        .iter()
+                        .map(|point| *point + offset)
+                        .collect();
+                }
+            }
+            self.rebuild_vertices();
+            return None;
+        }
         if !self.polyline_active {
             return None;
-        }
-
-        if self.holding_left {
-            self.drawing(self.cursor_pos, MouseButton::Left, true);
-        } else if self.grab_mode {
-            let mouse_pos = self.fetch_point(self.cursor_pos);
-            let delta = mouse_pos.expect("Error unwrapping") - self.grab_origin.expect("Error unwrapping");
-            let preview_pos: Vec<_> = self.grab_snapshot.iter().map(|p| p + delta).collect();
-            self.rebuild_vertices();
-        } else {
-            return None;
-        }
-
-        let point = self.fetch_point(self.cursor_pos)?;
-
         }
 
         let point = self.fetch_point(self.cursor_pos)?;
@@ -1023,5 +1028,81 @@ impl Viewport {
         }
         self.camera_controller
             .handle_key(&mut self.camera, code, is_pressed);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn shape(id: usize, vertices: Vec<Vector3<f32>>) -> PolyLine {
+        PolyLine {
+            id,
+            vertices,
+            color: [1.0; 4],
+            thickness: 1.0,
+            selected: false,
+            height: 0.0,
+        }
+    }
+
+    #[test]
+    fn grab_key_moves_selected_shape_until_released() {
+        let mut viewport = Viewport::new(800, 600);
+        let original = vec![
+            Vector3::new(-0.5, 0.0, 0.0),
+            Vector3::new(0.5, 0.0, 0.0),
+        ];
+        viewport.entities.push(shape(7, original.clone()));
+        viewport.selected_entity = Some(7);
+        viewport.cursor_pos = PhysicalPosition::new(400.0, 300.0);
+
+        assert!(viewport.graph_handle_key(KeyCode::KeyG, true));
+        assert!(viewport.grab_mode);
+        viewport.mouse_move(450.0, 300.0);
+
+        let moved = &viewport.entities[0].vertices;
+        let offset = moved[0] - original[0];
+        assert!(offset.magnitude() > 0.0);
+        assert!(((moved[1] - original[1]) - offset).magnitude() < 0.00001);
+
+        assert!(viewport.graph_handle_key(KeyCode::KeyG, false));
+        let stopped = viewport.entities[0].vertices.clone();
+        viewport.mouse_move(500.0, 300.0);
+        assert_eq!(viewport.entities[0].vertices, stopped);
+    }
+
+    #[test]
+    fn extrude_selected_does_not_change_unselected_shapes() {
+        let mut viewport = Viewport::new(800, 600);
+        viewport.entities = vec![
+            shape(1, vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(1.0, 0.0, 0.0)]),
+            shape(2, vec![Vector3::new(2.0, 0.0, 0.0), Vector3::new(3.0, 0.0, 0.0)]),
+        ];
+        viewport.selected_entity = Some(1);
+
+        viewport.extrude_selected(2.0);
+
+        assert_eq!(viewport.entities[0].height, 2.0);
+        assert_eq!(viewport.entities[1].height, 0.0);
+    }
+
+    #[test]
+    fn mouse_move_previews_end_snap_without_clicking() {
+        let mut viewport = Viewport::new(800, 600);
+        viewport.entities.push(shape(
+            1,
+            vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.0, 0.0)],
+        ));
+        viewport.active_polyline.push(Vector3::new(-0.5, 0.0, 0.0));
+        viewport.polyline_active = true;
+        viewport.osnap = true;
+        viewport.end_snap_enabled = true;
+
+        let snap_kind = viewport.mouse_move(400.0, 300.0);
+
+        assert_eq!(snap_kind.as_deref(), Some("End"));
+        assert!(viewport.preview_point.unwrap().magnitude() < 0.00001);
+        assert_eq!(viewport.active_polyline.len(), 1);
     }
 }

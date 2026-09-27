@@ -35,9 +35,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let pos = select(in.world_pos.xy, in.world_pos.xz, abs(in.world_pos.y) < 0.001);
     let main_grid = calculate_grid(pos, 1.0);
     let sub_grid = calculate_grid(pos, 10.0);
-    let bg_color = vec4<f32>(0.05, 0.07, 0.1, 0.3);
-    let sub_color = vec4<f32>(0.2, 0.4, 0.7, 0.25);
-    let main_color = vec4<f32>(0.4, 0.7, 1.0, 0.7);
+    let bg_color = vec4<f32>(0.08, 0.06, 0.035, 0.3);
+    let sub_color = vec4<f32>(0.45, 0.31, 0.12, 0.35);
+    let main_color = vec4<f32>(0.83, 0.62, 0.23, 0.7);
     var color = mix(bg_color, sub_color, sub_grid);
     color = mix(color, main_color, main_grid);
     let axis_width = fwidth(pos) * 1.5;

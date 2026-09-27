@@ -60,18 +60,25 @@ Use the path to your own `python.exe` if it differs. After the wheel is installe
 - `Assets/` - Fonts and toolbar images
 - `Armor3D.spec` - Windows executable packaging
 
+## Rust Core and Viewport
+The viewport and 3D handling is implemented in Rust through the use of the WGPU crate in rust. The Rust renderer is passed to the frontend using a python extension through PyO3 and was compiled via maturin.
+The Rust side provides the grid for both 2D and 3D. It also provides the camera, drawing through polyline and it's preview, tessellation, end and near object snapping, selection, and moving shapes. Python then forwards viewport input and manages the surrounding controls. Some of the more complex CAD tools are still incomplete, but are nearly done.
+
 ## Next Steps
 ### Week 2
 - Add curves
 - Fully implement AI control
 - Add grid snap featrues
 - Add advanced export features
+- Add Polyline Selection
+- Add Polyline
+- Add Edit Mode
 
 ## Week 1 theme
-We've followed this week's "harvest" theme by basing our main UI around it, using colors such as orange and green. 
+Week 1 used a harvest-inspired palette of orange and green.
 
-## Week 2 theme
-We didn't have time to implement the week 2 theme, however, we will find a way to integrate it next week.
+## Week 2 theme: Treasure
+We brought the treasure theme into the app's visual design with chest-wood panels, a dark workspace, antique-gold highlights, and parchment-colored text. The viewport grid and default drawing color now use gold tones, while layer swatches represent gold, emerald, copper, and ivory. We treated treasure as discovery and valuable craft: the workspace is where users uncover, shape, and refine their designs. These theme changes keep the existing CAD tools and controls intact.
 
 ## Where AI assistance has been used
 - Creating some of the UI animations
@@ -87,6 +94,3 @@ We didn't have time to implement the week 2 theme, however, we will find a way t
 
 ## DEMO
 <img width="1087" height="715" alt="image" src="https://github.com/user-attachments/assets/f5baa85c-80d2-49cc-b563-624c7bcad145" />
-
-
-
