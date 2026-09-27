@@ -1,13 +1,14 @@
 mod camera;
 mod render;
+mod viewport;
 
 use crate::render::State;
 use std::sync::Arc;
 use winit::application::ApplicationHandler;
 use winit::dpi::PhysicalPosition;
-use winit::event::{ElementState, KeyEvent, MouseButton, MouseScrollDelta, WindowEvent};
+use winit::event::{ElementState, KeyEvent, MouseButton, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, EventLoop};
-use winit::keyboard::{KeyCode, PhysicalKey};
+use winit::keyboard::{PhysicalKey};
 use winit::window::Window;
 use cgmath::InnerSpace;
 
@@ -22,7 +23,7 @@ pub struct Vertex {
 impl Vertex {
     pub fn desc() -> wgpu::VertexBufferLayout<'static> {
         wgpu::VertexBufferLayout {
-            array_stride: std::mem::size_of::<Vertex>() as wgpu::BufferAddress,
+            array_stride: size_of::<Vertex>() as wgpu::BufferAddress,
             step_mode: wgpu::VertexStepMode::Vertex,
             attributes: &[
                 wgpu::VertexAttribute {
@@ -31,12 +32,12 @@ impl Vertex {
                     format: wgpu::VertexFormat::Float32x3,
                 },
                 wgpu::VertexAttribute {
-                    offset: std::mem::size_of::<[f32; 3]>() as wgpu::BufferAddress,
+                    offset: size_of::<[f32; 3]>() as wgpu::BufferAddress,
                     shader_location: 1,
                     format: wgpu::VertexFormat::Float32x3,
                 },
                 wgpu::VertexAttribute {
-                    offset: (std::mem::size_of::<[f32; 3]>() * 2) as wgpu::BufferAddress, // Offset 24
+                    offset: (size_of::<[f32; 3]>() * 2) as wgpu::BufferAddress,
                     shader_location: 2,
                     format: wgpu::VertexFormat::Float32x4,
                 },
@@ -232,7 +233,7 @@ impl ApplicationHandler<State> for App {
                 ..
             } => {
                 let handled = state.camera_controller.handle_key(
-                    &mut state.camera,
+                    &mut state.viewport.camera,
                     code,
                     key_state.is_pressed(),
                 );
@@ -243,12 +244,11 @@ impl ApplicationHandler<State> for App {
                 }
             },
             WindowEvent::MouseWheel {
-                device_id,
+                device_id: _device_id,
                 delta,
-                phase,
+                phase: _phase,
             } => {
-                state
-                    .camera_controller
+                let _ = &mut state.viewport.camera_controller
                     .handle_scroll(&mut state.camera, &delta);
                 if let Some(window) = &state.window {
                     window.request_redraw();
@@ -257,7 +257,7 @@ impl ApplicationHandler<State> for App {
             WindowEvent::CursorMoved { position, .. } => {
                 self.cursor_pos = position;
                 if self.holding_left {
-                    state.drawing(
+                    state.viewport.drawing(
                         self.cursor_pos,
                         MouseButton::Left,
                         true,
@@ -265,18 +265,21 @@ impl ApplicationHandler<State> for App {
                 }
             }
             WindowEvent::MouseInput { state: mouse_state, button, .. } => {
+                if button == MouseButton::Left {
+                    self.holding_left = mouse_state == ElementState::Pressed;
+                }
                 if let Some(state) = self.state.as_mut() {
                     if mouse_state == ElementState::Pressed {
                         match button {
                             MouseButton::Middle => {
                                 let mouse_px = cgmath::Vector2::new(self.cursor_pos.x as f32, self.cursor_pos.y as f32);
-                                state.select_shape(mouse_px, 10.0);
+                                state.viewport.select_shape(mouse_px, 10.0);
                             }
                             MouseButton::Left => {
                                 let cursor = cgmath::vec2(self.cursor_pos.x as f32, self.cursor_pos.y as f32);
                                 for (idx, entity) in state.entities.iter().enumerate() {
                                     for vertex in &entity.vertices {
-                                        if let Some(screen_pos) = state.world_to_screen(*vertex) {
+                                        if let Some(screen_pos) = state.viewport.world_to_screen(*vertex) {
                                             let dist = (screen_pos - cursor).magnitude();
                                             if dist < 50.0 {
                                                 println!("Debug, Clicked near: {}, Dist: {dist:.1}px", idx);
@@ -284,11 +287,14 @@ impl ApplicationHandler<State> for App {
                                         }
                                     }
                                 }
-                                state.drawing(
+                                state.viewport.drawing(
                                     self.cursor_pos,
                                     button,
                                     mouse_state == ElementState::Pressed,
                                 );
+                                if let Some(window) = &state.window {
+                                    window.request_redraw();
+                                }
                             }
                             _ => {}
                         }
