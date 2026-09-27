@@ -143,6 +143,18 @@ impl ViewportRenderer {
         self.state.viewport.delete_selected()
     }
 
+    fn begin_move_selected(&mut self, x: f32, y: f32) -> bool {
+        self.state.viewport.begin_move_selected(x, y)
+    }
+
+    fn move_selected(&mut self, x: f32, y: f32) -> bool {
+        self.state.viewport.move_selected(x, y)
+    }
+
+    fn end_move_selected(&mut self) {
+        self.state.viewport.end_move_selected();
+    }
+
     fn start_polyline(&mut self) {
         self.state.viewport.start_polyline();
     }

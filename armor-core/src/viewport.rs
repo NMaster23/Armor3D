@@ -88,6 +88,7 @@ pub struct Viewport {
     pub holding_left: bool,
     pub polyline_active: bool,
     pub polyline_color: [f32; 4],
+    move_anchor: Option<Vector3<f32>>,
     pub point_vertices: Vec<Vertex>,
     next_entity: usize,
     pub camera: Camera,
@@ -122,6 +123,7 @@ impl Viewport {
             holding_left: false,
             polyline_active: false,
             polyline_color: DEFAULT_POLYLINE_COLOR,
+            move_anchor: None,
             point_vertices: Vec::new(),
             next_entity: 0,
             camera,
@@ -380,6 +382,51 @@ impl Viewport {
             self.rebuild_vertices();
         }
         deleted
+    }
+
+    pub fn begin_move_selected(&mut self, x: f32, y: f32) -> bool {
+        let mouse = cgmath::Vector2::new(x, y);
+        let threshold_sq = 8.0 * 8.0;
+        let hit_selected = self.entities.iter().filter(|entity| entity.selected).any(|entity| {
+            let screen_vertices: Vec<cgmath::Vector2<f32>> = entity
+                .vertices
+                .iter()
+                .filter_map(|point| self.world_to_screen(*point))
+                .collect();
+            screen_vertices.windows(2).any(|segment| {
+                Self::dist_to_segment(mouse, segment[0], segment[1]) <= threshold_sq
+            })
+        });
+        if !hit_selected {
+            self.move_anchor = None;
+            return false;
+        }
+        self.move_anchor = self.fetch_point(PhysicalPosition::new(x as f64, y as f64));
+        self.move_anchor.is_some()
+    }
+
+    pub fn move_selected(&mut self, x: f32, y: f32) -> bool {
+        let Some(anchor) = self.move_anchor else {
+            return false;
+        };
+        let Some(current) = self.fetch_point(PhysicalPosition::new(x as f64, y as f64)) else {
+            return false;
+        };
+        let offset = current - anchor;
+        for entity in &mut self.entities {
+            if entity.selected {
+                for vertex in &mut entity.vertices {
+                    *vertex += offset;
+                }
+            }
+        }
+        self.move_anchor = Some(current);
+        self.rebuild_vertices();
+        true
+    }
+
+    pub fn end_move_selected(&mut self) {
+        self.move_anchor = None;
     }
     pub fn world_to_screen(&self, world_pos: cgmath::Vector3<f32>) -> Option<cgmath::Vector2<f32>> {
         let view_proj = self.camera.build_view_projection_matrix();

@@ -152,6 +152,7 @@ except Exception:
     pass
 left_drag_start = None
 left_dragged = False
+moving_selection = False
 def hide_selection_box():
     selection_fill.withdraw()
     for line in selection_lines:
@@ -181,19 +182,28 @@ def show_selection_box(start_x, start_y, end_x, end_y):
         line.place(x=x, y=y, width=line_width, height=line_height)
         line.lift()
 def viewport_mouse_down(event):
-    global left_drag_start, left_dragged
+    global left_drag_start, left_dragged, moving_selection
     hidesnapindicator()
     viewport.focus_set()
     if activecommand is None:
-        left_drag_start = (event.x, event.y)
-        left_dragged = False
         hide_selection_box()
+        moving_selection = renderer is not None and renderer.begin_move_selected(event.x, event.y)
+        if moving_selection:
+            left_drag_start = None
+            viewport.configure(cursor="fleur")
+        else:
+            left_drag_start = (event.x, event.y)
+            left_dragged = False
     elif renderer is not None:
         closed_polyline = renderer.mouse_button(True)
         if closed_polyline and activecommand == "polyline":
             closecompletedpolyline()
 def viewport_left_drag(event):
     global left_dragged
+    if moving_selection:
+        if renderer is not None:
+            renderer.move_selected(event.x, event.y)
+        return
     if activecommand is not None or left_drag_start is None:
         return
     dx = event.x-left_drag_start[0]
@@ -203,8 +213,13 @@ def viewport_left_drag(event):
     left_dragged = True
     show_selection_box(left_drag_start[0], left_drag_start[1], event.x, event.y)
 def viewport_mouse_up(event):
-    global left_drag_start, left_dragged
+    global left_drag_start, left_dragged, moving_selection
     if renderer is None:
+        return
+    if moving_selection:
+        renderer.end_move_selected()
+        moving_selection = False
+        viewport.configure(cursor="arrow")
         return
     if activecommand is not None:
         renderer.mouse_button(False)
