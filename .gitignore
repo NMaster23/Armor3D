@@ -9,3 +9,6 @@ armor-core/target/debug/deps/armor_core.pdb
 /dist/
 __pycache__/
 *.pyc
+.env
+.env.*
+!.env.example

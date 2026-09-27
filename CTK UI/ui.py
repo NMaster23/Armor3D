@@ -2,11 +2,35 @@ import customtkinter as ctk
 from ctypes import windll
 from tkinter import Canvas, Frame, filedialog, Toplevel, StringVar
 import sys
+import threading
+import queue
 from PIL import Image, ImageEnhance, ImageTk, ImageDraw, ImageGrab
+from aiconfig import sendmessage, HackAIError
 from pathlib import Path
 import os
 from armor_core import ViewportRenderer
 ctk.set_appearance_mode('dark')
+
+def getenvpath():
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent / ".env"
+    return Path(__file__).resolve().parent.parent / ".env"
+ENVPATH = getenvpath()
+def loadaisettings():
+    values = {}
+    if ENVPATH.exists():
+        for line in ENVPATH.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            values[key.strip()] = value.strip().strip('"').strip("'")
+    return (values.get("OPENAI_API_KEY", ""), values.get("ARMOR3D_AI_MODEL", "gpt-5.5"))
+def saveaisettingsfile(api_key, model):
+    api_key = api_key.replace("\n", "").strip()
+    model = model.replace("\n", "").strip()
+    ENVPATH.write_text( f"OPENAI_API_KEY={api_key}\n" f"ARMOR3D_AI_MODEL={model}\n", encoding="utf-8")
+
 def getpath(relativepath):
     try:
         basepath = sys._MEIPASS
@@ -833,8 +857,104 @@ sidebar.pack_propagate(False)
 prompt_label = ctk.CTkLabel(sidebar, text="", font=("Iceland", 35), width=300, height=82, justify='center')
 prompt_label.pack(pady=(24, 10))
 ai_input = ctk.CTkEntry( sidebar, placeholder_text="Start typing...", font=("Lexend", 12), fg_color="#3B322A", border_color="#E28B45",  text_color="#F5E8D2", placeholder_text_color="#C5B29A")
-ai_input.place(relx=0.5, rely=1, y=-15, anchor="s", relwidth=0.8)
 ai_input.configure(height=38)
+aichat = ctk.CTkTextbox(sidebar, font=("Lexend", 12), fg_color="#242B23", border_color="#67442F", border_width = 2, text_color="#F5E8D2", wrap='word')
+aichat.place(relx=0.06, y=115, relwidth=0.88, relheight=0.60)
+aichat.configure(state='disabled')
+def roundedrectangle(canvas, x1, y1, x2, y2, radius, **options):
+    points = [ x1 + radius, y1, x2 - radius, y1,  x2, y1,  x2, y1 + radius, x2, y2 - radius,  x2, y2, x2 - radius, y2, x1 + radius, y2,x1, y2,  x1, y2 - radius, x1, y1 + radius, x1, y1]
+    return canvas.create_polygon(points, smooth=True, splinesteps=24, **options)
+sendbutton = Canvas(sidebar, width=44, height=40, bg="#3b322a", highlightthickness=0, cursor='hand2')
+sendbox = roundedrectangle(sendbutton, 3, 2, 41, 38, radius=9, fill='#242b23', outline="#A66b3e", width=2)
+sendtext = sendbutton.create_text(22, 20, text="↑", fill="#F5E8d2", font=("Segoe UI Symbol", 18, "bold"))
+senddots = [sendbutton.create_oval( x - 2, 18, x + 2, 22, fill="#F0AA60", outline="",  state="hidden" ) for x in (15, 22, 29)]
+sendanimation = {"job": None, "frame": 0}
+def updatesendanimation():
+    if sendanimation["job"] is None:
+        return
+    wave = (0, -2, -4, -2, 0, 1)
+    for index, dot in enumerate(senddots):
+        x = (15, 22, 29)[index]
+        offset = wave[(sendanimation["frame"] + index * 2) % len(wave)]
+        sendbutton.coords( dot,  x - 2, 18 + offset, x + 2, 22 + offset)
+    sendanimation["frame"] += 1
+    sendanimation["job"] = app.after( 110,  updatesendanimation )
+def startsendanimation():
+    if sendanimation["job"] is not None:
+        return
+    sendanimation["frame"] = 0
+    sendbutton.itemconfig(sendtext, state="hidden")
+    for dot in senddots:
+        sendbutton.itemconfig(dot, state="normal")
+    sendanimation["job"] = app.after( 0, updatesendanimation)
+def stopsendanimation():
+    job = sendanimation["job"]
+    sendanimation["job"] = None
+    if job is not None:
+        app.after_cancel(job)
+    for dot in senddots:
+        sendbutton.itemconfig(dot, state="hidden")
+    sendbutton.itemconfig( sendtext, text="↑",  state="normal")
+aichat._textbox.tag_configure( "thinkingtext", foreground="#C5B29A", font=("Lexend", 11, "italic"), lmargin1=8)
+aichat._textbox.tag_configure("thinkingdots", foreground="#F0AA60", font=("Lexend", 12, "bold"))
+thinkinganimation = {"job": None,  "dots": 1}
+def updatethinkingdots():
+    if thinkinganimation["job"] is None:
+        return
+    thinkinganimation["dots"] = ( thinkinganimation["dots"] % 3 ) + 1
+    dots = "." * thinkinganimation["dots"]
+    aichat.configure(state="normal")
+    aichat._textbox.delete( "thinking_dots_start",  "thinking_dots_end"  )
+    aichat._textbox.insert( "thinking_dots_start", dots,  ("thinkingdots",))
+    aichat._textbox.mark_set( "thinking_dots_end", "end-1c")
+    aichat.configure(state="disabled")
+    thinkinganimation["job"] = app.after(350, updatethinkingdots )
+def startthinkingmessage():
+    thinkinganimation["dots"] = 1
+    aichat.configure(state="normal")
+    aichat.insert("end", "ARMOR AI\n", ("ailabel",))
+    aichat._textbox.mark_set("thinking_message_start",  "end-1c" )
+    aichat._textbox.mark_gravity( "thinking_message_start", "left"  )
+    aichat.insert("end", "Thinking", ("thinkingtext",))
+    aichat._textbox.mark_set("thinking_dots_start", "end-1c")
+    aichat._textbox.mark_gravity("thinking_dots_start", "left")
+    aichat.insert("end", ".", ("thinkingdots",))
+    aichat._textbox.mark_set( "thinking_dots_end", "end-1c")
+    aichat._textbox.mark_set( "thinking_message_end", "end-1c")
+    aichat.see("end")
+    aichat.configure(state="disabled")
+    thinkinganimation["job"] = app.after( 350, updatethinkingdots)
+def finishthinkingmessage(message, error=False):
+    job = thinkinganimation["job"]
+    thinkinganimation["job"] = None
+    if job is not None:
+        app.after_cancel(job)
+    aichat.configure(state="normal")
+    aichat._textbox.delete( "thinking_message_start", "thinking_message_end")
+    aichat._textbox.insert("thinking_message_start",  message.strip() + "\n", ("error" if error else "message",))
+    for mark in (
+        "thinking_message_start", "thinking_message_end", "thinking_dots_start", "thinking_dots_end"):
+        aichat._textbox.mark_unset(mark)
+    aichat.see("end")
+    aichat.configure(state="disabled")
+aichat._textbox.tag_configure("userlabel", foreground="#F0AA60", font=("Iceland", 13), spacing1=8)
+aichat._textbox.tag_configure("ailabel", foreground="#9db58f", font=("Iceland", 13), spacing1=8)
+aichat._textbox.tag_configure("message", foreground="#F5E8D2", font=("Lexend", 11), lmargin1=8, lmargin2=8, rmargin=8, spacing3=12)
+aichat._textbox.tag_configure("error", foreground="#E28b45", font=("Lexend", 11), lmargin1=8, lmargin2=8, spacing3=12)
+def positionaicomposer(event=None):
+    width = sidebar.winfo_width()
+    if width <= 1:
+        return
+    margin = max(16, round(width * 0.06))
+    gap = 8
+    button_width= 44
+    entry_width = max(120, width-(margin*2) - gap -button_width)
+    ai_input.configure(width=entry_width)
+    ai_input.place(x=margin, rely=1, y=-15, anchor='sw')
+    sendbutton.place(x=margin + entry_width + gap, rely=1, y=-15, anchor='sw')
+sidebar.bind("<Configure>", positionaicomposer, add="+")
+app.after_idle(positionaicomposer)
+
 typingjob = None
 def start_typing():
     global typingjob
@@ -903,6 +1023,11 @@ def drag_sidebar(event):
     update_shadow(window_width, canvas.winfo_height(), 16)
     resize_cmd_boxes(window_width)
 resize_handle.bind("<B1-Motion>", drag_sidebar)
+settingsbutton = Canvas(sidebar, width=32, height=34, bg="#3B322A", highlightthickness=0, cursor='hand2')
+settingsicon = settingsbutton.create_text(17, 17, text="⚙", fill="#f5E8D2", font=("Segoe UI Symbol", 18))
+settingsbutton.place(relx=1, x=-48, y=12)
+settingsbutton.bind("<Enter>", lambda event: settingsbutton.itemconfig(settingsicon, fill="#F0AA60"))
+settingsbutton.bind("<Leave>", lambda event: settingsbutton.itemconfig(settingsicon, fill="#F5E8D2"))
 
 icon = Image.open(getpath("Assets/polylinez.png")).convert("RGBA")
 bounds = icon.getbbox()
@@ -1350,7 +1475,149 @@ extradialog.bind("<Escape>", closeextramenu)
 app.bind("<Configure>", positionextramenu, add="+")
 for item in (extrabox, extratext):
     canvas.tag_bind(item, "<Button-1>", openextramenu)
-app.after_idle(initialize_renderer)#
+
+savedapikey, saveaimodel = loadaisettings()
+airesults = queue.Queue()
+aibusy = False
+def addchatmessage(sender, message):
+    aichat.configure(state='normal')
+    if sender=='You':
+        aichat.insert('end', "YOU\n", ("userlabel",))
+        aichat.insert("end", message.strip() + "\n", ("message",))
+    elif sender == 'Armor AI':
+        aichat.insert("end", "ARMOR AI\n", ("ailabel",))
+        aichat.insert("end", message.strip() + "\n", ("message",))
+    else:
+        aichat.insert('end', "NOTICE\n", ("userlabel",))
+        aichat.insert('end', message.strip() + "\n", ("error",))
+    aichat.see('end')
+    aichat.configure(state='disabled')
+def finishairesponse():
+    global aibusy
+    try:
+        response_type, message = airesults.get_nowait()
+    except queue.Empty:
+        app.after(50, finishairesponse)
+        return
+    if response_type == "success":
+        finishthinkingmessage(message)
+    else:
+        finishthinkingmessage(message, error=True)
+    aibusy = False
+    ai_input.configure(state="normal")
+    stopsendanimation()
+    ai_input.focus_set()
+def sendai(event=None):
+    global aibusy
+    if aibusy:
+        return 'break'
+    message = ai_input.get().strip()
+    if not message:
+        return 'break'
+    if not savedapikey:
+        addchatmessage("Error", "Add an API key in AI Settings first.")
+        return 'break'
+    api_key = savedapikey
+    model = saveaimodel
+    ai_input.delete(0, 'end')
+    addchatmessage("You", message)
+    startthinkingmessage()
+    aibusy = True
+    ai_input.configure(state='disabled')
+    startsendanimation()
+    def worker():
+        try:
+            response = sendmessage(message, api_key=api_key, model=model) 
+            airesults.put(("success", response))
+        except HackAIError as error:
+            airesults.put(("error", str(error)))
+        except Exception as error:
+            airesults.put(("error", f"Unexpected error: {error}"))
+    threading.Thread(target=worker, daemon=True).start()
+    app.after(50, finishairesponse)
+    return 'break'
+def sendenter(event):
+    if not aibusy:
+        sendbutton.itemconfig(sendbox, fill='#e28b45', outline="#f0aa60")
+        sendbutton.itemconfig(sendtext, fill="#242b23")
+def sendleave(event):
+    sendbutton.itemconfig(sendbox, fill="#242b23", outline='#A66b3e')
+    sendbutton.itemconfig(sendtext, fill="#f5e8d2")
+sendbutton.bind("<Enter>", sendenter)
+sendbutton.bind("<Leave>", sendleave)
+sendbutton.bind("<Button-1>", sendai)
+ai_input.bind("<Return>", sendai)
+
+settingshade  = Toplevel(app)
+settingshade.withdraw()
+settingshade.overrideredirect(True)
+settingshade.configure(bg='black')
+settingshade.attributes("-alpha", 0.55)
+settingsdialog = ctk.CTkToplevel(app)
+settingsdialog.withdraw()
+settingsdialog.overrideredirect(True)
+settingsdialog.configure(fg_color="#3B322A")
+settingspanel = ctk.CTkFrame(settingsdialog, fg_color="#3B322A", border_color="#A66B3E", border_width=2, corner_radius=8)
+settingspanel.pack(fill='both', expand=True, padx=3, pady=3)
+ctk.CTkLabel(settingspanel, text='AI Settings', font=("Iceland", 26), text_color="#F5E8D2").place(x=25, y=20)
+ctk.CTkLabel(settingspanel, text='API key', font=("Lexend", 12), text_color="#F5E8D2").place(x=25, y=80)
+apikeyentry= ctk.CTkEntry(settingspanel, width=460,height=36, show='*', placeholder_text="Enter API key", font=("Lexend", 12), fg_color="#242B23", border_color="#67442F")
+apikeyentry.place(x=25, y=105)
+ctk.CTkLabel(settingspanel, text="Model", font=("Lexend", 12), text_color="#F5E8D2").place(x=25, y=160)
+modelmenu = ctk.CTkOptionMenu(settingspanel, width=220, height=36, values=["openai/gpt-4o-mini"], font=("Lexend", 12), fg_color="#67442f", button_color="#a66b3e", button_hover_color="#E28b45", dropdown_fg_color="#3b322a")
+modelmenu.set("gpt-4o-mini")
+modelmenu.place(x=25, y=185)
+def positionsettings(event=None):
+    if event is not None and event.widget is not app:
+        return
+    x=app.winfo_rootx()
+    y=app.winfo_rooty()
+    width= app.winfo_width()
+    height = app.winfo_height()
+    settingshade.geometry(f"{width}x{height}+{x}+{y}")
+    settingsdialog.geometry(f"520x280+{x+ (width -520)//2}+{y+(height-280)//2}")
+def closesettings(event=None):
+    settingsdialog.withdraw()
+    settingshade.withdraw()
+def savesettings():
+    global savedapikey, saveaimodel
+    savedapikey = apikeyentry.get().strip()
+    saveaimodel = modelmenu.get()
+    saveaisettingsfile(savedapikey, saveaimodel)
+    closesettings()
+def opensettings(event=None):
+    positionsettings()
+    apikeyentry.delete(0, 'end')
+    apikeyentry.insert(0, savedapikey)
+    modelmenu.set(saveaimodel)
+    settingshade.deiconify()
+    settingshade.lift()
+    settingsdialog.deiconify()
+    settingsdialog.lift()
+    apikeyentry.focus_set()
+settingsave=Canvas(settingspanel, width=100, height=38, bg="#3B322a", highlightthickness=0, cursor='hand2')
+settingsavebox = settingsave.create_rectangle(2, 2, 98, 36, fill="#242B23", outline="#A66B3E", width=2)
+settingsavetext =settingsave.create_text(50, 19, text='Save', fill='#F5E8D2', font=("Iceland", 17))
+settingsave.bind("<Enter>", lambda event: (settingsave.itemconfig(settingsavebox, fill='#67442f'), settingsave.itemconfig(settingsavetext, fill="#F0AA60")))
+settingsave.bind("<Leave>", lambda event: (settingsave.itemconfig(settingsavebox, fill='#242823'), settingsave.itemconfig(settingsavetext, fill='#f5e8d2')))
+settingsave.bind("<Button-1>", lambda event :savesettings())
+settingsave.place(relx=1, x=-125, y=220)
+
+settingsclose= Canvas(settingspanel, width=36, height=36, bg="#3B322A", highlightthickness=0, cursor='hand2')
+settingsclosetext = settingsclose.create_text(18, 18, text='×', fill='#F5E8d2',font=("Iceland", 24) )
+settingsclose.bind("<Enter>", lambda event: settingsclose.itemconfig(settingsclosetext, fill="#f0AA60"))
+settingsclose.bind("<Leave>", lambda event: settingsclose.itemconfig(settingsclosetext, fill="#F5E8D2"))
+settingsclose.bind("<Button-1>", closesettings)
+settingsclose.place(relx=1, x=-50, y=14)
+settingsbutton.bind("<Button-1>", opensettings)
+settingshade.bind("<Button-1>", closesettings)
+settingsdialog.bind("<Escape>", closesettings)
+app.bind("<Configure>", positionsettings, add="+")
+
+
+
+
+app.after_idle(initialize_renderer)
 app.mainloop()
 
 
