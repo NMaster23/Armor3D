@@ -3,7 +3,7 @@ import os
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 API_URL = "https://ai.hackclub.com/proxy/v1/chat/completions"
-DEFAULTMODEL = "openai/gpt-4o-mini"
+DEFAULTMODEL = "openai/gpt-6-sol-pro"
 class HackAIError(RuntimeError):
     pass
 def sendmessage(message, api_key=None, model=DEFAULTMODEL):

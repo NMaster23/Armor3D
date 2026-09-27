@@ -2,6 +2,7 @@ import customtkinter as ctk
 from ctypes import windll
 from tkinter import Canvas, Frame, filedialog, Toplevel, StringVar
 import sys
+import re
 import threading
 import queue
 from PIL import Image, ImageEnhance, ImageTk, ImageDraw, ImageGrab
@@ -931,7 +932,10 @@ def finishthinkingmessage(message, error=False):
         app.after_cancel(job)
     aichat.configure(state="normal")
     aichat._textbox.delete( "thinking_message_start", "thinking_message_end")
-    aichat._textbox.insert("thinking_message_start",  message.strip() + "\n", ("error" if error else "message",))
+    if error:
+        aichat.insert("end", message.strip() + "\n",  ("error",))
+    else:
+        insertmarkdown(message)
     for mark in (
         "thinking_message_start", "thinking_message_end", "thinking_dots_start", "thinking_dots_end"):
         aichat._textbox.mark_unset(mark)
@@ -941,6 +945,13 @@ aichat._textbox.tag_configure("userlabel", foreground="#F0AA60", font=("Iceland"
 aichat._textbox.tag_configure("ailabel", foreground="#9db58f", font=("Iceland", 13), spacing1=8)
 aichat._textbox.tag_configure("message", foreground="#F5E8D2", font=("Lexend", 11), lmargin1=8, lmargin2=8, rmargin=8, spacing3=12)
 aichat._textbox.tag_configure("error", foreground="#E28b45", font=("Lexend", 11), lmargin1=8, lmargin2=8, spacing3=12)
+
+aichat._textbox.tag_configure('mdbold', foreground="#F5e8d2", font=("Lexend", 11, 'bold'))
+aichat._textbox.tag_configure('mditalic', foreground="#f5e8d2", font=("Lexend", 11, 'italic'))
+aichat._textbox.tag_configure('mdheading', foreground="#f0aa60", font=("Iceland", 16))
+aichat._textbox.tag_configure('mdcode', foreground="#9db58f", background='#1b201b', font=("Consolas", 10))
+aichat._textbox.tag_configure('mdcodeblock', foreground="#9db58f", background='#1b201b', font=("Consolas", 10), lmargin1=12, lmargin2=12, rmargin=12)
+
 def positionaicomposer(event=None):
     width = sidebar.winfo_width()
     if width <= 1:
@@ -1479,6 +1490,47 @@ for item in (extrabox, extratext):
 savedapikey, saveaimodel = loadaisettings()
 airesults = queue.Queue()
 aibusy = False
+
+def insertinline(text):
+    pattern = re.compile(r"(\*\*.+?\*\*|`.+?`|\*[^*\n]+?\*)")
+    position = 0
+    for match in pattern.finditer(text):
+        aichat.insert('end', text[position:match.start()],("message",))
+        token = match.group()
+        if token.startswith("**"):
+            aichat.insert('end', token[2:-2], ("mdcode",))
+        elif token.startswith("`"):
+            aichat.insert("end", token[2:-2], ("mdbold",))
+        else:
+            aichat.insert('end', token[1:-1], ("mditalic",))
+        position = match.end()
+    aichat.insert('end', text[position:], ('message',))
+def insertmarkdown(text):
+    insidecode = False
+    for line in text.strip().splitlines():
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            insidecode = not insidecode
+            continue
+        if insidecode:
+            aichat.insert( "end", line + "\n",  ("mdcodeblock",) )
+            continue
+        if stripped.startswith("#"):
+            heading = stripped.lstrip("#").strip()
+            aichat.insert(
+                "end", 
+                heading + "\n",
+                ("mdheading",)
+            )
+            continue
+        if stripped.startswith(("- ", "* ")):
+             aichat.insert("end", "  • ", ("ailabel",))
+             insertinline(stripped[2:])
+             aichat.insert('end', "\n")
+             continue
+        insertinline(line)
+        aichat.insert('end', "\n")
+    aichat.insert("end", "\n")
 def addchatmessage(sender, message):
     aichat.configure(state='normal')
     if sender=='You':
@@ -1486,7 +1538,7 @@ def addchatmessage(sender, message):
         aichat.insert("end", message.strip() + "\n", ("message",))
     elif sender == 'Armor AI':
         aichat.insert("end", "ARMOR AI\n", ("ailabel",))
-        aichat.insert("end", message.strip() + "\n", ("message",))
+        insertmarkdown(message)
     else:
         aichat.insert('end', "NOTICE\n", ("userlabel",))
         aichat.insert('end', message.strip() + "\n", ("error",))
@@ -1564,7 +1616,7 @@ ctk.CTkLabel(settingspanel, text='API key', font=("Lexend", 12), text_color="#F5
 apikeyentry= ctk.CTkEntry(settingspanel, width=460,height=36, show='*', placeholder_text="Enter API key", font=("Lexend", 12), fg_color="#242B23", border_color="#67442F")
 apikeyentry.place(x=25, y=105)
 ctk.CTkLabel(settingspanel, text="Model", font=("Lexend", 12), text_color="#F5E8D2").place(x=25, y=160)
-modelmenu = ctk.CTkOptionMenu(settingspanel, width=220, height=36, values=["openai/gpt-4o-mini"], font=("Lexend", 12), fg_color="#67442f", button_color="#a66b3e", button_hover_color="#E28b45", dropdown_fg_color="#3b322a")
+modelmenu = ctk.CTkOptionMenu(settingspanel, width=220, height=36, values=["openai/gpt-6-sol-pro","openai/gpt-4o-mini", "qwen/qwen3-32b", "google/gemini-2.5-flash"], font=("Lexend", 12), fg_color="#67442f", button_color="#a66b3e", button_hover_color="#E28b45", dropdown_fg_color="#3b322a")
 modelmenu.set("gpt-4o-mini")
 modelmenu.place(x=25, y=185)
 def positionsettings(event=None):
