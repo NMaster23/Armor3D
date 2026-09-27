@@ -2,7 +2,10 @@ import customtkinter as ctk
 from ctypes import windll
 from tkinter import Canvas, Frame, filedialog, Toplevel, StringVar
 import sys
+import threading
+import queue
 from PIL import Image, ImageEnhance, ImageTk, ImageDraw, ImageGrab
+from aiconfig import sendmessage, HackAIError
 from pathlib import Path
 import os
 from armor_core import ViewportRenderer
@@ -854,8 +857,16 @@ sidebar.pack_propagate(False)
 prompt_label = ctk.CTkLabel(sidebar, text="", font=("Iceland", 35), width=300, height=82, justify='center')
 prompt_label.pack(pady=(24, 10))
 ai_input = ctk.CTkEntry( sidebar, placeholder_text="Start typing...", font=("Lexend", 12), fg_color="#3B322A", border_color="#E28B45",  text_color="#F5E8D2", placeholder_text_color="#C5B29A")
-ai_input.place(relx=0.5, rely=1, y=-15, anchor="s", relwidth=0.8)
+ai_input.place(relx= 0.06, rely=1, y=-15, anchor='sw', relwidth=0.72)
 ai_input.configure(height=38)
+aichat = ctk.CTkTextbox(sidebar, font=("Lexend", 12), fg_color="#242B23", border_color="#67442F", border_width = 2, text_color="#F5E8D2", wrap='word')
+aichat.place(relx=0.06, y=115, relwidth=0.88, relheight=0.60)
+aichat.configure(state='disabled')
+sendbutton = Canvas(sidebar, width=76, height=38, bg="#3B322a", highlightthickness=0, cursor='hand2')
+sendbox = sendbutton.create_rectangle(2, 2, 74, 36, fill="#242B23", outline="#A66B3E", width=2)
+sendtext = sendbutton.create_text(38, 19, text='Send', fill="#F5E8D2", font=("Iceland", 16))
+sendbutton.place(relx=0.80, rely=1, x=5, y=-53)
+
 typingjob = None
 def start_typing():
     global typingjob
@@ -1378,6 +1389,68 @@ for item in (extrabox, extratext):
     canvas.tag_bind(item, "<Button-1>", openextramenu)
 
 savedapikey, saveaimodel = loadaisettings()
+airesults = queue.Queue()
+aibusy = False
+def addchatmessage(sender, message):
+    aichat.configure(state='normal')
+    aichat.insert("end", f"{sender}: {message}\n\n")
+    aichat.see('end')
+    aichat.configure(state='disabled')
+def finishairesponse():
+    global aibusy
+    try:
+        response_type, message = airesults.get_nowait()
+    except queue.Empty:
+        app.after(50, finishairesponse)
+        return
+    if response_type =='sucess':
+        addchatmessage("Armor AI", message)
+    else:
+        addchatmessage("Error", message)
+    aibusy = False
+    ai_input.configure(state='normal')
+    sendbutton.itemconfig(sendtext, text='Send')
+    ai_input.focus_set()
+def sendai(event=None):
+    global aibusy
+    if aibusy:
+        return 'break'
+    message = ai_input.get().strip()
+    if not message:
+        return 'break'
+    if not savedapikey:
+        addchatmessage("Error", "Add an API key in AI Settings first.")
+        return 'break'
+    api_key = savedapikey
+    model = saveaimodel
+    ai_input.delete(0, 'end')
+    addchatmessage("You", message)
+    aibusy = True
+    ai_input.configure(state='disabled')
+    sendbutton.itemconfig(sendtext, text='...')
+    def worker():
+        try:
+            response = sendmessage(message, api_key=api_key, model=model) 
+            airesults.put(("sucess", response))
+        except HackAIError as error:
+            airesults.put(("error", str(error)))
+        except Exception as error:
+            airesults.put(("error", f"Unexpected error: {error}"))
+    threading.Thread(target=worker, daemon=True).start()
+    app.after(50, finishairesponse)
+    return 'break'
+def sendenter(event):
+    if not aibusy:
+        sendbutton.itemconfig(sendbox, fill="#67442f")
+        sendbutton.itemconfig(sendtext, fill="#F0AA60")
+def sendleave(event):
+    sendbutton.itemconfig(sendbox, fill="#242B23")
+    sendbutton.itemconfig(sendtext, fill="#F5e8d2")
+sendbutton.bind("<Enter>", sendenter)
+sendbutton.bind("<Leave>", sendleave)
+sendbutton.bind("<Button-1>", sendai)
+ai_input.bind("<Return>", sendai)
+
 settingshade  = Toplevel(app)
 settingshade.withdraw()
 settingshade.overrideredirect(True)
@@ -1394,8 +1467,8 @@ ctk.CTkLabel(settingspanel, text='API key', font=("Lexend", 12), text_color="#F5
 apikeyentry= ctk.CTkEntry(settingspanel, width=460,height=36, show='*', placeholder_text="Enter API key", font=("Lexend", 12), fg_color="#242B23", border_color="#67442F")
 apikeyentry.place(x=25, y=105)
 ctk.CTkLabel(settingspanel, text="Model", font=("Lexend", 12), text_color="#F5E8D2").place(x=25, y=160)
-modelmenu = ctk.CTkOptionMenu(settingspanel, width=220, height=36, values=["gpt-5.5"], font=("Lexend", 12), fg_color="#67442f", button_color="#a66b3e", button_hover_color="#E28b45", dropdown_fg_color="#3b322a")
-modelmenu.set("gpt-5.5")
+modelmenu = ctk.CTkOptionMenu(settingspanel, width=220, height=36, values=["openai/gpt-4o-mini"], font=("Lexend", 12), fg_color="#67442f", button_color="#a66b3e", button_hover_color="#E28b45", dropdown_fg_color="#3b322a")
+modelmenu.set("gpt-4o-mini")
 modelmenu.place(x=25, y=185)
 def positionsettings(event=None):
     if event is not None and event.widget is not app:
