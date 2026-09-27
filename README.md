@@ -78,7 +78,7 @@ The Rust side provides the grid for both 2D and 3D. It also provides the camera,
 Week 1 used a harvest-inspired palette of orange and green.
 
 ## Week 2 theme: Treasure
-We brought the treasure theme into the app's visual design with chest-wood panels, a dark workspace, antique-gold highlights, and parchment-colored text. The viewport grid and default drawing color now use gold tones, while layer swatches represent gold, emerald, copper, and ivory. We treated treasure as discovery and valuable craft: the workspace is where users uncover, shape, and refine their designs. These theme changes keep the existing CAD tools and controls intact.
+This week we could not implement the theme but next week we will try to include it in our project.
 
 ## Where AI assistance has been used
 - Creating some of the UI animations
