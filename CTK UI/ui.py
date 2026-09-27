@@ -4,13 +4,53 @@ from tkinter import Canvas, Frame, filedialog, Toplevel, StringVar
 import sys
 import re
 import threading
+import json
 import queue
 from PIL import Image, ImageEnhance, ImageTk, ImageDraw, ImageGrab
-from aiconfig import sendmessage, HackAIError
+import aiconfig
 from pathlib import Path
 import os
 from armor_core import ViewportRenderer
 ctk.set_appearance_mode('dark')
+
+MEMORYPATH = (
+    Path(os.getenv("APPDATA", Path.home()))
+    / "Armor3D"
+    / "chat_memory.json")
+MAXMEMORYMESSAGES = 12
+def loadchatmemory():
+    if not MEMORYPATH.exists():
+        return []
+    try:
+        data = json.loads(MEMORYPATH.read_text(encoding="utf-8"))
+        if not isinstance(data, list):
+            return []
+        return [
+            {
+                "role": item["role"],
+                "content": str(item["content"])[:4000],
+            }
+            for item in data
+            if isinstance(item, dict)
+            and item.get("role") in ("user", "assistant")
+            and isinstance(item.get("content"), str)
+        ][-MAXMEMORYMESSAGES:]
+    except (OSError, json.JSONDecodeError):
+        return []
+def savechatmemory():
+    MEMORYPATH.parent.mkdir(parents=True, exist_ok=True)
+    temporary = MEMORYPATH.with_suffix(".tmp")
+    temporary.write_text(
+        json.dumps(chatmemory, indent=2),
+        encoding="utf-8",)
+    temporary.replace(MEMORYPATH)
+def rememberchatmessage(role, content):
+    global chatmemory
+    chatmemory.append({
+        "role": role,
+        "content": content[:4000]})
+    chatmemory = chatmemory[-MAXMEMORYMESSAGES:]
+    savechatmemory()
 
 def getenvpath():
     if getattr(sys, "frozen", False):
@@ -33,11 +73,11 @@ def saveaisettingsfile(api_key, model):
     ENVPATH.write_text( f"OPENAI_API_KEY={api_key}\n" f"ARMOR3D_AI_MODEL={model}\n", encoding="utf-8")
 
 def getpath(relativepath):
-    try:
-        basepath = sys._MEIPASS
-    except AttributeError:
-        basepath = os.path.abspath(".")
-    return os.path.join(basepath, relativepath)
+    if getattr(sys, "frozen", False):
+        basepath = Path(sys._MEIPASS)
+    else:
+        basepath = Path(__file__).resolve().parent.parent
+    return str(basepath / relativepath)
 FR_PRIVATE = 0x10
 def loadfont(fontpath):
     windll.gdi32.AddFontResourceExW(fontpath, FR_PRIVATE, 0)
@@ -59,11 +99,27 @@ horizontal = canvas.create_line(100, 100, 1200, 100, fill="#70543B", width=3)
 vertical = canvas.create_line(100, 100, 100, 850, fill="#70543B", width=3)
 viewport = Frame(canvas, bg="#101010", bd=0, highlightthickness=0, takefocus=1)
 viewport_window = canvas.create_window(101,  101,  window=viewport, anchor="nw", width=700, height=500,)
+snapindicator = ctk.CTkLabel(
+    viewport,
+    text="End",
+    width=40,
+    height=18,
+    corner_radius=3,
+    fg_color="#3B322A",
+    text_color="#F0AA60",
+    font=("Iceland", 12),
+)
+def hidesnapindicator(event=None):
+    snapindicator.place_forget()
 renderer = None
 def initialize_renderer():
     global renderer
     app.update_idletasks()
     renderer = ViewportRenderer(viewport.winfo_id(),  max(1, viewport.winfo_width()), max(1, viewport.winfo_height()),)
+    if "syncosnaprenderer" in globals():
+        syncosnaprenderer()
+    if "synclayerrenderer" in globals():
+        synclayerrenderer()
     render_frame()
 def render_frame():
     if renderer is not None:
@@ -74,14 +130,107 @@ def resize_viewport(event):
         renderer.resize(max(1, event.width), max(1, event.height))
 def viewport_mouse_move(event):
     if renderer is not None:
-        renderer.mouse_move(event.x, event.y)
+        snap_kind = renderer.mouse_move(event.x, event.y)
+        if snap_kind and activecommand == "polyline":
+            snapindicator.configure(text=snap_kind)
+            label_x = min(event.x + 10, max(0, viewport.winfo_width() - 44))
+            label_y = max(2, event.y - 25)
+            snapindicator.place(x=label_x, y=label_y)
+            snapindicator.lift()
+        else:
+            hidesnapindicator()
+selection_lines = [Frame(viewport, bg="#E28B45", bd=0) for _ in range(4)]
+selection_fill = Toplevel(app)
+selection_fill.withdraw()
+selection_fill.overrideredirect(True)
+selection_fill.configure(bg="#E28B45")
+selection_fill.attributes("-alpha", 0.16)
+selection_fill.transient(app)
+try:
+    selection_fill.attributes("-disabled", True)
+except Exception:
+    pass
+left_drag_start = None
+left_dragged = False
+moving_selection = False
+def hide_selection_box():
+    selection_fill.withdraw()
+    for line in selection_lines:
+        line.place_forget()
+def show_selection_box(start_x, start_y, end_x, end_y):
+    left, right = sorted((start_x, end_x))
+    top, bottom = sorted((start_y, end_y))
+    color = "#E28B45"
+    width = max(1, right-left)
+    height = max(1, bottom-top)
+    if width > 4 and height > 4:
+        fill_x = viewport.winfo_rootx()+left+2
+        fill_y = viewport.winfo_rooty()+top+2
+        selection_fill.geometry(f"{width-4}x{height-4}+{fill_x}+{fill_y}")
+        selection_fill.deiconify()
+        selection_fill.lift()
+    else:
+        selection_fill.withdraw()
+    positions = (
+        (left, top, width, 2),
+        (left, bottom-1, width, 2),
+        (left, top, 2, height),
+        (right-1, top, 2, height),
+    )
+    for line, (x, y, line_width, line_height) in zip(selection_lines, positions):
+        line.configure(bg=color)
+        line.place(x=x, y=y, width=line_width, height=line_height)
+        line.lift()
 def viewport_mouse_down(event):
+    global left_drag_start, left_dragged, moving_selection
+    hidesnapindicator()
     viewport.focus_set()
-    if renderer is not None:
-        renderer.mouse_button(True)
+    if activecommand is None:
+        hide_selection_box()
+        moving_selection = renderer is not None and renderer.begin_move_selected(event.x, event.y)
+        if moving_selection:
+            left_drag_start = None
+            viewport.configure(cursor="fleur")
+        else:
+            left_drag_start = (event.x, event.y)
+            left_dragged = False
+    elif renderer is not None:
+        closed_polyline = renderer.mouse_button(True)
+        if closed_polyline and activecommand == "polyline":
+            closecompletedpolyline()
+def viewport_left_drag(event):
+    global left_dragged
+    if moving_selection:
+        if renderer is not None:
+            renderer.move_selected(event.x, event.y)
+        return
+    if activecommand is not None or left_drag_start is None:
+        return
+    dx = event.x-left_drag_start[0]
+    dy = event.y-left_drag_start[1]
+    if dx*dx + dy*dy < 25:
+        return
+    left_dragged = True
+    show_selection_box(left_drag_start[0], left_drag_start[1], event.x, event.y)
 def viewport_mouse_up(event):
-    if renderer is not None:
+    global left_drag_start, left_dragged, moving_selection
+    if renderer is None:
+        return
+    if moving_selection:
+        renderer.end_move_selected()
+        moving_selection = False
+        viewport.configure(cursor="arrow")
+        return
+    if activecommand is not None:
         renderer.mouse_button(False)
+    elif left_drag_start is not None:
+        if left_dragged:
+            renderer.select_box(left_drag_start[0], left_drag_start[1], event.x, event.y)
+        else:
+            renderer.select_at(event.x, event.y)
+    hide_selection_box()
+    left_drag_start = None
+    left_dragged = False
 last_right_drag = None
 def viewport_right_down(event):
     global last_right_drag, rightpresspos, rightpresstime, rightdragged
@@ -112,7 +261,7 @@ def viewport_right_up(event):
     clicktime = event.time - rightpresstime
     if not rightdragged and clicktime < 350:
         if activecommand is not None:
-            cancelactivecommand()
+            finishactivecommand()
         elif lastcommand is not None:
             repeatlastcommand()
     last_right_drag = None
@@ -124,6 +273,12 @@ def viewport_wheel(event):
 def viewport_key(event, pressed):
     if event.keysym in ("2", "K_2", 'bracketright'):
         return
+    if pressed and event.keysym in ("Delete", "BackSpace"):
+        if renderer is not None and activecommand is None:
+            deleted = renderer.delete_selected()
+            if deleted:
+                writehistory(f"Deleted {deleted} object{'s' if deleted != 1 else ''}")
+        return "break"
     if renderer is not None:
         renderer.key_event(event.keysym, pressed)
 def viewport_focus_out(event):
@@ -133,6 +288,7 @@ def viewport_focus_out(event):
 viewport.bind("<Configure>", resize_viewport)
 viewport.bind("<Motion>", viewport_mouse_move)
 viewport.bind("<ButtonPress-1>", viewport_mouse_down)
+viewport.bind("<B1-Motion>", viewport_left_drag)
 viewport.bind("<ButtonRelease-1>", viewport_mouse_up)
 viewport.bind("<ButtonPress-3>", viewport_right_down)
 viewport.bind("<B3-Motion>", viewport_right_drag)
@@ -141,6 +297,7 @@ viewport.bind("<MouseWheel>", viewport_wheel)
 viewport.bind("<KeyPress>", lambda event: viewport_key(event, True))
 viewport.bind("<KeyRelease>", lambda event: viewport_key(event, False))
 viewport.bind("<FocusOut>", viewport_focus_out)
+viewport.bind("<Leave>", hidesnapindicator)
 
 shadow_lines= [canvas.create_line(0, 0, 0, 0, fill=color, width=2,  smooth=True, splinesteps=20, state="hidden") for color in ("#283328", "#1D281F", "#152019")]
 current_offset = 16
@@ -230,9 +387,12 @@ def writehistory(text):
 def startpolyline(event=None):
     global activecommand
     activecommand = 'polyline'
+    if renderer is not None:
+        renderer.start_polyline()
+    viewport.configure(cursor="crosshair")
     command.delete(0, 'end')
-    command.configure(placeholder_text = "Start polyline")
-    writehistory("> Polyline\nStart polyline")
+    command.configure(placeholder_text = "Pick first point")
+    writehistory("> Polyline\nPick first point")
     viewport.focus_set()
 def startcurve(event=None):
     global activecommand
@@ -313,6 +473,8 @@ def runnamedcommand(name):
     action = actions.get(normalized)
     if action is None:
         return False
+    if activecommand is not None:
+        cancelactivecommand()
     if normalized not in ("file", "analyze", "tools"):
         lastcommand = name
     action()
@@ -323,15 +485,40 @@ def repeatlastcommand():
         return
     previous = lastcommand
     runnamedcommand(previous)
-def cancelactivecommand(event=None):
+def closeactivecommand(commit=False):
     global activecommand
     if activecommand is None:
         return
+    if activecommand == "polyline" and renderer is not None:
+        if commit:
+            renderer.finish_polyline()
+        else:
+            renderer.cancel_polyline()
     writehistory("Command ended")
     activecommand = None
     command.delete(0, 'end')
     command.configure(placeholder_text = "Command:")
+    hidesnapindicator()
+    viewport.configure(cursor="arrow")
     viewport.focus_set()
+
+def closecompletedpolyline():
+    global activecommand
+    if activecommand != "polyline":
+        return
+    writehistory("Polyline closed")
+    activecommand = None
+    command.delete(0, 'end')
+    command.configure(placeholder_text="Command:")
+    hidesnapindicator()
+    viewport.configure(cursor="arrow")
+    viewport.focus_set()
+
+def finishactivecommand():
+    closeactivecommand(commit=True)
+
+def cancelactivecommand(event=None):
+    closeactivecommand(commit=False)
     return "break"
 app.bind("<Escape>", cancelactivecommand)
 command.bind("<Escape>", cancelactivecommand)
@@ -1319,7 +1506,16 @@ def chooselayercolor(event):
         layer_color  =colors[index][1]
         canvas.itemconfig(layer_swatch, fill=layer_color)
         canvas.itemconfig(layername, text=colors[index][0])
+        synclayerrenderer()
         layermenu.place_forget()
+def synclayerrenderer():
+    if renderer is None:
+        return
+    color = layer_color.lstrip("#")
+    red = int(color[0:2], 16) / 255
+    green = int(color[2:4], 16) / 255
+    blue = int(color[4:6], 16) / 255
+    renderer.set_polyline_color(red, green, blue, 1.0)
 def toggle_layer_menu(event):
     if layermenu.winfo_manager():
         layermenu.place_forget()
@@ -1363,6 +1559,14 @@ def refreshosnap():
         snapcanvas.itemconfig(label, fill="#F5E8D2" if active else "#777777")
         snapcanvas.itemconfig(mark, fill="#F0AA60" if active else "#777777")
         snapcanvas.itemconfig(mark, state="normal" if snapenabled[name] else "hidden")
+    syncosnaprenderer()
+def syncosnaprenderer():
+    end_enabled = onsapon and snapenabled.get("End", False)
+    near_enabled = onsapon and snapenabled.get("Near", False)
+    if renderer is not None:
+        renderer.set_osnap_modes(end_enabled, near_enabled)
+    if not end_enabled and not near_enabled:
+        hidesnapindicator()
 for i, name in enumerate(("End", "Near", "Int", "Mid", "Cen", "Disable")):
     y = 48 + i *30
     snapenabled[name] = False
@@ -1488,6 +1692,7 @@ for item in (extrabox, extratext):
     canvas.tag_bind(item, "<Button-1>", openextramenu)
 
 savedapikey, saveaimodel = loadaisettings()
+chatmemory = loadchatmemory()
 airesults = queue.Queue()
 aibusy = False
 
@@ -1498,9 +1703,9 @@ def insertinline(text):
         aichat.insert('end', text[position:match.start()],("message",))
         token = match.group()
         if token.startswith("**"):
-            aichat.insert('end', token[2:-2], ("mdcode",))
-        elif token.startswith("`"):
             aichat.insert("end", token[2:-2], ("mdbold",))
+        elif token.startswith("`"):
+            aichat.insert("end", token[1:-1], ("mdcode",))
         else:
             aichat.insert('end', token[1:-1], ("mditalic",))
         position = match.end()
@@ -1544,6 +1749,11 @@ def addchatmessage(sender, message):
         aichat.insert('end', message.strip() + "\n", ("error",))
     aichat.see('end')
     aichat.configure(state='disabled')
+def restorechat():
+    for item in chatmemory:
+        sender = 'You' if item ['role'] == 'user' else "Armor AI"    
+        addchatmessage(sender, item['content'])
+app.after_idle(restorechat)
 def finishairesponse():
     global aibusy
     try:
@@ -1553,12 +1763,14 @@ def finishairesponse():
         return
     if response_type == "success":
         finishthinkingmessage(message)
+        rememberchatmessage("assistant", message)
     else:
         finishthinkingmessage(message, error=True)
     aibusy = False
     ai_input.configure(state="normal")
     stopsendanimation()
     ai_input.focus_set()
+
 def sendai(event=None):
     global aibusy
     if aibusy:
@@ -1571,6 +1783,8 @@ def sendai(event=None):
         return 'break'
     api_key = savedapikey
     model = saveaimodel
+    requesthistory = list(chatmemory)
+    rememberchatmessage("user", message)
     ai_input.delete(0, 'end')
     addchatmessage("You", message)
     startthinkingmessage()
@@ -1579,9 +1793,9 @@ def sendai(event=None):
     startsendanimation()
     def worker():
         try:
-            response = sendmessage(message, api_key=api_key, model=model) 
+            response = aiconfig.sendmessage(message, api_key=api_key, model=model, history=requesthistory)
             airesults.put(("success", response))
-        except HackAIError as error:
+        except aiconfig.HackAIError as error:
             airesults.put(("error", str(error)))
         except Exception as error:
             airesults.put(("error", f"Unexpected error: {error}"))
@@ -1599,7 +1813,6 @@ sendbutton.bind("<Enter>", sendenter)
 sendbutton.bind("<Leave>", sendleave)
 sendbutton.bind("<Button-1>", sendai)
 ai_input.bind("<Return>", sendai)
-
 settingshade  = Toplevel(app)
 settingshade.withdraw()
 settingshade.overrideredirect(True)

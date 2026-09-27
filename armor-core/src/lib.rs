@@ -119,24 +119,77 @@ impl ViewportRenderer {
         self.state.viewport.extrude_selected(height);
     }
 
-    fn mouse_move(&mut self, x: f64, y: f64) {
-        self.state.viewport.mouse_move(x, y);
+    fn mouse_move(&mut self, x: f64, y: f64) -> Option<String> {
+        self.state.viewport.mouse_move(x, y)
     }
 
-    fn mouse_button(&mut self, pressed: bool) {
-        self.state.viewport.mouse_button(pressed);
+    fn mouse_button(&mut self, pressed: bool) -> bool {
+        self.state.viewport.mouse_button(pressed)
+    }
+
+    fn select_at(&mut self, x: f32, y: f32) -> Option<usize> {
+        self.state
+            .viewport
+            .select_shape(cgmath::Vector2::new(x, y), 8.0)
+    }
+
+    fn select_box(&mut self, start_x: f32, start_y: f32, end_x: f32, end_y: f32) -> usize {
+        self.state
+            .viewport
+            .select_box(start_x, start_y, end_x, end_y)
+    }
+
+    fn delete_selected(&mut self) -> usize {
+        self.state.viewport.delete_selected()
+    }
+
+    fn begin_move_selected(&mut self, x: f32, y: f32) -> bool {
+        self.state.viewport.begin_move_selected(x, y)
+    }
+
+    fn move_selected(&mut self, x: f32, y: f32) -> bool {
+        self.state.viewport.move_selected(x, y)
+    }
+
+    fn end_move_selected(&mut self) {
+        self.state.viewport.end_move_selected();
+    }
+
+    fn start_polyline(&mut self) {
+        self.state.viewport.start_polyline();
+    }
+
+    fn finish_polyline(&mut self) {
+        self.state.viewport.finish_polyline();
+    }
+
+    fn cancel_polyline(&mut self) {
+        self.state.viewport.cancel_polyline();
+    }
+
+    fn set_osnap_modes(&mut self, end_enabled: bool, near_enabled: bool) {
+        self.state
+            .viewport
+            .set_osnap_modes(end_enabled, near_enabled);
+    }
+
+    fn set_polyline_color(&mut self, red: f32, green: f32, blue: f32, alpha: f32) {
+        self.state
+            .viewport
+            .set_polyline_color(red, green, blue, alpha);
     }
 
     fn pan(&mut self, dx: f32, dy: f32) {
-        self.state.camera.pan(dx, dy);
+        self.state.viewport.camera.pan(dx, dy);
     }
 
     fn orbit(&mut self, dx: f32, dy: f32) {
-        self.state.camera.orbit(dx, dy);
+        self.state.viewport.camera.orbit(dx, dy);
     }
 
     fn zoom(&mut self, steps: f32) {
-        self.state.camera.zoom(steps);
+        self.state.viewport.camera.zoom(steps);
+        self.state.viewport.rebuild_vertices();
     }
 
     fn key_event(&mut self, key: &str, pressed: bool) -> bool {
@@ -159,9 +212,13 @@ impl ViewportRenderer {
         if self.state.viewport.graph_handle_key(code, pressed) {
             return true;
         }
-        self.state
+        let handled = self.state
             .camera_controller
-            .handle_key(&mut self.state.camera, code, pressed)
+            .handle_key(&mut self.state.viewport.camera, code, pressed);
+        if handled {
+            self.state.viewport.rebuild_vertices();
+        }
+        handled
     }
 }
 
