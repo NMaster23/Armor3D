@@ -7,6 +7,27 @@ from pathlib import Path
 import os
 from armor_core import ViewportRenderer
 ctk.set_appearance_mode('dark')
+
+def getenvpath():
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent / ".env"
+    return Path(__file__).resolve().parent.parent / ".env"
+ENVPATH = getenvpath()
+def loadaisettings():
+    values = {}
+    if ENVPATH.exists():
+        for line in ENVPATH.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            values[key.strip()] = value.strip().strip('"').strip("'")
+    return (values.get("OPENAI_API_KEY", ""), values.get("ARMOR3D_AI_MODEL", "gpt-5.5"))
+def saveaisettingsfile(api_key, model):
+    api_key = api_key.replace("\n", "").strip()
+    model = model.replace("\n", "").strip()
+    ENVPATH.write_text( f"OPENAI_API_KEY={api_key}\n" f"ARMOR3D_AI_MODEL={model}\n", encoding="utf-8")
+
 def getpath(relativepath):
     try:
         basepath = sys._MEIPASS
@@ -903,6 +924,11 @@ def drag_sidebar(event):
     update_shadow(window_width, canvas.winfo_height(), 16)
     resize_cmd_boxes(window_width)
 resize_handle.bind("<B1-Motion>", drag_sidebar)
+settingsbutton = Canvas(sidebar, width=32, height=34, bg="#3B322A", highlightthickness=0, cursor='hand2')
+settingsicon = settingsbutton.create_text(17, 17, text="⚙", fill="#f5E8D2", font=("Segoe UI Symbol", 18))
+settingsbutton.place(relx=1, x=-48, y=12)
+settingsbutton.bind("<Enter>", lambda event: settingsbutton.itemconfig(settingsicon, fill="#F0AA60"))
+settingsbutton.bind("<Leave>", lambda event: settingsbutton.itemconfig(settingsicon, fill="#F5E8D2"))
 
 icon = Image.open(getpath("Assets/polylinez.png")).convert("RGBA")
 bounds = icon.getbbox()
@@ -1350,7 +1376,78 @@ extradialog.bind("<Escape>", closeextramenu)
 app.bind("<Configure>", positionextramenu, add="+")
 for item in (extrabox, extratext):
     canvas.tag_bind(item, "<Button-1>", openextramenu)
-app.after_idle(initialize_renderer)#
+
+savedapikey, saveaimodel = loadaisettings()
+settingshade  = Toplevel(app)
+settingshade.withdraw()
+settingshade.overrideredirect(True)
+settingshade.configure(bg='black')
+settingshade.attributes("-alpha", 0.55)
+settingsdialog = ctk.CTkToplevel(app)
+settingsdialog.withdraw()
+settingsdialog.overrideredirect(True)
+settingsdialog.configure(fg_color="#3B322A")
+settingspanel = ctk.CTkFrame(settingsdialog, fg_color="#3B322A", border_color="#A66B3E", border_width=2, corner_radius=8)
+settingspanel.pack(fill='both', expand=True, padx=3, pady=3)
+ctk.CTkLabel(settingspanel, text='AI Settings', font=("Iceland", 26), text_color="#F5E8D2").place(x=25, y=20)
+ctk.CTkLabel(settingspanel, text='API key', font=("Lexend", 12), text_color="#F5E8D2").place(x=25, y=80)
+apikeyentry= ctk.CTkEntry(settingspanel, width=460,height=36, show='*', placeholder_text="Enter API key", font=("Lexend", 12), fg_color="#242B23", border_color="#67442F")
+apikeyentry.place(x=25, y=105)
+ctk.CTkLabel(settingspanel, text="Model", font=("Lexend", 12), text_color="#F5E8D2").place(x=25, y=160)
+modelmenu = ctk.CTkOptionMenu(settingspanel, width=220, height=36, values=["gpt-5.5"], font=("Lexend", 12), fg_color="#67442f", button_color="#a66b3e", button_hover_color="#E28b45", dropdown_fg_color="#3b322a")
+modelmenu.set("gpt-5.5")
+modelmenu.place(x=25, y=185)
+def positionsettings(event=None):
+    if event is not None and event.widget is not app:
+        return
+    x=app.winfo_rootx()
+    y=app.winfo_rooty()
+    width= app.winfo_width()
+    height = app.winfo_height()
+    settingshade.geometry(f"{width}x{height}+{x}+{y}")
+    settingsdialog.geometry(f"520x280+{x+ (width -520)//2}+{y+(height-280)//2}")
+def closesettings(event=None):
+    settingsdialog.withdraw()
+    settingshade.withdraw()
+def savesettings():
+    global savedapikey, saveaimodel
+    savedapikey = apikeyentry.get().strip()
+    saveaimodel = modelmenu.get()
+    saveaisettingsfile(savedapikey, saveaimodel)
+    closesettings()
+def opensettings(event=None):
+    positionsettings()
+    apikeyentry.delete(0, 'end')
+    apikeyentry.insert(0, savedapikey)
+    modelmenu.set(saveaimodel)
+    settingshade.deiconify()
+    settingshade.lift()
+    settingsdialog.deiconify()
+    settingsdialog.lift()
+    apikeyentry.focus_set()
+settingsave=Canvas(settingspanel, width=100, height=38, bg="#3B322a", highlightthickness=0, cursor='hand2')
+settingsavebox = settingsave.create_rectangle(2, 2, 98, 36, fill="#242B23", outline="#A66B3E", width=2)
+settingsavetext =settingsave.create_text(50, 19, text='Save', fill='#F5E8D2', font=("Iceland", 17))
+settingsave.bind("<Enter>", lambda event: (settingsave.itemconfig(settingsavebox, fill='#67442f'), settingsave.itemconfig(settingsavetext, fill="#F0AA60")))
+settingsave.bind("<Leave>", lambda event: (settingsave.itemconfig(settingsavebox, fill='#242823'), settingsave.itemconfig(settingsavetext, fill='#f5e8d2')))
+settingsave.bind("<Button-1>", lambda event :savesettings())
+settingsave.place(relx=1, x=-125, y=220)
+
+settingsclose= Canvas(settingspanel, width=36, height=36, bg="#3B322A", highlightthickness=0, cursor='hand2')
+settingsclosetext = settingsclose.create_text(18, 18, text='×', fill='#F5E8d2',font=("Iceland", 24) )
+settingsclose.bind("<Enter>", lambda event: settingsclose.itemconfig(settingsclosetext, fill="#f0AA60"))
+settingsclose.bind("<Leave>", lambda event: settingsclose.itemconfig(settingsclosetext, fill="#F5E8D2"))
+settingsclose.bind("<Button-1>", closesettings)
+settingsclose.place(relx=1, x=-50, y=14)
+settingsbutton.bind("<Button-1>", opensettings)
+settingshade.bind("<Button-1>", closesettings)
+settingsdialog.bind("<Escape>", closesettings)
+app.bind("<Configure>", positionsettings, add="+")
+
+
+
+
+app.after_idle(initialize_renderer)
 app.mainloop()
 
 
