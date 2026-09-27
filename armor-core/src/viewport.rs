@@ -30,6 +30,7 @@ pub struct PolyLine {
     pub color: [f32; 4],
     pub thickness: f32,
     pub selected: bool,
+    pub height: f32,
 }
 
 pub struct Viewport {
@@ -80,12 +81,73 @@ impl Viewport {
 }
 
 impl Viewport {
-    pub fn extrude(points: &[cgmath::Vector3<f32>], color: [f32; 4]) -> Vec<Vertex> {
-        if points.len() < 3 {
-            return Vec::new();
+    pub fn extrude_step(&mut self, step: f32) {
+        let target = if let Some(selected_id) = self.selected_entity {
+            self.entities.iter_mut().find(|e| e.id == selected_id)
+        } else {
+            self.entities.last_mut()
+        };
+        if let Some(entity) = target {
+            entity.height += step;
+            self.rebuild_vertices();
         }
-        let mut builder = Path::builder();
-        builder.begin(point(x, y))
+    }
+    pub fn extrude(points: &[cgmath::Vector3<f32>], color: [f32; 4], height: f32) -> Vec<Vertex> {
+        let mut vertices = Vec::new();
+        if points.len() < 3 {
+            return vertices;
+        }
+        let bottom_vertices = Self::tessellate_fill(points, color);
+        for chunk in bottom_vertices.chunks_exact(3) {
+            vertices.push(chunk[0]);
+            vertices.push(chunk[2]);
+            vertices.push(chunk[1]);
+        }
+        let mut top_vertices = Self::tessellate_fill(points, color);
+        for vertex in &mut top_vertices {
+            vertex.position[1] += height;
+        }
+        vertices.extend(top_vertices);
+        let side_color = [color[0] * 0.75, color[1] * 0.75, color[2] * 0.75, color[3] * 0.75];
+        for window in points.windows(2) {
+            let point0 = window[0];
+            let point1 = window[1];
+            let bottom0 = [point0.x, point0.y, point0.z];
+            let bottom1 = [point1.x, point1.y, point1.z];
+            let top0 = [point0.x, point0.y + height, point0.z];
+            let top1 = [point1.x, point1.y + height, point1.z];
+            vertices.push(Vertex {
+                position: bottom0,
+                coords: [0.0, 0.0, 0.0],
+                color: side_color,
+            });
+            vertices.push(Vertex {
+                position: bottom1,
+                coords: [0.0, 0.0, 0.0],
+                color: side_color,
+            });
+            vertices.push(Vertex {
+                position: top1,
+                coords: [0.0, 0.0, 0.0],
+                color: side_color,
+            });
+            vertices.push(Vertex {
+                position: bottom0,
+                coords: [0.0, 0.0, 0.0],
+                color: side_color,
+            });
+            vertices.push(Vertex {
+                position: top1,
+                coords: [0.0, 0.0, 0.0],
+                color: side_color,
+            });
+            vertices.push(Vertex {
+                position: top0,
+                coords: [0.0, 0.0, 0.0],
+                color: side_color,
+            });
+        }
+        vertices
     }
     pub fn tessellate_fill(points: &[cgmath::Vector3<f32>], color: [f32; 4]) -> Vec<Vertex> {
         if points.len() < 3 {
@@ -199,15 +261,31 @@ impl Viewport {
             };
             if entity.vertices.len() >= 3 {
                 let fill_color = [draw_color[0], draw_color[1], draw_color[2], draw_color[3]];
-                let fill_verts = Self::tessellate_fill(&entity.vertices, fill_color);
-                new_vertices.extend(fill_verts);
+                if entity.height > 0.0 {
+                    let mesh_vertices = Self::extrude(&entity.vertices, fill_color, entity.height);
+                    new_vertices.extend_from_slice(&mesh_vertices);
+                } else {
+                    let fill_vertices = Self::tessellate_fill(&entity.vertices, fill_color);
+                    new_vertices.extend_from_slice(&fill_vertices);
+                }
             }
-            let entity_verts =
-                self.tessellate_polyline(&entity.vertices, entity.thickness, draw_color);
-            new_vertices.extend_from_slice(&entity_verts);
+            let entity_vertices = self.tessellate_polyline(&entity.vertices, entity.thickness, draw_color);
+            new_vertices.extend_from_slice(&entity_vertices);
         }
         self.point_vertices = new_vertices;
         self.redraw = true;
+    }
+    pub fn extrude_selected(&mut self, height: f32) {
+        if let Some(selected_id) = self.selected_entity {
+            if let Some(entity) = self.entities.iter_mut().find(|e| e.id == selected_id) {
+                entity.height = height;
+                self.rebuild_vertices();
+            }
+        }
+        if let Some(last_entity) = self.entities.last_mut() {
+            last_entity.height = height;
+            self.rebuild_vertices();
+        }
     }
     pub fn tessellate_polyline(
         &self,
@@ -275,6 +353,7 @@ impl Viewport {
             color,
             thickness,
             selected: false,
+            height: 0.0,
         })
     }
     pub fn graph_handle_key(&mut self, code: KeyCode, is_pressed: bool) -> bool {
@@ -289,6 +368,10 @@ impl Viewport {
             KeyCode::Tab => {
                 self.osnap = !self.osnap;
                 self.redraw = true;
+                true
+            }
+            KeyCode::KeyE => {
+                self.extrude_step(0.5);
                 true
             }
             _ => false,
