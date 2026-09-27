@@ -232,6 +232,11 @@ impl ApplicationHandler<State> for App {
                     },
                 ..
             } => {
+                if state.viewport.graph_handle_key(code, key_state.is_pressed()) {
+                    if let Some(window) = &state.window {
+                        window.request_redraw();
+                    }
+                }
                 let handled = state.camera_controller.handle_key(
                     &mut state.viewport.camera,
                     code,

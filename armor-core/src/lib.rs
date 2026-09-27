@@ -115,6 +115,9 @@ impl ViewportRenderer {
     fn add_point(&mut self, x: f32, y: f32, z: f32) {
         self.state.viewport.add_point(cgmath::Vector3::new(x, y, z));
     }
+    fn extrude(&mut self, height: f32) {
+        self.state.viewport.extrude_selected(height);
+    }
 
     fn mouse_move(&mut self, x: f64, y: f64) {
         self.state.viewport.mouse_move(x, y);
@@ -143,6 +146,7 @@ impl ViewportRenderer {
             "s" | "S" => KeyCode::KeyS,
             "d" | "D" => KeyCode::KeyD,
             "c" | "C" => KeyCode::KeyC,
+            "e" | "E" => KeyCode::KeyE,
             "Tab" | "tab" => KeyCode::Tab,
             "Up" => KeyCode::ArrowUp,
             "Down" => KeyCode::ArrowDown,
