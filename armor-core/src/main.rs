@@ -112,20 +112,32 @@ pub struct App {
     popup_state: Option<State>,
 }
 
+#[derive(PartialEq)]
+pub enum PopupContent {
+    TextInput(String),
+    ConfirmationMessage(String),
+    TextMessage(String),
+}
+
 impl App {
     pub fn popup_window(
         &mut self,
         event_loop: &ActiveEventLoop,
         title: &str,
+        mode: PopupContent,
     ) -> Result<(), Box<dyn std::error::Error>> {
         if self.popup_window.is_some() {
             return Ok(());
         }
+        self.pop
         let attributes = Window::default_attributes()
             .with_blur(true)
             .with_title(title)
             .with_inner_size(winit::dpi::PhysicalSize::new(420, 320));
         let window = Arc::new(event_loop.create_window(attributes)?);
+        if case == 1 {
+
+        }
         self.popup_window = Some(window);
         Ok(())
     }
