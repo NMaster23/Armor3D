@@ -128,6 +128,19 @@ pub struct App {
 }
 
 impl App {
+    pub fn popup_window(
+    input: &str,
+    title: &str,
+    case: i32,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let attributes = Window::default_attributes()
+        .with_blur(true)
+        .with_title(title)
+        .with_inner_size(winit::dpi::PhysicalSize::new(420, 320));
+    let window = Arc::new(event_loop::create_window(attributes));
+    let state = pollster::block_on(State::new(window))?;
+    Ok("Output from popup window".into())
+}
     pub fn new(#[cfg(target_arch = "wasm32")] event_loop: &EventLoop<State>) -> Self {
         #[cfg(target_arch = "wasm32")]
         let proxy = Some(event_loop.create_proxy());

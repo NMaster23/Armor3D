@@ -1,5 +1,6 @@
 use crate::Vertex;
 use crate::camera::{Camera, CameraController};
+use crate::render::State;
 use cgmath::{
     InnerSpace, SquareMatrix, Vector3, Vector4, Zero,
 };
@@ -8,11 +9,13 @@ use lyon::lyon_tessellation::{
 };
 use lyon::math::point;
 use lyon::path::Path;
+use winit::window::Window;
 use std::mem;
 use winit::dpi::PhysicalPosition;
 use winit::event::MouseButton;
-use winit::event_loop::ActiveEventLoop;
+use winit::event_loop::{self, ActiveEventLoop};
 use winit::keyboard::KeyCode;
+use std::sync::Arc;
 
 const END_SNAP_RADIUS_PIXELS: f32 = 12.0;
 const NEAR_SNAP_RADIUS_PIXELS: f32 = 10.0;
@@ -1105,4 +1108,18 @@ mod tests {
         assert!(viewport.preview_point.unwrap().magnitude() < 0.00001);
         assert_eq!(viewport.active_polyline.len(), 1);
     }
+}
+
+pub fn popup_window(
+    input: &str,
+    title: &str,
+    case: i32,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let attributes = Window::default_attributes()
+        .with_blur(true)
+        .with_title(title)
+        .with_inner_size(winit::dpi::PhysicalSize::new(420, 320));
+    let window = Arc::new(event_loop::create_window(attributes));
+    let state = pollster::block_on(State::new(window))?;
+    Ok("Output from popup window".into())
 }
