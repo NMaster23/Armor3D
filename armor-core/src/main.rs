@@ -3,6 +3,7 @@ mod render;
 mod viewport;
 
 use crate::render::State;
+use std::mem::size_of;
 use std::sync::Arc;
 use winit::application::ApplicationHandler;
 use winit::dpi::PhysicalPosition;
@@ -11,6 +12,7 @@ use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::keyboard::{PhysicalKey};
 use winit::window::Window;
 use cgmath::InnerSpace;
+use winit::event_loop;
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -94,63 +96,53 @@ pub const GRAPH_VERTICES: &[Vertex] = &[
 pub const GRAPH_INDICES: &[u16] = &[0, 1, 2, 2, 1, 3, 4, 6, 5, 6, 7, 5];
 
 pub fn main() -> anyhow::Result<()> {
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        env_logger::init();
-    }
-    #[cfg(target_arch = "wasm32")]
-    {
-        console_log::init_with_level(log::Level::Info).unwrap_throw();
-    }
-
-    let event_loop = EventLoop::with_user_event().build()?;
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        let mut app = App::new();
-        event_loop.run_app(&mut app)?;
-    }
-    #[cfg(target_arch = "wasm32")]
-    {
-        let app = App::new(&event_loop);
-        event_loop.spawn_app(app);
-    }
-
+    env_logger::init();
+    let event_loop = EventLoop::<State>::with_user_event().build()?;
+    let mut app = App::new();
+    event_loop.run_app(&mut app)?;
     Ok(())
 }
 
 pub struct App {
-    #[cfg(target_arch = "wasm32")]
-    proxy: Option<winit::event_loop::EventLoopProxy<State>>,
     state: Option<State>,
     cursor_pos: PhysicalPosition<f64>,
     holding_left: bool,
     holding_right: bool,
+    popup_window: Option<Arc<Window>>,
+    popup_state: Option<State>,
 }
 
 impl App {
     pub fn popup_window(
-    input: &str,
-    title: &str,
-    case: i32,
-) -> Result<String, Box<dyn std::error::Error>> {
-    let attributes = Window::default_attributes()
-        .with_blur(true)
-        .with_title(title)
-        .with_inner_size(winit::dpi::PhysicalSize::new(420, 320));
-    let window = Arc::new(event_loop::create_window(attributes));
-    let state = pollster::block_on(State::new(window))?;
-    Ok("Output from popup window".into())
-}
-    pub fn new(#[cfg(target_arch = "wasm32")] event_loop: &EventLoop<State>) -> Self {
-        #[cfg(target_arch = "wasm32")]
-        let proxy = Some(event_loop.create_proxy());
+        &mut self,
+        input: &str,
+        event_loop: &ActiveEventLoop,
+        title: &str,
+        case: i32,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        if self.popup_window.is_some() {
+            return Ok(());
+        }
+        let attributes = Window::default_attributes()
+            .with_blur(true)
+            .with_title(title)
+            .with_inner_size(winit::dpi::PhysicalSize::new(420, 320));
+        let window = Arc::new(event_loop.create_window(attributes)?);
+        self.popup_window = Some(window);
+        Ok(())
+    }
+    pub fn close_popup(&mut self) {
+        self.popup_window = None;
+        self.popup_state = None;
+    }
+    pub fn new() -> Self {
         Self {
             state: None,
-            #[cfg(target_arch = "wasm32")]
-            proxy,
             cursor_pos: PhysicalPosition::new(0.0, 0.0),
             holding_left: false,
             holding_right: false,
+            popup_window: None,
+            popup_state: None,
         }
     }
 }
@@ -198,21 +190,6 @@ impl ApplicationHandler<State> for App {
                 });
             }
         }
-    }
-
-    #[allow(unused_mut)]
-    fn user_event(&mut self, _event_loop: &ActiveEventLoop, mut event: State) {
-        #[cfg(target_arch = "wasm32")]
-        {
-            if let Some(window) = &event.window {
-                window.request_redraw();
-            }
-            event.resize(
-                event.window.inner_size().width,
-                event.window.inner_size().height,
-            );
-        }
-        self.state = Some(event);
     }
 
     fn window_event(

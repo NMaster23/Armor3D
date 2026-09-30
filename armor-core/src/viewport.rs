@@ -1111,6 +1111,7 @@ mod tests {
 }
 
 pub fn popup_window(
+    event_loop: &ActiveEventLoop,
     input: &str,
     title: &str,
     case: i32,
@@ -1119,7 +1120,6 @@ pub fn popup_window(
         .with_blur(true)
         .with_title(title)
         .with_inner_size(winit::dpi::PhysicalSize::new(420, 320));
-    let window = Arc::new(event_loop::create_window(attributes));
-    let state = pollster::block_on(State::new(window))?;
+    let window = Arc::new(event_loop.create_window(attributes)?);
     Ok("Output from popup window".into())
 }
