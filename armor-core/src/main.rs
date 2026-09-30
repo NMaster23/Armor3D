@@ -115,10 +115,8 @@ pub struct App {
 impl App {
     pub fn popup_window(
         &mut self,
-        input: &str,
         event_loop: &ActiveEventLoop,
         title: &str,
-        case: i32,
     ) -> Result<(), Box<dyn std::error::Error>> {
         if self.popup_window.is_some() {
             return Ok(());
@@ -195,9 +193,34 @@ impl ApplicationHandler<State> for App {
     fn window_event(
         &mut self,
         event_loop: &ActiveEventLoop,
-        _window_id: winit::window::WindowId,
+        window_id: winit::window::WindowId,
         event: WindowEvent,
     ) {
+        if self.popup_window.as_ref().is_some_and(|window| window.id() == window_id) {
+            if matches!(&event, WindowEvent::CloseRequested) {
+                self.close_popup();
+            }
+            return;
+        }
+        if let WindowEvent::KeyboardInput {
+            event: KeyEvent {
+                physical_key: PhysicalKey::Code(code),
+                state: key_state,
+                ..
+            },
+            ..
+        } = &event {
+            if *code == winit::keyboard::KeyCode::Escape && key_state.is_pressed() {
+                event_loop.exit();
+                return;
+            }
+            if *code == winit::keyboard::KeyCode::KeyP && key_state.is_pressed() {
+                if let Err(e) = self.popup_window(event_loop, "Popup Window") {
+                    log::error!("Failed to create popup window: {:?}", e);
+                }
+                return;
+            }
+        }
         let state = match self.state.as_mut() {
             Some(state) => state,
             None => return,

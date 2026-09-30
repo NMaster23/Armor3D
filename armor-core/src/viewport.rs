@@ -1109,17 +1109,3 @@ mod tests {
         assert_eq!(viewport.active_polyline.len(), 1);
     }
 }
-
-pub fn popup_window(
-    event_loop: &ActiveEventLoop,
-    input: &str,
-    title: &str,
-    case: i32,
-) -> Result<String, Box<dyn std::error::Error>> {
-    let attributes = Window::default_attributes()
-        .with_blur(true)
-        .with_title(title)
-        .with_inner_size(winit::dpi::PhysicalSize::new(420, 320));
-    let window = Arc::new(event_loop.create_window(attributes)?);
-    Ok("Output from popup window".into())
-}
