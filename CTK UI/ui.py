@@ -13,6 +13,10 @@ import os
 from armor_core import ViewportRenderer
 ctk.set_appearance_mode('dark')
 
+HOVER_BG = "#754822"
+HOVER_BORDER = "#f2a65a"
+HOVER_TEXT = "#EBA119"
+
 SETTINGSPATH = (Path(os.getenv("APPDATA") or Path.home())
                 / 'Armor3D'
                 / "ui_settings.json")
@@ -198,11 +202,11 @@ def viewport_mouse_move(event):
     else:
         hideallsnap()
     
-selection_lines = [Frame(viewport, bg="#D6A640", bd=0) for _ in range(4)]
+selection_lines = [Frame(viewport, bg=HOVER_BORDER, bd=0) for _ in range(4)]
 selection_fill = Toplevel(app)
 selection_fill.withdraw()
 selection_fill.overrideredirect(True)
-selection_fill.configure(bg="#D6A640")
+selection_fill.configure(bg=HOVER_BORDER)
 selection_fill.attributes("-alpha", 0.16)
 selection_fill.transient(app)
 try:
@@ -219,7 +223,7 @@ def hide_selection_box():
 def show_selection_box(start_x, start_y, end_x, end_y):
     left, right = sorted((start_x, end_x))
     top, bottom = sorted((start_y, end_y))
-    color = "#D6A640"
+    color = HOVER_BORDER
     width = max(1, right-left)
     height = max(1, bottom-top)
     if width > 4 and height > 4:
@@ -256,6 +260,8 @@ def viewport_mouse_down(event):
     elif renderer is not None:
         renderer.mouse_move(event.x, event.y)
         closed_polyline = renderer.mouse_button(True)
+        if closed_polyline:
+            closecompletedpolyline()
 def viewport_left_drag(event):
     global left_dragged
     if moving_selection:
@@ -749,7 +755,7 @@ def openpngdialog():
         except ValueError:
             percent = 0
         valid = 1 <= percent <= 100
-        scale_entry.configure(border_color = "#D6A640" if valid else "#B9533C" )
+        scale_entry.configure(border_color = HOVER_BORDER if valid else "#B9533C" )
         save_button.enabled = valid
         save_button.itemconfig(save_button.label_id, fill="#F3E6C5" if valid else "#777777")
         save_button.configure(cursor="hand2" if valid else "arrow")
@@ -851,12 +857,11 @@ for i, name in enumerate(("New", "Save", "Save As")):
     label = filemenu.create_text(12, y+15, text=name, anchor='w', fill="#F3E6C5", font=("Iceland", 13))
     menu_rows.append((box, label))
 def menu_motion(event):
-    hovered = (event.y-4) // 32
+    hovered = (event.y - 4) // 32
     for i, (box, label) in enumerate(menu_rows):
         active = i == hovered and 4 <= event.x <= 155
-        filemenu.itemconfig(box, fill='#55401F' if active else "")
-        filemenu.itemconfig(label, fill= "#55401F" if active else "")
-        filemenu.itemconfig(label, fill="#F4C95D" if active else "#F3E6C5")
+        filemenu.itemconfig(box, fill=HOVER_BG if active else "")
+        filemenu.itemconfig(label, fill=HOVER_TEXT if active else "#F3E6C5")
 filemenu.bind("<Motion>", menu_motion)
 filepage = "main"
 def showfilepage(page):
@@ -957,11 +962,11 @@ for i, name in enumerate(("Distance", "Angle")):
     label = analyze_menu.create_text(12, y+15, text=name, anchor='w', fill='#F3E6C5', font=("Iceland", 12))
     analyze_rows.append((box, label))
 def analyzemenumotion(event):
-    hovered = (event.y-4) //32
+    hovered = (event.y - 4) // 32
     for i, (box, label) in enumerate(analyze_rows):
         active = i == hovered and 4 <= event.x <= 155
-        analyze_menu.itemconfig(box, fill='#55401F' if active else "")
-        analyze_menu.itemconfig(label, fill='#F4C95D' if active else "#F3E6C5")
+        analyze_menu.itemconfig(box, fill=HOVER_BG if active else "")
+        analyze_menu.itemconfig(label, fill=HOVER_TEXT if active else "#F3E6C5")
 analyze_menu.bind("<Motion>", analyzemenumotion)
 def analyzemenuclick(event):
     if not (4<= event.x<= 155):
@@ -1037,8 +1042,8 @@ def toolsmotion(event):
     hovered =(event.y - 4)// 32
     for i, (box, label) in enumerate(toolsrows):
         active = i == hovered and 4 <= event.x <=155
-        toolsmenu.itemconfig(box, fill='#55401F' if active else "")
-        toolsmenu.itemconfig(label, fill='#F4C95D' if active else "#F3E6C5")
+        toolsmenu.itemconfig(box, fill=HOVER_BG if active else "")
+        toolsmenu.itemconfig(label, fill=HOVER_TEXT if active else "#F3E6C5")
 toolsmenu.bind("<Motion>", toolsmotion)
 def toolsmenuclick(event):
     if not (4<= event.x <= 155):
@@ -1111,9 +1116,9 @@ sidebar = ctk.CTkFrame(app, width=520, corner_radius=16, fg_color="#342719", bor
 sidebar.pack_propagate(False)
 prompt_label = ctk.CTkLabel(sidebar, text="", font=("Iceland", 35), width=300, height=82, justify='center')
 prompt_label.pack(pady=(24, 10))
-ai_input = ctk.CTkEntry( sidebar, placeholder_text="Start typing...", font=("Lexend", 12), fg_color="#342719", border_color="#D6A640",  text_color="#F3E6C5", placeholder_text_color="#C5B29A")
+ai_input = ctk.CTkEntry( sidebar, placeholder_text="Start typing...", font=("Lexend", 12), fg_color="#342719", border_color=HOVER_BORDER,  text_color="#F3E6C5", placeholder_text_color="#C5B29A")
 ai_input.configure(height=38)
-aichat = ctk.CTkTextbox(sidebar, font=("Lexend", 12), fg_color="#191D1A", border_color="#55401F", border_width = 2, text_color="#F3E6C5", wrap='word')
+aichat = ctk.CTkTextbox(sidebar, font=("Lexend", 12), fg_color="#191D1A", border_color=HOVER_BG, border_width = 2, text_color="#F3E6C5", wrap='word')
 aichat.place(relx=0.027, y=115, relwidth=0.93, relheight=0.74)
 aichat.configure(state='disabled')
 def roundedrectangle(canvas, x1, y1, x2, y2, radius, **options):
@@ -1198,7 +1203,7 @@ def finishthinkingmessage(message, error=False):
 aichat._textbox.tag_configure("userlabel", foreground="#F4C95D", font=("Iceland", 13), spacing1=8)
 aichat._textbox.tag_configure("ailabel", foreground="#75B98A", font=("Iceland", 13), spacing1=8)
 aichat._textbox.tag_configure("message", foreground="#F3E6C5", font=("Lexend", 11), lmargin1=8, lmargin2=8, rmargin=8, spacing3=12)
-aichat._textbox.tag_configure("error", foreground="#D6A640", font=("Lexend", 11), lmargin1=8, lmargin2=8, spacing3=12)
+aichat._textbox.tag_configure("error", foreground=HOVER_BORDER, font=("Lexend", 11), lmargin1=8, lmargin2=8, spacing3=12)
 
 aichat._textbox.tag_configure('mdbold', foreground="#F3E6C5", font=("Lexend", 11, 'bold'))
 aichat._textbox.tag_configure('mditalic', foreground="#F3E6C5", font=("Lexend", 11, 'italic'))
@@ -1325,14 +1330,14 @@ if bounds:
     icon = icon.crop(bounds)
 icon.thumbnail((30, 30), Image.Resampling.LANCZOS)
 polylinenormal = ImageTk.PhotoImage(icon)
-polyline_hover = ImageTk.PhotoImage(ImageEnhance.Brightness(icon).enhance(0.6))
+polyline_hover = ImageTk.PhotoImage(ImageEnhance.Brightness(icon).enhance(1.2))
 polyline_square = canvas.create_rectangle(8, 103, 52, 147, fill='', outline='')
 polyline_icon = canvas.create_image(30, 125, image=polylinenormal)
 canvas.tag_bind(polyline_square, "<Button-1>", lambda event: runnamedcommand("Polyline"))
 canvas.tag_bind( polyline_icon, "<Button-1>",lambda event: runnamedcommand("Polyline"))
 def polyline_motion(event):
     hovering = 8 <= event.x<= 52 and 103 <= event.y <= 147
-    canvas.itemconfig(polyline_square, fill="#55401F"if hovering else  "", outline="#D6A640" if hovering else "")
+    canvas.itemconfig(polyline_square, fill=HOVER_BG if hovering else  "", outline=HOVER_BORDER if hovering else "")
     canvas.itemconfig(polyline_icon, image=polyline_hover if hovering else polylinenormal)
 
 
@@ -1342,14 +1347,14 @@ if bounds:
     curve_image = curve_image.crop(bounds)
 curve_image.thumbnail((30, 30), Image.Resampling.LANCZOS)
 curve_normal = ImageTk.PhotoImage(curve_image)
-curve_hover = ImageTk.PhotoImage(ImageEnhance.Brightness(curve_image).enhance(0.6))
+curve_hover = ImageTk.PhotoImage(ImageEnhance.Brightness(curve_image).enhance(1.2))
 curve_square = canvas.create_rectangle(53, 103, 96, 147, fill='', outline='')
 curve_icon = canvas.create_image(75, 125, image=curve_normal)
 canvas.tag_bind( curve_square, "<Button-1>", lambda event: runnamedcommand("Curve"))
 canvas.tag_bind( curve_icon, "<Button-1>", lambda event: runnamedcommand("Curve"))
 def curve_motion(event):
     hovering = 53 <= event.x <=97 and 103 <= event.y <=147
-    canvas.itemconfig(curve_square, fill='#55401F' if hovering else '', outline="#D6A640" if hovering else "")
+    canvas.itemconfig(curve_square, fill=HOVER_BG if hovering else '', outline=HOVER_BORDER if hovering else "")
     canvas.itemconfig(curve_icon, image=curve_hover if hovering else curve_normal)
 
 
@@ -1359,14 +1364,14 @@ if bounds:
     puzzle_image = puzzle_image.crop(bounds)
 puzzle_image.thumbnail((30, 30), Image.Resampling.LANCZOS)
 puzzle_normal = ImageTk.PhotoImage(puzzle_image)
-puzzle_hover= ImageTk.PhotoImage(ImageEnhance.Brightness(puzzle_image).enhance(0.6))
+puzzle_hover= ImageTk.PhotoImage(ImageEnhance.Brightness(puzzle_image).enhance(1.2))
 puzzle_square  = canvas.create_rectangle(8, 148, 52, 192, fill='', outline='')
 puzzle_icon = canvas.create_image(30, 170, image=puzzle_normal)
 canvas.tag_bind(puzzle_square, "<Button-1>", lambda event: runnamedcommand("Join"))
 canvas.tag_bind(puzzle_icon, "<Button-1>", lambda event: runnamedcommand("Join"))
 def puzzlemotion(event):
     hovering = 8 <= event.x <= 52 and 148 <= event.y <= 192
-    canvas.itemconfig(puzzle_square, fill='#55401F' if hovering else "", outline="#D6A640" if hovering else "")
+    canvas.itemconfig(puzzle_square, fill=HOVER_BG if hovering else "", outline=HOVER_BORDER if hovering else "")
     canvas.itemconfig(puzzle_icon, image=puzzle_hover if hovering else puzzle_normal)
 
 
@@ -1376,14 +1381,14 @@ if bounds:
     explode_image = explode_image.crop(bounds)
 explode_image.thumbnail((30, 30), Image.Resampling.LANCZOS)
 explode_normal = ImageTk.PhotoImage(explode_image)
-explode_hover = ImageTk.PhotoImage(ImageEnhance.Brightness(explode_image).enhance(0.6))
+explode_hover = ImageTk.PhotoImage(ImageEnhance.Brightness(explode_image).enhance(1.2))
 explode_square = canvas.create_rectangle(53, 148, 97, 192, fill='', outline='')
 explode_icon = canvas.create_image(75, 170, image=explode_normal)
 canvas.tag_bind(explode_square, "<Button-1>", lambda event: runnamedcommand("Explode"))
 canvas.tag_bind(explode_icon, "<Button-1>", lambda event: runnamedcommand("Explode"))
 def explode_motion(event):
     hovering = 53 <= event.x <= 97 and 148 <= event.y <=192
-    canvas.itemconfig(explode_square, fill='#55401F' if hovering else "", outline="#D6A640" if hovering else "")
+    canvas.itemconfig(explode_square, fill=HOVER_BG if hovering else "", outline=HOVER_BORDER if hovering else "")
     canvas.itemconfig(explode_icon, image=explode_hover if hovering else explode_normal)
 
 
@@ -1393,14 +1398,14 @@ if bounds:
     rectangle_image = rectangle_image.crop(bounds)
 rectangle_image.thumbnail((30, 30), Image.Resampling.LANCZOS)
 rectangle_normal = ImageTk.PhotoImage(rectangle_image)
-rectangle_hover = ImageTk.PhotoImage(ImageEnhance.Brightness(rectangle_image).enhance(0.6))
+rectangle_hover = ImageTk.PhotoImage(ImageEnhance.Brightness(rectangle_image).enhance(1.2))
 rectangle_sqaure = canvas.create_rectangle(8, 193, 52, 237, fill='', outline='')
 rectangle_icon = canvas.create_image(30, 215, image=rectangle_normal)
 canvas.tag_bind(rectangle_sqaure, "<Button-1>", lambda event: runnamedcommand("Rectangle"))
 canvas.tag_bind(rectangle_icon, "<Button-1>", lambda event: runnamedcommand("Rectangle"))
 def rectangle_motion(event):
     hovering = 8 <= event.x <= 52 and 193 <= event.y <= 237
-    canvas.itemconfig(rectangle_sqaure, fill="#55401F" if hovering else "",  outline="#D6A640" if hovering else "")
+    canvas.itemconfig(rectangle_sqaure, fill=HOVER_BG if hovering else "",  outline=HOVER_BORDER if hovering else "")
     canvas.itemconfig(rectangle_icon,  image=rectangle_hover if hovering else rectangle_normal)
 
 
@@ -1410,7 +1415,7 @@ if bounds:
     text_image = text_image.crop(bounds)
 text_image.thumbnail((30, 30), Image.Resampling.LANCZOS)
 text_normal = ImageTk.PhotoImage(text_image)
-text_hover = ImageTk.PhotoImage(ImageEnhance.Brightness(text_image).enhance(0.6))
+text_hover = ImageTk.PhotoImage(ImageEnhance.Brightness(text_image).enhance(1.2))
 text_square = canvas.create_rectangle(53, 193, 97, 237, fill="", outline="")
 text_icon = canvas.create_image(75, 215, image=text_normal)
 canvas.tag_bind(text_square, "<Button-1>", lambda event: runnamedcommand("Text"))
@@ -1418,7 +1423,7 @@ canvas.tag_bind(text_icon, "<Button-1>", lambda event: runnamedcommand("Text"))
 extrabox = canvas.create_rectangle(8, 248, 92, 284, fill='#191D1A', outline='', width=2)
 extratext = canvas.create_text(50, 266, text="Extra", font=("Iceland", 14), fill="#F3E6C5")
 def extraenter(event):
-    canvas.itemconfig(extrabox, fill="#55401F", outline="#D6A640")
+    canvas.itemconfig(extrabox, fill=HOVER_BG, outline=HOVER_BORDER)
     canvas.itemconfig(extratext, fill='#F4C95D')
 def extraleave(event):
     canvas.itemconfig(extrabox, fill="#191D1A", outline="")
@@ -1426,30 +1431,6 @@ def extraleave(event):
 for item in (extrabox, extratext):
     canvas.tag_bind(item, "<Enter>", extraenter)
     canvas.tag_bind(item, "<Leave>", extraleave)
-
-def bindtoolhover(left, top, right, bottom, box, icon, normal, hover):
-    canvas.itemconfig(box, fill="#191D1A", outline="")
-    def update():
-        mouse_x = canvas.winfo_pointerx() - canvas.winfo_rootx()
-        mouse_y = canvas.winfo_pointery() - canvas.winfo_rooty()
-        hovering = left <= mouse_x <= right and top <= mouse_y <= bottom
-        canvas.itemconfig(box, fill='#55401F' if hovering else "#191D1A", outline="#D6A640" if hovering else "")
-        canvas.itemconfig(icon, image=hover if hovering else normal)
-    def enter(event):
-        canvas.itemconfig(box, fill="#55401F", outline="#D6A640")
-        canvas.itemconfig(icon, image=hover)
-        canvas.tag_raise(icon)
-    def leave(event):
-        app.after(10, update)
-    for item in (box, icon):
-        canvas.tag_bind(item, "<Enter>", enter)
-        canvas.tag_bind(item, "<Leave>", leave)
-bindtoolhover(8, 103, 52, 147, polyline_square, polyline_icon, polylinenormal, polyline_hover)
-bindtoolhover(53, 103, 97, 147, curve_square, curve_icon, curve_normal, curve_hover)
-bindtoolhover(8, 148, 52, 192, puzzle_square, puzzle_icon, puzzle_normal, puzzle_hover)
-bindtoolhover(53, 148, 97, 192, explode_square, explode_icon, explode_normal, explode_hover)
-bindtoolhover(8, 193, 52, 237, rectangle_sqaure, rectangle_icon, rectangle_normal, rectangle_hover)
-bindtoolhover(53, 193, 97, 237, text_square, text_icon, text_normal, text_hover)
 
 toolbarbuttons = [(8, 103, 52, 147, polyline_square, polyline_icon,
      polylinenormal, polyline_hover), (53, 103, 97, 147, curve_square, curve_icon,
@@ -1459,18 +1440,19 @@ toolbarbuttons = [(8, 103, 52, 147, polyline_square, polyline_icon,
 explode_normal, explode_hover), (8, 193, 52, 237, rectangle_sqaure, rectangle_icon, rectangle_normal, rectangle_hover), (53, 193, 97, 237, text_square, text_icon,text_normal, text_hover),]
 def toolbarhover(event):
     overbutton = False
+
     for left, top, right, bottom, box, icon, normal, hover in toolbarbuttons:
         hovering = left <= event.x <= right and top <= event.y <= bottom
-        canvas.itemconfig(box, fill='#55401F' if hovering else "#191D1A", outline="#D6A640" if hovering else "")
+        canvas.itemconfig(box, fill=HOVER_BG if hovering else "", outline=HOVER_BORDER if hovering else "")
         canvas.itemconfig(icon, image=hover if hovering else normal)
         if hovering:
             canvas.tag_raise(icon)
             overbutton = True
-    canvas.configure(cursor='hand2' if overbutton else "")
+    canvas.configure(cursor="hand2" if overbutton else "")
 canvas.bind("<Motion>", toolbarhover, add="+")
 def text_motion(event):
     hovering = 53 <= event.x <= 97 and 193 <= event.y <= 237
-    canvas.itemconfig(text_square, fill="#55401F" if hovering else "", outline="#D6A640" if hovering else "")
+    canvas.itemconfig(text_square, fill=HOVER_BG if hovering else "", outline=HOVER_BORDER if hovering else "")
     canvas.itemconfig(text_icon, image=text_hover if hovering else text_normal)
 
 
@@ -1513,9 +1495,8 @@ def tooltipmotion(event):
         tooltip_job = app.after(650, lambda current=target: showtooltip(*current))
 canvas.bind("<Motion>", tooltipmotion, add="+")
 canvas.bind("<Leave>", hidetooltip, add="+")
-
-gridsnaptext = canvas.create_text(50, 315, text="Grid Snap", font=("Iceland", 13), fill='#F3E6C5', anchor='center')
-gridarrow = canvas.create_line(82, 322, 87, 327, 92, 322, fill="#D6A640", width=2, capstyle="round", joinstyle="round")
+gridsnaptext = canvas.create_text(38, 315, text="Grid Snap",font=("Iceland", 13), fill="#F3E6C5", anchor="center")
+gridarrow = canvas.create_line(80, 311,88, 319, 96, 311,fill=HOVER_BORDER,width=2, capstyle="round", joinstyle="round")
 gridpopup = ctk.CTkFrame(app, width=220, height=104, corner_radius=8, fg_color="#342719", border_color="#A77A2f", border_width=2)
 gridpopup.pack_propagate(False)
 ctk.CTkLabel(gridpopup, text="Grid spacing", font=("Iceland", 18), text_color="#F3E6C5").place(x=12, y=10)
@@ -1552,21 +1533,26 @@ def togglegridpopup(event=None):
     gridpopup.lift()
     gridspacingentry.focus_set()
     gridspacingentry.select_range(0, "end")
-canvas.tag_bind(gridarrow, "<Button-1>", togglegridpopup)
-canvas.tag_bind(gridarrow, "<Enter>", lambda event: canvas.itemconfig(gridarrow, fill="#f4c95d"))
-canvas.tag_bind(gridarrow, "<Leave>", lambda event: canvas.itemconfig(gridarrow, fill="#D6a640"))
+def gridarrowmotion(event):
+    hovering = 72 <= event.x <= 104 and 298 <= event.y <= 332
+    canvas.itemconfig(gridarrow, fill=HOVER_TEXT if hovering else HOVER_BORDER, width=3 if hovering else 2)
+def gridarrowclick(event):
+    if 72 <= event.x <= 104 and 298 <= event.y <= 332:
+        togglegridpopup()
+canvas.bind("<Motion>", gridarrowmotion, add="+")
+canvas.bind("<Button-1>", gridarrowclick, add="+")
 gridsetbutton.bind("<Button-1>", applygridspacing)
 gridspacingentry.bind("<Return>", applygridspacing)
 gridsnapon = bool(uisettings.get("grid_snap", False))
 def showgridsnap(hovering=False):
-    color = "#F4C95D" if gridsnapon else "#D6A640" if hovering else "#F3E6C5"
+    color = "#F4C95D" if gridsnapon else HOVER_TEXT if hovering else "#F3E6C5"
     canvas.itemconfig(gridsnaptext, fill=color)
 def gridsnapmotion(event):
-    hovering = 8 <= event.x <= 92 and 297 <= event.y <= 333
+    hovering = 8 <= event.x <= 68 and 297 <= event.y <= 333
     showgridsnap(hovering)
 def gridsnapclick(event):
     global gridsnapon
-    if 8 <= event.x <= 75 and 297 <= event.y <= 333:
+    if 8 <= event.x <= 68 and 297 <= event.y <= 333:
         gridsnapon = not gridsnapon
         syncgridsnaprenderer()
         showgridsnap(True)
@@ -1578,7 +1564,7 @@ canvas.bind("<Leave>", lambda event: showgridsnap(False), add="+")
 orthotext = canvas.create_text(50, 355, text='Ortho', font=("Iceland", 13), fill='#F3E6C5', anchor='center')
 orthoon = bool(uisettings.get("ortho", False))
 def showortho(hovering=False):
-    color = "#F4C95D" if orthoon else "#D6A640" if hovering else "#F3E6C5"
+    color = "#F4C95D" if orthoon else HOVER_TEXT if hovering else "#F3E6C5"
     canvas.itemconfig(orthotext, fill=color)
 def orthomotion(event):
     showortho(8 <= event.x <= 92 and 337 <= event.y <= 373)
@@ -1595,7 +1581,7 @@ canvas.bind("<Leave>", lambda event: showortho(False), add="+")
 osnaptext = canvas.create_text(50, 395, text='Osnap', font=("Iceland", 13), fill='#F3E6C5', anchor='center')
 onsapon = bool(uisettings.get("osnap", False))
 def showosnap(hovering=False):
-    color = "#F4C95D" if onsapon else "#D6A640" if hovering else "#F3E6C5"
+    color = "#F4C95D" if onsapon else HOVER_TEXT if hovering else "#F3E6C5"
     canvas.itemconfig(osnaptext, fill=color)
 def onsapmotion(event):
     showosnap(8 <= 8 <= event.x <= 92 and 377 <= event.y <= 413)
@@ -1619,10 +1605,10 @@ layername = canvas.create_text(60, 485, text="Gold", font=("Iceland", 11), fill=
 layer_color = uisettings.get("layer_color", "#D6A640")
 layer_swatch = canvas.create_rectangle(17, 477, 33, 493, fill=layer_color, outline="#80602B", width=1)
 def swatch_enter(event):
-    canvas.itemconfig(layer_swatch, outline="#D6A640", width=2)
+    canvas.itemconfig(layer_swatch, outline=HOVER_BORDER, width=2)
 def swatch_leave(event):
     canvas.itemconfig(layer_swatch, outline="#80602B", width=1)
-colors = (("Gold", "#D6A640"), ("Green", "#3E8A63"), ("Brown", "#64350B"), ("White", "#F3E6C5"))
+colors = ( ("Gold", "#D6A640"), ("Green", "#3E8A63"),  ("Brown", "#64350B"), ("White", "#F3E6C5"))
 savelayername = next(
     (name for name, color in colors if color == layer_color), 'Gold'
 )
@@ -1639,7 +1625,7 @@ def layermenumotion(event):
     hovered = (event.y-4)//30
     for i, (background, label) in enumerate(layer_rows):
         active = i == hovered and 4 <= event.x <=148
-        layermenu.itemconfig(background, fill="#55401F" if active else "")
+        layermenu.itemconfig(background, fill=HOVER_BG if active else "")
         layermenu.itemconfig(label, fill='#F4C95D' if active else "#F3E6C5")
 def chooselayercolor(event):
     global layer_color
@@ -1679,35 +1665,26 @@ layermenu.bind("<Button-1>", chooselayercolor)
 app.bind_all("<Button-1>", close_layer_outside, add="+")
 
 snapcanvas = Canvas(canvas, bg="#191D1A", highlightthickness=0)
-snapwindow = canvas.create_window( 0, 515, window=snapcanvas,  anchor="nw", width=100, height=230)
-snapheading = snapcanvas.create_text(50, 15, text='Osnap', fill='#F3E6C5', font=("Iceland", 14))
+snapwindow = canvas.create_window(0, 515, window=snapcanvas, anchor="nw", width=100, height=230)
+snapheading = snapcanvas.create_text(50, 15, text="Osnap", fill="#F3E6C5", font=("Iceland", 14))
+snapnames = ("End", "Near", "Int", "Mid", "Cen", "Disable")
 snapenabled = {}
 snapitems = {}
 def togglesnap(name):
     global onsapon
-    if name == 'Disable':
-        onsapon= not onsapon
+    if name == "Disable":
+        onsapon = not onsapon
         showosnap()
-        saveuisettings()
     elif onsapon:
         snapenabled[name] = not snapenabled[name]
     refreshosnap()
-def refreshosnap():
-    active = onsapon
-    snapcanvas.itemconfig(snapheading, fill='#F3E6C5' if active else "#777777")
-    for name, (box, mark, label) in snapitems.items():
-        if name == 'Disable':
-            snapcanvas.itemconfig(mark, state='hidden' if active else 'normal')
-            continue
-        snapcanvas.itemconfig(box, outline="#D6A640" if active else "#555555")
-        snapcanvas.itemconfig(label, fill="#F3E6C5" if active else "#777777")
-        snapcanvas.itemconfig(mark, fill="#F4C95D" if active else "#777777")
-        snapcanvas.itemconfig(mark, state="normal" if snapenabled[name] else "hidden")
-    syncosnaprenderer()
+    saveuisettings()
 def syncgridsnaprenderer():
     if renderer is not None:
         renderer.set_grid_snap(gridsnapon)
         renderer.set_grid_spacing(gridspacing)
+        # Grid snap is only a fallback; keep active object snaps enabled.
+        syncosnaprenderer()
 def syncosnaprenderer():
     end_enabled = onsapon and snapenabled.get("End", False)
     near_enabled = onsapon and snapenabled.get("Near", False)
@@ -1715,21 +1692,38 @@ def syncosnaprenderer():
         renderer.set_osnap_modes(end_enabled, near_enabled)
     if not end_enabled and not near_enabled:
         hidesnapindicator()
-for i, name in enumerate(("End", "Near", "Int", "Mid", "Cen", "Disable")):
-    y = 48 + i *30
-    snapenabled[name] = (
-        False
-        if name == 'Disable'
-        else bool(uisettings['snap_modes'].get(name, False))
-    )
-    box = snapcanvas.create_rectangle(18, y-7, 32, y+7, fill='#342719', outline="#D6A640", width=2)
-    mark = snapcanvas.create_text(25, y, text="✓", fill='#F4C95D',font=("Iceland", 13), state='hidden')
-    label = snapcanvas.create_text(60, y, text=name, fill="#F3E6C5", font=("Iceland", 13))
+def refreshosnap():
+    snapcanvas.itemconfig(snapheading, fill="#F3E6C5" if onsapon else "#777777" )
+    for name, (box, mark, label) in snapitems.items():
+        available = onsapon or name == "Disable"
+        snapcanvas.itemconfig( box, fill="#342719", outline=HOVER_BORDER if available else "#555555")
+        snapcanvas.itemconfig(label, fill="#F3E6C5" if available else "#777777")
+        if name == "Disable":snapcanvas.itemconfig( mark, state="hidden" if onsapon else "normal"  )
+        else:
+            snapcanvas.itemconfig( mark,  fill="#F4C95D" if onsapon else "#777777",  state="normal" if snapenabled[name] else "hidden" )
+    syncosnaprenderer()
+for i, name in enumerate(snapnames):
+    y = 48 + i * 30
+    snapenabled[name] = ( False if name == "Disable"  else bool(uisettings["snap_modes"].get(name, False)))
+    box = snapcanvas.create_rectangle( 18, y - 7, 32, y + 7, fill="#342719", outline=HOVER_BORDER, width=2)
+    mark = snapcanvas.create_text(  25, y, text="✓",  fill="#F4C95D", font=("Iceland", 13), state="hidden")
+    label = snapcanvas.create_text( 60, y, text=name, fill="#F3E6C5", font=("Iceland", 13) )
     snapitems[name] = (box, mark, label)
     for item in (box, mark, label):
-        snapcanvas.tag_bind(item, "<Button-1>", lambda event, option=name: togglesnap(option))
-snapcanvas.configure(scrollregion=(0, 0, 100, 225))
+        snapcanvas.tag_bind( item,  "<Button-1>", lambda event, option=name: togglesnap(option))
+def snapcanvasmotion(event=None):
+    for i, name in enumerate(snapnames):
+        box, mark, label = snapitems[name]
+        center_y = 48 + i * 30
+        hovering = (event is not None and 8 <= event.x <= 92 and abs(event.y - center_y) <= 13 )
+        available = onsapon or name == "Disable"
+        snapcanvas.itemconfig(box, fill=HOVER_BG if hovering and available else "#342719")
+        snapcanvas.itemconfig(label, fill=HOVER_TEXT if hovering and available
+            else "#F3E6C5" if available  else "#777777")
+snapcanvas.bind("<Motion>", snapcanvasmotion)
+snapcanvas.bind("<Leave>", lambda event: snapcanvasmotion())
 snapcanvas.bind("<MouseWheel>", lambda event: snapcanvas.yview_scroll(-1 if event.delta > 0 else 1, "units"))
+snapcanvas.configure(scrollregion=(0, 0, 100, 225))
 refreshosnap()
 
 def saveuisettings():
@@ -1827,13 +1821,13 @@ def closeextramenu(event=None):
     extraoverlay.withdraw()
 def extratoolbutton(name, x, y):
     button = Canvas( extrapanel,  width=112, height=44, bg="#342719",  highlightthickness=0, cursor="hand2")
-    background = button.create_rectangle(2, 2, 110, 42, fill="#191D1A", outline="#55401F", width=2)
+    background = button.create_rectangle(2, 2, 110, 42, fill="#191D1A", outline=HOVER_BG, width=2)
     label = button.create_text(56, 22, text=name, fill="#F3E6C5", font=("Iceland", 15))
     def enter(event):
-        button.itemconfig(background, fill="#55401F", outline="#D6A640")
+        button.itemconfig(background, fill=HOVER_BG, outline=HOVER_BORDER)
         button.itemconfig(label, fill="#F4C95D")
     def leave(event):
-        button.itemconfig( background, fill="#191D1A", outline="#55401F")
+        button.itemconfig( background, fill="#191D1A", outline=HOVER_BG)
         button.itemconfig(label, fill="#F3E6C5")
     def clicked(event):
         closeextramenu()
@@ -2000,10 +1994,10 @@ settingspanel = ctk.CTkFrame(settingsdialog, fg_color="#342719", border_color="#
 settingspanel.pack(fill='both', expand=True, padx=3, pady=3)
 ctk.CTkLabel(settingspanel, text='AI Settings', font=("Iceland", 26), text_color="#F3E6C5").place(x=25, y=20)
 ctk.CTkLabel(settingspanel, text='API key', font=("Lexend", 12), text_color="#F3E6C5").place(x=25, y=80)
-apikeyentry= ctk.CTkEntry(settingspanel, width=460,height=36, show='*', placeholder_text="Enter API key", font=("Lexend", 12), fg_color="#191D1A", border_color="#55401F")
+apikeyentry= ctk.CTkEntry(settingspanel, width=460,height=36, show='*', placeholder_text="Enter API key", font=("Lexend", 12), fg_color="#191D1A", border_color=HOVER_BG)
 apikeyentry.place(x=25, y=105)
 ctk.CTkLabel(settingspanel, text="Model", font=("Lexend", 12), text_color="#F3E6C5").place(x=25, y=160)
-modelmenu = ctk.CTkOptionMenu(settingspanel, width=220, height=36, values=["openai/gpt-6-sol-pro","openai/gpt-4o-mini", "qwen/qwen3-32b", "google/gemini-2.5-flash"], font=("Lexend", 12), fg_color="#55401F", button_color="#A77A2F", button_hover_color="#D6A640", dropdown_fg_color="#342719")
+modelmenu = ctk.CTkOptionMenu(settingspanel, width=220, height=36, values=["openai/gpt-6-sol-pro","openai/gpt-4o-mini", "qwen/qwen3-32b", "google/gemini-2.5-flash"], font=("Lexend", 12), fg_color=HOVER_BG, button_color="#A77A2F", button_hover_color=HOVER_BORDER, dropdown_fg_color="#342719")
 modelmenu.set("gpt-4o-mini")
 modelmenu.place(x=25, y=185)
 def positionsettings(event=None):
@@ -2037,7 +2031,7 @@ def opensettings(event=None):
 settingsave=Canvas(settingspanel, width=100, height=38, bg="#342719", highlightthickness=0, cursor='hand2')
 settingsavebox = settingsave.create_rectangle(2, 2, 98, 36, fill="#191D1A", outline="#A77A2F", width=2)
 settingsavetext =settingsave.create_text(50, 19, text='Save', fill='#F3E6C5', font=("Iceland", 17))
-settingsave.bind("<Enter>", lambda event: (settingsave.itemconfig(settingsavebox, fill='#55401F'), settingsave.itemconfig(settingsavetext, fill="#F4C95D")))
+settingsave.bind("<Enter>", lambda event: (settingsave.itemconfig(settingsavebox, fill=HOVER_BG), settingsave.itemconfig(settingsavetext, fill="#F4C95D")))
 settingsave.bind("<Leave>", lambda event: (settingsave.itemconfig(settingsavebox, fill='#242823'), settingsave.itemconfig(settingsavetext, fill='#F3E6C5')))
 settingsave.bind("<Button-1>", lambda event :savesettings())
 settingsave.place(relx=1, x=-125, y=220)

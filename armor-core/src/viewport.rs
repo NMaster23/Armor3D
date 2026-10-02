@@ -852,26 +852,41 @@ impl Viewport {
         }
 
         if self.near_snap_enabled {
-            let radius = self.world_width_for_pixels(NEAR_SNAP_RADIUS_PIXELS);
             let mut best_near: Option<(f32, Vector3<f32>)> = None;
-            for entity in &self.entities {
-                for segment in entity.vertices.windows(2) {
-                    let start = segment[0];
-                    let direction = segment[1] - start;
-                    let length_squared = direction.magnitude2();
-                    if length_squared <= f32::EPSILON {
-                        continue;
+            if let Some(mouse_screen) = self.world_to_screen(point) {
+                let mut consider_segment = |start: Vector3<f32>, end: Vector3<f32>| {
+                    let (Some(start_screen), Some(end_screen)) =
+                        (self.world_to_screen(start), self.world_to_screen(end))
+                    else {
+                        return;
+                    };
+                    let screen_direction = end_screen - start_screen;
+                    let screen_length_squared = screen_direction.magnitude2();
+                    if screen_length_squared <= f32::EPSILON {
+                        return;
                     }
-                    let amount = ((point - start).dot(direction) / length_squared).clamp(0.0, 1.0);
-                    let candidate = start + direction * amount;
-                    let distance = (point - candidate).magnitude();
-                    if distance <= radius
+                    let amount = ((mouse_screen - start_screen).dot(screen_direction)
+                        / screen_length_squared)
+                        .clamp(0.0, 1.0);
+                    let projected_screen = start_screen + screen_direction * amount;
+                    let distance_pixels = (mouse_screen - projected_screen).magnitude();
+                    if distance_pixels <= NEAR_SNAP_RADIUS_PIXELS
                         && best_near
                             .as_ref()
-                            .map(|(best_distance, _)| distance < *best_distance)
+                            .map(|(best_distance, _)| distance_pixels < *best_distance)
                             .unwrap_or(true)
                     {
-                        best_near = Some((distance, candidate));
+                        let candidate = start + (end - start) * amount;
+                        best_near = Some((distance_pixels, candidate));
+                    }
+                };
+
+                for segment in self.active_polyline.windows(2) {
+                    consider_segment(segment[0], segment[1]);
+                }
+                for entity in &self.entities {
+                    for segment in entity.vertices.windows(2) {
+                        consider_segment(segment[0], segment[1]);
                     }
                 }
             }
@@ -983,7 +998,7 @@ impl Viewport {
         };
         let (snap_pos, shape_close, _) = self.get_snap_pos(hit_pos);
         if shape_close {
-            self.active_polyline.push(self.active_polyline[0]);
+            self.active_polyline.push(snap_pos);
             let points = self.active_polyline.clone();
             self.add_polyline(points, self.polyline_color, POLYLINE_WIDTH_PIXELS);
             self.active_polyline.clear();
@@ -1198,5 +1213,41 @@ mod tests {
         let (coarse, _, _) = viewport.get_snap_pos(Vector3::new(0.31, 0.0, -0.74));
         assert!((coarse.x - 0.5).abs() < 0.00001);
         assert!((coarse.z + 0.5).abs() < 0.00001);
+    }
+
+    #[test]
+    fn near_snap_uses_active_polyline_before_grid_snap() {
+        let mut viewport = Viewport::new(800, 600);
+        viewport.active_polyline = vec![
+            Vector3::new(-0.5, 0.0, 0.0),
+            Vector3::new(0.5, 0.0, 0.0),
+        ];
+        viewport.set_osnap_modes(false, true);
+        viewport.set_grid_snap(true);
+
+        let (snapped, closes_shape, snap_kind) =
+            viewport.get_snap_pos(Vector3::new(0.23, 0.0, 0.01));
+
+        assert!(snapped.z.abs() < 0.00001);
+        assert!(!closes_shape);
+        assert_eq!(snap_kind, Some("Near"));
+    }
+
+    #[test]
+    fn end_snap_to_another_figure_keeps_active_polyline_open() {
+        let mut viewport = Viewport::new(800, 600);
+        viewport.entities.push(shape(
+            1,
+            vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.0, 0.0)],
+        ));
+        viewport.active_polyline = vec![Vector3::new(-0.5, 0.0, -0.5)];
+        viewport.set_osnap_modes(true, false);
+
+        let (snapped, finishes_polyline, snap_kind) =
+            viewport.get_snap_pos(Vector3::new(0.01, 0.0, 0.01));
+
+        assert!(snapped.magnitude() < 0.00001);
+        assert!(!finishes_polyline);
+        assert_eq!(snap_kind, Some("End"));
     }
 }
