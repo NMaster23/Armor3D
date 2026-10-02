@@ -1047,7 +1047,7 @@ prompt_label.pack(pady=(24, 10))
 ai_input = ctk.CTkEntry( sidebar, placeholder_text="Start typing...", font=("Lexend", 12), fg_color="#342719", border_color="#D6A640",  text_color="#F3E6C5", placeholder_text_color="#C5B29A")
 ai_input.configure(height=38)
 aichat = ctk.CTkTextbox(sidebar, font=("Lexend", 12), fg_color="#191D1A", border_color="#55401F", border_width = 2, text_color="#F3E6C5", wrap='word')
-aichat.place(relx=0.06, y=115, relwidth=0.88, relheight=0.60)
+aichat.place(relx=0.025, y=115, relwidth=0.93, relheight=0.74)
 aichat.configure(state='disabled')
 def roundedrectangle(canvas, x1, y1, x2, y2, radius, **options):
     points = [ x1 + radius, y1, x2 - radius, y1,  x2, y1,  x2, y1 + radius, x2, y2 - radius,  x2, y2, x2 - radius, y2, x1 + radius, y2,x1, y2,  x1, y2 - radius, x1, y1 + radius, x1, y1]
@@ -1484,7 +1484,7 @@ def swatch_enter(event):
     canvas.itemconfig(layer_swatch, outline="#D6A640", width=2)
 def swatch_leave(event):
     canvas.itemconfig(layer_swatch, outline="#80602B", width=1)
-colors = (("Gold", "#D6A640"), ("Emerald", "#3E8A63"), ("Copper", "#956235"), ("Ivory", "#F3E6C5"))
+colors = (("Gold", "#D6A640"), ("Green", "#3E8A63"), ("Brown", "#956235"), ("White", "#F3E6C5"))
 layermenu = Canvas(app, width=152, height=128, bg="#342719", highlightthickness=1, highlightbackground="#A77A2F")
 layer_rows = []
 for i, (name, color) in enumerate(colors):
