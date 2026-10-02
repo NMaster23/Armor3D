@@ -86,6 +86,7 @@ pub struct Viewport {
     pub osnap: bool,
     pub end_snap_enabled: bool,
     pub near_snap_enabled: bool,
+    pub grid_snap_enabled: bool,
     pub cursor_pos: PhysicalPosition<f64>,
     pub holding_left: bool,
     pub polyline_active: bool,
@@ -125,6 +126,7 @@ impl Viewport {
             osnap: true,
             end_snap_enabled: false,
             near_snap_enabled: false,
+            grid_snap_enabled: false,
             cursor_pos: PhysicalPosition::new(0.0, 0.0),
             holding_left: false,
             polyline_active: false,
@@ -729,6 +731,10 @@ impl Viewport {
         }
     }
 
+    pub fn set_grid_snap(&mut self, enabled: bool) {
+        self.grid_snap_enabled = enabled;
+    }
+
     pub fn set_polyline_color(&mut self, red: f32, green: f32, blue: f32, alpha: f32) {
         let color = [
             red.clamp(0.0, 1.0),
@@ -749,10 +755,6 @@ impl Viewport {
         &self,
         point: Vector3<f32>,
     ) -> (Vector3<f32>, bool, Option<&'static str>) {
-        if !self.osnap {
-            return (point, false, None);
-        }
-
         if self.end_snap_enabled {
             let radius = self.world_width_for_pixels(END_SNAP_RADIUS_PIXELS);
             let mut best_end: Option<(f32, Vector3<f32>, bool)> = None;
@@ -811,6 +813,16 @@ impl Viewport {
             if let Some((_, position)) = best_near {
                 return (position, false, Some("Near"));
             }
+        }
+
+        if self.grid_snap_enabled {
+            const GRID_SPACING: f32 = 0.1;
+            let snapped = Vector3::new(
+                (point.x / GRID_SPACING).round() * GRID_SPACING,
+                0.0,
+                (point.z / GRID_SPACING).round() * GRID_SPACING,
+            );
+            return (snapped, false, Some("Grid"));
         }
 
         (point, false, None)
@@ -1107,5 +1119,19 @@ mod tests {
         assert_eq!(snap_kind.as_deref(), Some("End"));
         assert!(viewport.preview_point.unwrap().magnitude() < 0.00001);
         assert_eq!(viewport.active_polyline.len(), 1);
+    }
+
+    #[test]
+    fn grid_snap_rounds_to_rendered_subgrid_intersections() {
+        let mut viewport = Viewport::new(800, 600);
+        viewport.set_grid_snap(true);
+
+        let (snapped, closes_shape, snap_kind) =
+            viewport.get_snap_pos(Vector3::new(0.14, 0.0, -0.26));
+
+        assert!((snapped.x - 0.1).abs() < 0.00001);
+        assert!((snapped.z + 0.3).abs() < 0.00001);
+        assert!(!closes_shape);
+        assert_eq!(snap_kind, Some("Grid"));
     }
 }

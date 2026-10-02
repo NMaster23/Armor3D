@@ -173,6 +173,10 @@ impl ViewportRenderer {
             .set_osnap_modes(end_enabled, near_enabled);
     }
 
+    fn set_grid_snap(&mut self, enabled: bool) {
+        self.state.viewport.set_grid_snap(enabled);
+    }
+
     fn set_polyline_color(&mut self, red: f32, green: f32, blue: f32, alpha: f32) {
         self.state
             .viewport

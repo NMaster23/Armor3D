@@ -12,6 +12,14 @@ from pathlib import Path
 import os
 from armor_core import ViewportRenderer
 ctk.set_appearance_mode('dark')
+GRID_SIZE = 20
+gridsnapon = False
+def snaptogrid(x, y):
+    if not gridsnapon:
+        return x, y
+    snapped_x = round(x/GRID_SIZE)* GRID_SIZE
+    snapped_y = round(y/GRID_SIZE) * GRID_SIZE
+    return snapped_x, snapped_y
 
 SETTINGSPATH = (Path(os.getenv("APPDATA") or Path.home())
                 / 'Armor3D'
@@ -46,6 +54,13 @@ def loaduisettings():
     except (OSError, json.JSONDecodeError, TypeError):
         return DEFAULTSETTINGS.copy()
 uisettings= loaduisettings()
+
+def snaptogrid(x, y):
+    if not gridsnapon:
+        return x, y
+    snapped_x = round(x/GRID_SIZE) * GRID_SIZE
+    snapped_y = round(y/GRID_SIZE)* GRID_SIZE
+    return snapped_x, snapped_y
 
 MEMORYPATH = (
     Path(os.getenv("APPDATA", Path.home()))
@@ -152,6 +167,8 @@ def initialize_renderer():
     renderer = ViewportRenderer(viewport.winfo_id(),  max(1, viewport.winfo_width()), max(1, viewport.winfo_height()),)
     if "syncosnaprenderer" in globals():
         syncosnaprenderer()
+    if "syncgridsnaprenderer" in globals():
+        syncgridsnaprenderer()
     if "synclayerrenderer" in globals():
         synclayerrenderer()
     render_frame()
@@ -164,11 +181,11 @@ def resize_viewport(event):
         renderer.resize(max(1, event.width), max(1, event.height))
 def viewport_mouse_move(event):
     if renderer is not None:
-        snap_kind = renderer.mouse_move(event.x, event.y)
-        if snap_kind and activecommand == "polyline":
-            snapindicator.configure(text=snap_kind)
-            label_x = min(event.x + 10, max(0, viewport.winfo_width() - 44))
-            label_y = max(2, event.y - 25)
+        snapkind = renderer.mouse_move(event.x, event.y)
+        if snapkind and activecommand == 'polyline':
+            snapindicator.configure(text=snapkind)
+            label_x = min(event.x+10, max(0, viewport.winfo_width()-44))
+            label_y = max(2, event.y-25)
             snapindicator.place(x=label_x, y=label_y)
             snapindicator.lift()
         else:
@@ -229,9 +246,8 @@ def viewport_mouse_down(event):
             left_drag_start = (event.x, event.y)
             left_dragged = False
     elif renderer is not None:
+        renderer.mouse_move(event.x, event.y)
         closed_polyline = renderer.mouse_button(True)
-        if closed_polyline and activecommand == "polyline":
-            closecompletedpolyline()
 def viewport_left_drag(event):
     global left_dragged
     if moving_selection:
@@ -502,7 +518,8 @@ def runnamedcommand(name):
         "png": savepngcommand,
         "circle": lambda: startplaceholdercmd("Circle", "Choose circle center"),
         "fillet": lambda: startplaceholdercmd("Fillet", "Select curves to fillet"),
-        "trim": lambda: startplaceholdercmd("Trim", "Select objects to trim")
+        "trim": lambda: startplaceholdercmd("Trim", "Select objects to trim"),
+        "arc": lambda: startplaceholdercmd("Arc", "Choose arc start point")
     }
     action = actions.get(normalized)
     if action is None:
@@ -572,7 +589,7 @@ def runcmd(event):
     return 'break'
 command.bind("<Return>", runcmd)
 commandnames = ["Polyline", "Curve", "Join", "Explode", "Rectangle", "Text", "File", "New", "Save", "Save as", '3DM', "PNG", "DXF", "Analyze", "Distance", "Angle", "Tools", "Revolve", "Extrude", "Mirror", "Copy", 
-                'Circle', "Fillet", "Trim"]
+                'Circle', "Fillet", "Trim", "Arc"]
 
 command._entry.configure(selectbackground="#666666", selectforeground="#F3E6C5")
 def updatecommandsuggestion(event=None):
@@ -653,7 +670,8 @@ def saveviewportpng():
     app.after(250, openpngdialog)
 def openpngdialog():
     app.update_idletasks()
-    x, y = viewport.winfo_rootx(), viewport.winfo_rooty()
+    x = viewport.winfo_rootx()
+    y= viewport.winfo_rooty()
     w, h = viewport.winfo_width(), viewport.winfo_height()
     shot = ImageGrab.grab(bbox=(x, y, x+w, y+h), all_screens=True)
     vx, vy=x - app.winfo_rootx(), y - app.winfo_rooty()
@@ -1491,8 +1509,9 @@ def gridsnapmotion(event):
     showgridsnap(hovering)
 def gridsnapclick(event):
     global gridsnapon
-    if 8 <= event.x <= 92 and 297 <= event.y <= 333:
+    if 8 <= event.x <= 92 and 297 <= event.y <=333:
         gridsnapon = not gridsnapon
+        syncgridsnaprenderer()
         showgridsnap(True)
         saveuisettings()
 canvas.bind("<Motion>", gridsnapmotion, add="+")
@@ -1546,7 +1565,7 @@ def swatch_enter(event):
     canvas.itemconfig(layer_swatch, outline="#D6A640", width=2)
 def swatch_leave(event):
     canvas.itemconfig(layer_swatch, outline="#80602B", width=1)
-colors = (("Gold", "#D6A640"), ("Green", "#3E8A63"), ("Brown", "#956235"), ("White", "#F3E6C5"))
+colors = (("Gold", "#D6A640"), ("Green", "#3E8A63"), ("Brown", "#64350B"), ("White", "#F3E6C5"))
 savelayername = next(
     (name for name, color in colors if color == layer_color), 'Gold'
 )
@@ -1628,6 +1647,9 @@ def refreshosnap():
         snapcanvas.itemconfig(mark, fill="#F4C95D" if active else "#777777")
         snapcanvas.itemconfig(mark, state="normal" if snapenabled[name] else "hidden")
     syncosnaprenderer()
+def syncgridsnaprenderer():
+    if renderer is not None:
+        renderer.set_grid_snap(gridsnapon)
 def syncosnaprenderer():
     end_enabled = onsapon and snapenabled.get("End", False)
     near_enabled = onsapon and snapenabled.get("Near", False)
@@ -1762,6 +1784,7 @@ def extratoolbutton(name, x, y):
     button.bind("<Button-1>", clicked)
     button.place(x=x, y=y)
 extratoolbutton("Circle", 30, 85)
+extratoolbutton('Arc', 420, 85)
 extratoolbutton("Fillet", 160, 85)
 extratoolbutton("Trim", 290, 85)
 closeextra = Canvas(extrapanel,  width=38, height=38,  bg="#342719", highlightthickness=0, cursor="hand2")
@@ -1979,6 +2002,7 @@ def closeapp():
     saveuisettings()
     app.destroy()
 app.protocol("WM_DELETE_WINDOW", closeapp)
+
 
 
 app.after_idle(initialize_renderer)
