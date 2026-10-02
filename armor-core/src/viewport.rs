@@ -87,6 +87,7 @@ pub struct Viewport {
     pub end_snap_enabled: bool,
     pub near_snap_enabled: bool,
     pub grid_snap_enabled: bool,
+    pub grid_spacing: f32,
     pub cursor_pos: PhysicalPosition<f64>,
     pub holding_left: bool,
     pub polyline_active: bool,
@@ -127,6 +128,7 @@ impl Viewport {
             end_snap_enabled: false,
             near_snap_enabled: false,
             grid_snap_enabled: false,
+            grid_spacing: 0.1,
             cursor_pos: PhysicalPosition::new(0.0, 0.0),
             holding_left: false,
             polyline_active: false,
@@ -735,6 +737,23 @@ impl Viewport {
         self.grid_snap_enabled = enabled;
     }
 
+    pub fn set_grid_spacing(&mut self, spacing: f32) {
+        if spacing.is_finite() && spacing > 0.0 {
+            self.grid_spacing = spacing;
+        }
+    }
+
+    pub fn snap_cursor_position(&mut self) -> Option<(f32, f32)> {
+        if !self.polyline_active {
+            return None;
+        }
+        let point = self.fetch_point(self.cursor_pos)?;
+        let (snapped, _, snap_kind) = self.get_snap_pos(point);
+        snap_kind?;
+        let screen = self.world_to_screen(snapped)?;
+        Some((screen.x, screen.y))
+    }
+
     pub fn set_polyline_color(&mut self, red: f32, green: f32, blue: f32, alpha: f32) {
         let color = [
             red.clamp(0.0, 1.0),
@@ -816,11 +835,10 @@ impl Viewport {
         }
 
         if self.grid_snap_enabled {
-            const GRID_SPACING: f32 = 0.1;
             let snapped = Vector3::new(
-                (point.x / GRID_SPACING).round() * GRID_SPACING,
+                (point.x / self.grid_spacing).round() * self.grid_spacing,
                 0.0,
-                (point.z / GRID_SPACING).round() * GRID_SPACING,
+                (point.z / self.grid_spacing).round() * self.grid_spacing,
             );
             return (snapped, false, Some("Grid"));
         }
@@ -1133,5 +1151,10 @@ mod tests {
         assert!((snapped.z + 0.3).abs() < 0.00001);
         assert!(!closes_shape);
         assert_eq!(snap_kind, Some("Grid"));
+
+        viewport.set_grid_spacing(0.5);
+        let (coarse, _, _) = viewport.get_snap_pos(Vector3::new(0.31, 0.0, -0.74));
+        assert!((coarse.x - 0.5).abs() < 0.00001);
+        assert!((coarse.z + 0.5).abs() < 0.00001);
     }
 }

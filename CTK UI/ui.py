@@ -12,31 +12,24 @@ from pathlib import Path
 import os
 from armor_core import ViewportRenderer
 ctk.set_appearance_mode('dark')
-GRID_SIZE = 20
-gridsnapon = False
-def snaptogrid(x, y):
-    if not gridsnapon:
-        return x, y
-    snapped_x = round(x/GRID_SIZE)* GRID_SIZE
-    snapped_y = round(y/GRID_SIZE) * GRID_SIZE
-    return snapped_x, snapped_y
 
 SETTINGSPATH = (Path(os.getenv("APPDATA") or Path.home())
                 / 'Armor3D'
                 / "ui_settings.json")
 DEFAULTSETTINGS = {
     "grid_snap": False,
+    "grid_spacing": 0.1,
     "ortho": False,
     "osnap": False,
-    "snap_modes" :{
+    "snap_modes": {
         "End": False,
         "Near": False,
         "Int": False,
         "Mid": False,
         "Cen": False
     },
-    "layer_color": "#D6a640",
-    "panel_ratio":0.5
+    "layer_color": "#D6A640",
+    "panel_ratio": 0.5
 }
 def loaduisettings():
     try:
@@ -55,13 +48,7 @@ def loaduisettings():
         return DEFAULTSETTINGS.copy()
 uisettings= loaduisettings()
 
-def snaptogrid(x, y):
-    if not gridsnapon:
-        return x, y
-    snapped_x = round(x/GRID_SIZE) * GRID_SIZE
-    snapped_y = round(y/GRID_SIZE)* GRID_SIZE
-    return snapped_x, snapped_y
-
+gridspacing = float(uisettings.get('grid_spacing', 0.1))
 MEMORYPATH = (
     Path(os.getenv("APPDATA", Path.home()))
     / "Armor3D"
@@ -158,8 +145,19 @@ snapindicator = ctk.CTkLabel(
     text_color="#F4C95D",
     font=("Iceland", 12),
 )
+snapcursorhorizontal = Frame(viewport, bg='#f4c95d', bd=0)
+snapcursorvertical = Frame(viewport, bg='#f4c95d', bd=0)
+def hidesnapcursor():
+    snapcursorhorizontal.place_forget()
+    snapcursorvertical.place_forget()
+def showsnapcursor(x, y):
+    snapcursorhorizontal.place(x=x - 6, y=y - 1, width=12, height=2)
+    snapcursorvertical.place(x=x-1, y=y-6, width=2, height=12)
+    snapcursorhorizontal.lift()
+    snapcursorvertical.lift()
 def hidesnapindicator(event=None):
     snapindicator.place_forget()
+    hidesnapcursor()
 renderer = None
 def initialize_renderer():
     global renderer
@@ -180,16 +178,21 @@ def resize_viewport(event):
     if renderer is not None:
         renderer.resize(max(1, event.width), max(1, event.height))
 def viewport_mouse_move(event):
-    if renderer is not None:
-        snapkind = renderer.mouse_move(event.x, event.y)
-        if snapkind and activecommand == 'polyline':
-            snapindicator.configure(text=snapkind)
-            label_x = min(event.x+10, max(0, viewport.winfo_width()-44))
-            label_y = max(2, event.y-25)
-            snapindicator.place(x=label_x, y=label_y)
-            snapindicator.lift()
-        else:
-            hidesnapindicator()
+    if renderer is None:
+        return
+    snapkind = renderer.mouse_move(event.x, event.y)
+    snapposition = renderer.snap_cursor_position()
+    if snapkind and snapposition and activecommand == 'polyline':
+        snap_x, snap_y = map(round, snapposition)
+        showsnapcursor(snap_x, snap_y)
+        snapindicator.configure(text=snapkind)
+        label_x = min(snap_x+10, viewport.winfo_width()-44)
+        label_y = max(2, snap_y-25)
+        snapindicator.place(x=label_x, y=label_y)
+        snapindicator.lift()
+    else:
+        hidesnapcursor()
+        hidesnapindicator()
 selection_lines = [Frame(viewport, bg="#D6A640", bd=0) for _ in range(4)]
 selection_fill = Toplevel(app)
 selection_fill.withdraw()
@@ -1500,6 +1503,48 @@ canvas.bind("<Motion>", tooltipmotion, add="+")
 canvas.bind("<Leave>", hidetooltip, add="+")
 
 gridsnaptext = canvas.create_text(50, 315, text="Grid Snap", font=("Iceland", 13), fill='#F3E6C5', anchor='center')
+gridarrow = canvas.create_polygon(82, 321, 92, 321, 87, 328, fill='#D6A640', outline="")
+gridpopup = ctk.CTkFrame(app, width=190, height=82, corner_radius=6, fg_color="#342719", border_color="#A77A2f", border_width=2)
+gridpopup.pack_propagate(False)
+ctk.CTkLabel(gridpopup, text="Grid spacing", font=("Iceland", 18), text_color="#F3E6c5").place(x=10, y=7)
+gridspacingentry = ctk.CTkEntry(gridpopup, width=112, height=30, font=("Lexend", 11), fg_color="#191D1a", border_color="#80602b")
+gridspacingentry.place(x=10, y=37)
+def applygridspacing(event=None):
+    global gridspacing
+    try:
+        value= float(gridspacingentry.get())
+    except ValueError:
+        gridspacingentry.configure(border_color="#b84a3a")
+        return 'break'
+    if value != value or value <= 0 or value > 1000:
+        gridspacingentry.configure(border_color="#b84a3a")
+        return 'break'
+    gridspacing = value
+    gridspacingentry.configure(border_color="#80602b")
+    syncgridsnaprenderer()
+    saveuisettings()
+    gridpopup.place_forget()
+    return 'break'
+gridsetbutton = Canvas(gridpopup, width=54, height=32, bg='#342719', highlightthickness=0, cursor='hand2')
+gridsetbox = gridsetbutton.create_rectangle(2, 2, 52, 30, fill="#191D1a", outline="#A77A2f", width=2)
+gridsettext = gridsetbutton.create_text(27, 16, text='Set', fill='#F3e6c5', font=('Iceland',14))
+gridsetbutton.place(x=126, y=36)
+def togglegridpopup(event=None):
+    if gridpopup.winfo_manager():
+        gridpopup.place_forget()
+        return
+    gridspacingentry.delete(0,'end')
+    gridspacingentry.insert(0, str(gridspacing))
+    gridspacingentry.configure(border_color='#80602b')
+    gridpopup.place(x=102, y=296)
+    gridpopup.lift()
+    gridspacingentry.focus_set()
+    gridspacingentry.select_range(0, "end")
+canvas.tag_bind(gridarrow, "<Button-1>", togglegridpopup)
+canvas.tag_bind(gridarrow, "<Enter>", lambda event: canvas.itemconfig(gridarrow, fill="#f4c95d"))
+canvas.tag_bind(gridarrow, "<Leave>", lambda event: canvas.itemconfig(gridarrow, fill="#D6a640"))
+gridsetbutton.bind("<Button-1>", applygridspacing)
+gridspacingentry.bind("<Return>", applygridspacing)
 gridsnapon = bool(uisettings.get("grid_snap", False))
 def showgridsnap(hovering=False):
     color = "#F4C95D" if gridsnapon else "#D6A640" if hovering else "#F3E6C5"
@@ -1509,7 +1554,7 @@ def gridsnapmotion(event):
     showgridsnap(hovering)
 def gridsnapclick(event):
     global gridsnapon
-    if 8 <= event.x <= 92 and 297 <= event.y <=333:
+    if 8 <= event.x <= 75 and 297 <= event.y <= 333:
         gridsnapon = not gridsnapon
         syncgridsnaprenderer()
         showgridsnap(True)
@@ -1650,6 +1695,7 @@ def refreshosnap():
 def syncgridsnaprenderer():
     if renderer is not None:
         renderer.set_grid_snap(gridsnapon)
+        renderer.set_grid_spacing(gridspacing)
 def syncosnaprenderer():
     end_enabled = onsapon and snapenabled.get("End", False)
     near_enabled = onsapon and snapenabled.get("Near", False)
@@ -1677,6 +1723,7 @@ refreshosnap()
 def saveuisettings():
     data = {
         "grid_snap":gridsnapon,
+        "grid_spacing": gridspacing,
         "osnap": onsapon,
         "snap_modes": {
             name: enabled

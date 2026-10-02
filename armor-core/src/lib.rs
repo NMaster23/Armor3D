@@ -177,6 +177,14 @@ impl ViewportRenderer {
         self.state.viewport.set_grid_snap(enabled);
     }
 
+    fn set_grid_spacing(&mut self, spacing: f32) {
+        self.state.viewport.set_grid_spacing(spacing);
+    }
+
+    fn snap_cursor_position(&mut self) -> Option<(f32, f32)> {
+        self.state.viewport.snap_cursor_position()
+    }
+
     fn set_polyline_color(&mut self, red: f32, green: f32, blue: f32, alpha: f32) {
         self.state
             .viewport
