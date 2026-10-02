@@ -1047,7 +1047,7 @@ prompt_label.pack(pady=(24, 10))
 ai_input = ctk.CTkEntry( sidebar, placeholder_text="Start typing...", font=("Lexend", 12), fg_color="#342719", border_color="#D6A640",  text_color="#F3E6C5", placeholder_text_color="#C5B29A")
 ai_input.configure(height=38)
 aichat = ctk.CTkTextbox(sidebar, font=("Lexend", 12), fg_color="#191D1A", border_color="#55401F", border_width = 2, text_color="#F3E6C5", wrap='word')
-aichat.place(relx=0.025, y=115, relwidth=0.93, relheight=0.74)
+aichat.place(relx=0.027, y=115, relwidth=0.93, relheight=0.74)
 aichat.configure(state='disabled')
 def roundedrectangle(canvas, x1, y1, x2, y2, radius, **options):
     points = [ x1 + radius, y1, x2 - radius, y1,  x2, y1,  x2, y1 + radius, x2, y2 - radius,  x2, y2, x2 - radius, y2, x1 + radius, y2,x1, y2,  x1, y2 - radius, x1, y1 + radius, x1, y1]
@@ -1177,7 +1177,7 @@ def toggleai(event=None):
     animating = True
     if opening:
         sidebar.place(relx=1, x=start, y=0, anchor="ne",
-                      relwidth=0.5, relheight=1)
+                      relwidth=panel_ratio, relheight=1)
         resize_cmd_boxes(canvas.winfo_width())
         for line in shadow_lines:
             canvas.itemconfigure(line, state="normal")
@@ -1186,7 +1186,7 @@ def toggleai(event=None):
         progress = 1 - (1 - step / 12) ** 3
         current_offset = start + (end - start) * progress
         sidebar.place(relx=1, x=current_offset, y=0, anchor="ne",
-                      relwidth=0.5, relheight=1)
+                      relwidth=panel_ratio, relheight=1)
         update_shadow(app.winfo_width(), app.winfo_height(), current_offset)
         resize_cmd_boxes(canvas.winfo_width())
         if step < 12:
@@ -1208,19 +1208,43 @@ close_canvas.tag_bind(close_x, "<Button-1>", toggleai)
 canvas.tag_bind(AI, "<Button-1>", toggleai)
 resize_handle = Canvas(sidebar, width=12, bg="#342719", highlightthickness=0, cursor="sb_h_double_arrow")
 resize_handle.place(x=0, y=18, relheight=1, height=-36)
-def drag_sidebar(event):
-    global panel_ratio
+resizeguide = Toplevel(app)
+resizeguide.withdraw()
+resizeguide.overrideredirect(True)
+resizeguide.configure(bg="#f4c95d")
+resizeguide.attributes('-topmost', True)
+resizeguide.transient(app)
+resizepreviewratio = panel_ratio
+def startsidebarresize(event):
+    if animating:
+        return
+    dragsidebar(event)
+    resizeguide.deiconify()
+    resizeguide.lift()
+def dragsidebar(event):
+    global resizepreviewratio
     if animating:
         return
     window_width = canvas.winfo_width()
-    rightedge = app.winfo_rootx() + window_width + 16
-    new_width = rightedge-event.x_root
-    new_width = max(320, min(window_width-80, new_width))
-    panel_ratio = new_width / window_width
-    sidebar.place(relx=1, x=16, y=0, anchor='ne', relwidth=panel_ratio, relheight=1)
-    update_shadow(window_width, canvas.winfo_height(), 16)
-    resize_cmd_boxes(window_width)
-resize_handle.bind("<B1-Motion>", drag_sidebar)
+    right_edge = app.winfo_rootx()+ window_width +16
+    newwidth = right_edge - event.x_root
+    newwidth = max(320, min(window_width-80, newwidth))
+    resizepreviewratio = newwidth/ window_width
+    guide_x = int(right_edge-newwidth)
+    guide_y= app.winfo_rooty()
+    guide_height = app.winfo_height()
+    resizeguide.geometry(f"2x{guide_height}+{guide_x}+{guide_y}")
+def finishsidebarresize(event):
+    global panel_ratio, current_offset
+    resizeguide.withdraw()
+    panel_ratio = resizepreviewratio
+    current_offset = 16
+    sidebar.place(relx=1, x=16, y=0, anchor='ne', relwidth= panel_ratio, relheight=1)
+    update_shadow(canvas.winfo_width(), canvas.winfo_height(), 16)
+    resize_cmd_boxes(canvas.winfo_width())
+resize_handle.bind("<ButtonPress-1>", startsidebarresize)
+resize_handle.bind("<B1-Motion>", dragsidebar)
+resize_handle.bind("<ButtonRelease-1>", finishsidebarresize)
 settingsbutton = Canvas(sidebar, width=32, height=34, bg="#342719", highlightthickness=0, cursor='hand2')
 settingsicon = settingsbutton.create_text(17, 17, text="⚙", fill="#F3E6C5", font=("Segoe UI Symbol", 18))
 settingsbutton.place(relx=1, x=-48, y=12)
