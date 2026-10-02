@@ -93,6 +93,7 @@ pub struct Viewport {
     pub polyline_active: bool,
     pub polyline_color: [f32; 4],
     move_anchor: Option<Vector3<f32>>,
+    move_snapshots: Vec<(usize, Vec<Vector3<f32>>)>,
     pub point_vertices: Vec<Vertex>,
     next_entity: usize,
     pub camera: Camera,
@@ -134,6 +135,7 @@ impl Viewport {
             polyline_active: false,
             polyline_color: DEFAULT_POLYLINE_COLOR,
             move_anchor: None,
+            move_snapshots: Vec::new(),
             point_vertices: Vec::new(),
             next_entity: 0,
             camera,
@@ -424,9 +426,18 @@ impl Viewport {
         });
         if !hit_selected {
             self.move_anchor = None;
+            self.move_snapshots.clear();
             return false;
         }
         self.move_anchor = self.fetch_point(PhysicalPosition::new(x as f64, y as f64));
+        if self.move_anchor.is_some() {
+            self.move_snapshots = self
+                .entities
+                .iter()
+                .filter(|entity| entity.selected)
+                .map(|entity| (entity.id, entity.vertices.clone()))
+                .collect();
+        }
         self.move_anchor.is_some()
     }
 
@@ -434,24 +445,26 @@ impl Viewport {
         let Some(anchor) = self.move_anchor else {
             return false;
         };
-        let Some(current) = self.fetch_point(PhysicalPosition::new(x as f64, y as f64)) else {
+        self.cursor_pos = PhysicalPosition::new(x as f64, y as f64);
+        let Some(current) = self.fetch_point(self.cursor_pos) else {
             return false;
         };
-        let offset = current - anchor;
-        for entity in &mut self.entities {
-            if entity.selected {
-                for vertex in &mut entity.vertices {
-                    *vertex += offset;
-                }
+        let offset = self.grid_snap_offset(current - anchor);
+        for (entity_id, original_vertices) in &self.move_snapshots {
+            if let Some(entity) = self.entities.iter_mut().find(|entity| entity.id == *entity_id) {
+                entity.vertices = original_vertices
+                    .iter()
+                    .map(|vertex| *vertex + offset)
+                    .collect();
             }
         }
-        self.move_anchor = Some(current);
         self.rebuild_vertices();
         true
     }
 
     pub fn end_move_selected(&mut self) {
         self.move_anchor = None;
+        self.move_snapshots.clear();
     }
     pub fn world_to_screen(&self, world_pos: cgmath::Vector3<f32>) -> Option<cgmath::Vector2<f32>> {
         let view_proj = self.camera.build_view_projection_matrix();
@@ -743,13 +756,46 @@ impl Viewport {
         }
     }
 
-    pub fn snap_cursor_position(&mut self) -> Option<(f32, f32)> {
-        if !self.polyline_active {
-            return None;
+    fn grid_snap_point(&self, point: Vector3<f32>) -> Vector3<f32> {
+        if !self.grid_snap_enabled {
+            return point;
         }
+        Vector3::new(
+            (point.x / self.grid_spacing).round() * self.grid_spacing,
+            0.0,
+            (point.z / self.grid_spacing).round() * self.grid_spacing,
+        )
+    }
+
+    fn grid_snap_offset(&self, offset: Vector3<f32>) -> Vector3<f32> {
+        if !self.grid_snap_enabled {
+            return offset;
+        }
+        Vector3::new(
+            (offset.x / self.grid_spacing).round() * self.grid_spacing,
+            offset.y,
+            (offset.z / self.grid_spacing).round() * self.grid_spacing,
+        )
+    }
+
+    pub fn snap_cursor_position(&mut self) -> Option<(f32, f32)> {
         let point = self.fetch_point(self.cursor_pos)?;
-        let (snapped, _, snap_kind) = self.get_snap_pos(point);
-        snap_kind?;
+        let snapped = if self.polyline_active {
+            let (snapped, _, snap_kind) = self.get_snap_pos(point);
+            snap_kind?;
+            snapped
+        } else if self.grid_snap_enabled {
+            if let Some(anchor) = self.move_anchor {
+                anchor + self.grid_snap_offset(point - anchor)
+            } else if self.grab_mode {
+                let origin = self.grab_origin?;
+                origin + self.grid_snap_offset(point - origin)
+            } else {
+                return None;
+            }
+        } else {
+            return None;
+        };
         let screen = self.world_to_screen(snapped)?;
         Some((screen.x, screen.y))
     }
@@ -835,11 +881,7 @@ impl Viewport {
         }
 
         if self.grid_snap_enabled {
-            let snapped = Vector3::new(
-                (point.x / self.grid_spacing).round() * self.grid_spacing,
-                0.0,
-                (point.z / self.grid_spacing).round() * self.grid_spacing,
-            );
+            let snapped = self.grid_snap_point(point);
             return (snapped, false, Some("Grid"));
         }
 
@@ -1021,7 +1063,7 @@ impl Viewport {
         if self.grab_mode {
             let current = self.fetch_point(self.cursor_pos)?;
             let origin = self.grab_origin?;
-            let offset = current - origin;
+            let offset = self.grid_snap_offset(current - origin);
             if let Some(selected_id) = self.selected_entity {
                 if let Some(entity) = self.entities.iter_mut().find(|entity| entity.id == selected_id) {
                     entity.vertices = self

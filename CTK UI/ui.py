@@ -157,6 +157,8 @@ def showsnapcursor(x, y):
     snapcursorvertical.lift()
 def hidesnapindicator(event=None):
     snapindicator.place_forget()
+def hideallsnap(event=None):
+    snapindicator.place_forget()
     hidesnapcursor()
 renderer = None
 def initialize_renderer():
@@ -182,17 +184,20 @@ def viewport_mouse_move(event):
         return
     snapkind = renderer.mouse_move(event.x, event.y)
     snapposition = renderer.snap_cursor_position()
-    if snapkind and snapposition and activecommand == 'polyline':
+    if snapposition and (activecommand =='polyline' or gridsnapon):
         snap_x, snap_y = map(round, snapposition)
         showsnapcursor(snap_x, snap_y)
-        snapindicator.configure(text=snapkind)
-        label_x = min(snap_x+10, viewport.winfo_width()-44)
-        label_y = max(2, snap_y-25)
-        snapindicator.place(x=label_x, y=label_y)
-        snapindicator.lift()
+        if snapkind and snapkind != 'Grid':
+            snapindicator.configure(text=snapkind)
+            label_x = min(snap_x+10, viewport.winfo_width()-44)
+            label_y = max(2, snap_y-25)
+            snapindicator.place(x=label_x, y=label_y)
+            snapindicator.lift()
+        else:
+            hidesnapindicator()
     else:
-        hidesnapcursor()
-        hidesnapindicator()
+        hideallsnap()
+    
 selection_lines = [Frame(viewport, bg="#D6A640", bd=0) for _ in range(4)]
 selection_fill = Toplevel(app)
 selection_fill.withdraw()
@@ -256,6 +261,12 @@ def viewport_left_drag(event):
     if moving_selection:
         if renderer is not None:
             renderer.move_selected(event.x, event.y)
+            snapposition = renderer.snap_cursor_position()
+            if gridsnapon and snapposition:
+                snap_x, snap_y = map(round, snapposition)
+                showsnapcursor(snap_x, snap_y)
+            else:
+                hidesnapcursor()
         return
     if activecommand is not None or left_drag_start is None:
         return
@@ -270,6 +281,7 @@ def viewport_mouse_up(event):
     if renderer is None:
         return
     if moving_selection:
+        hidesnapcursor()
         renderer.end_move_selected()
         moving_selection = False
         viewport.configure(cursor="arrow")
@@ -350,7 +362,7 @@ viewport.bind("<MouseWheel>", viewport_wheel)
 viewport.bind("<KeyPress>", lambda event: viewport_key(event, True))
 viewport.bind("<KeyRelease>", lambda event: viewport_key(event, False))
 viewport.bind("<FocusOut>", viewport_focus_out)
-viewport.bind("<Leave>", hidesnapindicator)
+viewport.bind("<Leave>", hideallsnap)
 
 shadow_lines= [canvas.create_line(0, 0, 0, 0, fill=color, width=2,  smooth=True, splinesteps=20, state="hidden") for color in ("#283328", "#1D281F", "#152019")]
 current_offset = 16
@@ -1503,12 +1515,12 @@ canvas.bind("<Motion>", tooltipmotion, add="+")
 canvas.bind("<Leave>", hidetooltip, add="+")
 
 gridsnaptext = canvas.create_text(50, 315, text="Grid Snap", font=("Iceland", 13), fill='#F3E6C5', anchor='center')
-gridarrow = canvas.create_polygon(82, 321, 92, 321, 87, 328, fill='#D6A640', outline="")
-gridpopup = ctk.CTkFrame(app, width=190, height=82, corner_radius=6, fg_color="#342719", border_color="#A77A2f", border_width=2)
+gridarrow = canvas.create_line(82, 322, 87, 327, 92, 322, fill="#D6A640", width=2, capstyle="round", joinstyle="round")
+gridpopup = ctk.CTkFrame(app, width=220, height=104, corner_radius=8, fg_color="#342719", border_color="#A77A2f", border_width=2)
 gridpopup.pack_propagate(False)
-ctk.CTkLabel(gridpopup, text="Grid spacing", font=("Iceland", 18), text_color="#F3E6c5").place(x=10, y=7)
-gridspacingentry = ctk.CTkEntry(gridpopup, width=112, height=30, font=("Lexend", 11), fg_color="#191D1a", border_color="#80602b")
-gridspacingentry.place(x=10, y=37)
+ctk.CTkLabel(gridpopup, text="Grid spacing", font=("Iceland", 18), text_color="#F3E6C5").place(x=12, y=10)
+gridspacingentry = ctk.CTkEntry(gridpopup, width=132, height=34, font=("Lexend", 11), fg_color="#191D1A", border_color="#80602b")
+gridspacingentry.place(x=12, y=54)
 def applygridspacing(event=None):
     global gridspacing
     try:
@@ -1525,10 +1537,10 @@ def applygridspacing(event=None):
     saveuisettings()
     gridpopup.place_forget()
     return 'break'
-gridsetbutton = Canvas(gridpopup, width=54, height=32, bg='#342719', highlightthickness=0, cursor='hand2')
-gridsetbox = gridsetbutton.create_rectangle(2, 2, 52, 30, fill="#191D1a", outline="#A77A2f", width=2)
-gridsettext = gridsetbutton.create_text(27, 16, text='Set', fill='#F3e6c5', font=('Iceland',14))
-gridsetbutton.place(x=126, y=36)
+gridsetbutton = Canvas(gridpopup, height=36, bg="#342719", highlightthickness=0, cursor='hand2')
+gridsetbox = gridsetbutton.create_rectangle(2, 2, 60, 34, fill="#191D1A", outline="#A77A2F", width=2)
+gridsettext = gridsetbutton.create_text(31, 18, text="Set", fill="#F3E6C5", font=("Iceland", 15))
+gridsetbutton.place(x=146, y=53)
 def togglegridpopup(event=None):
     if gridpopup.winfo_manager():
         gridpopup.place_forget()
@@ -1536,7 +1548,7 @@ def togglegridpopup(event=None):
     gridspacingentry.delete(0,'end')
     gridspacingentry.insert(0, str(gridspacing))
     gridspacingentry.configure(border_color='#80602b')
-    gridpopup.place(x=102, y=296)
+    gridpopup.place(x=102, y=286)
     gridpopup.lift()
     gridspacingentry.focus_set()
     gridspacingentry.select_range(0, "end")
