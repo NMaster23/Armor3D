@@ -13,6 +13,40 @@ import os
 from armor_core import ViewportRenderer
 ctk.set_appearance_mode('dark')
 
+SETTINGSPATH = (Path(os.getenv("APPDATA") or Path.home())
+                / 'Armor3D'
+                / "ui_settings.json")
+DEFAULTSETTINGS = {
+    "grid_snap": False,
+    "ortho": False,
+    "osnap": False,
+    "snap_modes" :{
+        "End": False,
+        "Near": False,
+        "Int": False,
+        "Mid": False,
+        "Cen": False
+    },
+    "layer_color": "#D6a640",
+    "panel_ratio":0.5
+}
+def loaduisettings():
+    try:
+        loaded = json.loads(SETTINGSPATH.read_text(encoding="utf-8"))
+        if not isinstance(loaded, dict):
+            return DEFAULTSETTINGS.copy()
+        return {
+            **DEFAULTSETTINGS,
+            **loaded,
+            "snap_modes": {
+                **DEFAULTSETTINGS['snap_modes'], 
+                **loaded.get("snap_modes", {})
+            }
+        }
+    except (OSError, json.JSONDecodeError, TypeError):
+        return DEFAULTSETTINGS.copy()
+uisettings= loaduisettings()
+
 MEMORYPATH = (
     Path(os.getenv("APPDATA", Path.home()))
     / "Armor3D"
@@ -301,7 +335,7 @@ viewport.bind("<Leave>", hidesnapindicator)
 
 shadow_lines= [canvas.create_line(0, 0, 0, 0, fill=color, width=2,  smooth=True, splinesteps=20, state="hidden") for color in ("#283328", "#1D281F", "#152019")]
 current_offset = 16
-panel_ratio = 0.5
+panel_ratio = max(0.25, min(0.8, float(uisettings.get("panel_ratio", 0.5))))
 animating=False
 def update_shadow(width, height, offset=16):
     left = width *(1-panel_ratio) + offset
@@ -1242,6 +1276,7 @@ def finishsidebarresize(event):
     sidebar.place(relx=1, x=16, y=0, anchor='ne', relwidth= panel_ratio, relheight=1)
     update_shadow(canvas.winfo_width(), canvas.winfo_height(), 16)
     resize_cmd_boxes(canvas.winfo_width())
+    saveuisettings()
 resize_handle.bind("<ButtonPress-1>", startsidebarresize)
 resize_handle.bind("<B1-Motion>", dragsidebar)
 resize_handle.bind("<ButtonRelease-1>", finishsidebarresize)
@@ -1447,7 +1482,7 @@ canvas.bind("<Motion>", tooltipmotion, add="+")
 canvas.bind("<Leave>", hidetooltip, add="+")
 
 gridsnaptext = canvas.create_text(50, 315, text="Grid Snap", font=("Iceland", 13), fill='#F3E6C5', anchor='center')
-gridsnapon = False
+gridsnapon = bool(uisettings.get("grid_snap", False))
 def showgridsnap(hovering=False):
     color = "#F4C95D" if gridsnapon else "#D6A640" if hovering else "#F3E6C5"
     canvas.itemconfig(gridsnaptext, fill=color)
@@ -1459,12 +1494,13 @@ def gridsnapclick(event):
     if 8 <= event.x <= 92 and 297 <= event.y <= 333:
         gridsnapon = not gridsnapon
         showgridsnap(True)
+        saveuisettings()
 canvas.bind("<Motion>", gridsnapmotion, add="+")
 canvas.bind("<Button-1>", gridsnapclick, add="+")
 canvas.bind("<Leave>", lambda event: showgridsnap(False), add="+")
 
 orthotext = canvas.create_text(50, 355, text='Ortho', font=("Iceland", 13), fill='#F3E6C5', anchor='center')
-orthoon = False
+orthoon = bool(uisettings.get("ortho", False))
 def showortho(hovering=False):
     color = "#F4C95D" if orthoon else "#D6A640" if hovering else "#F3E6C5"
     canvas.itemconfig(orthotext, fill=color)
@@ -1475,12 +1511,13 @@ def orthoclick(event):
     if 8 <= event.x <= 92 and 337 <= event.y <= 373:
         orthoon = not orthoon
         showortho(True)
+        saveuisettings()
 canvas.bind("<Motion>", orthomotion, add="+")
 canvas.bind("<Button-1>", orthoclick, add="+")
 canvas.bind("<Leave>", lambda event: showortho(False), add="+")
 
 osnaptext = canvas.create_text(50, 395, text='Osnap', font=("Iceland", 13), fill='#F3E6C5', anchor='center')
-onsapon = False
+onsapon = bool(uisettings.get("osnap", False))
 def showosnap(hovering=False):
     color = "#F4C95D" if onsapon else "#D6A640" if hovering else "#F3E6C5"
     canvas.itemconfig(osnaptext, fill=color)
@@ -1492,6 +1529,7 @@ def osnapclick(event):
         onsapon = not onsapon
         showosnap(True)
         refreshosnap()
+        saveuisettings()
 canvas.bind("<Motion>", onsapmotion, add="+")
 canvas.bind("<Button-1>", osnapclick, add="+")
 canvas.bind("<Leave>", lambda event: showosnap(False), add="+")
@@ -1502,13 +1540,17 @@ canvas.create_line(0, 510, 100, 510, fill="#80602B", width=2)
 canvas.create_text(50, 445, text="Layers", font=("Iceland", 15), fill="#F3E6C5", anchor="center")
 layername = canvas.create_text(60, 485, text="Gold", font=("Iceland", 11), fill="#F3E6C5", anchor="center")
 
-layer_color = "#D6A640"
+layer_color = uisettings.get("layer_color", "#D6A640")
 layer_swatch = canvas.create_rectangle(17, 477, 33, 493, fill=layer_color, outline="#80602B", width=1)
 def swatch_enter(event):
     canvas.itemconfig(layer_swatch, outline="#D6A640", width=2)
 def swatch_leave(event):
     canvas.itemconfig(layer_swatch, outline="#80602B", width=1)
 colors = (("Gold", "#D6A640"), ("Green", "#3E8A63"), ("Brown", "#956235"), ("White", "#F3E6C5"))
+savelayername = next(
+    (name for name, color in colors if color == layer_color), 'Gold'
+)
+canvas.itemconfig(layername, text=savelayername)
 layermenu = Canvas(app, width=152, height=128, bg="#342719", highlightthickness=1, highlightbackground="#A77A2F")
 layer_rows = []
 for i, (name, color) in enumerate(colors):
@@ -1532,6 +1574,7 @@ def chooselayercolor(event):
         canvas.itemconfig(layername, text=colors[index][0])
         synclayerrenderer()
         layermenu.place_forget()
+        saveuisettings()
 def synclayerrenderer():
     if renderer is None:
         return
@@ -1569,6 +1612,7 @@ def togglesnap(name):
     if name == 'Disable':
         onsapon= not onsapon
         showosnap()
+        saveuisettings()
     elif onsapon:
         snapenabled[name] = not snapenabled[name]
     refreshosnap()
@@ -1593,7 +1637,11 @@ def syncosnaprenderer():
         hidesnapindicator()
 for i, name in enumerate(("End", "Near", "Int", "Mid", "Cen", "Disable")):
     y = 48 + i *30
-    snapenabled[name] = False
+    snapenabled[name] = (
+        False
+        if name == 'Disable'
+        else bool(uisettings['snap_modes'].get(name, False))
+    )
     box = snapcanvas.create_rectangle(18, y-7, 32, y+7, fill='#342719', outline="#D6A640", width=2)
     mark = snapcanvas.create_text(25, y, text="✓", fill='#F4C95D',font=("Iceland", 13), state='hidden')
     label = snapcanvas.create_text(60, y, text=name, fill="#F3E6C5", font=("Iceland", 13))
@@ -1603,6 +1651,26 @@ for i, name in enumerate(("End", "Near", "Int", "Mid", "Cen", "Disable")):
 snapcanvas.configure(scrollregion=(0, 0, 100, 225))
 snapcanvas.bind("<MouseWheel>", lambda event: snapcanvas.yview_scroll(-1 if event.delta > 0 else 1, "units"))
 refreshosnap()
+
+def saveuisettings():
+    data = {
+        "grid_snap":gridsnapon,
+        "osnap": onsapon,
+        "snap_modes": {
+            name: enabled
+            for name, enabled in snapenabled.items()
+            if name != "Disable"
+        },
+        "layer_color": layer_color,
+        "panel_ratio": panel_ratio
+    }
+    try:
+        SETTINGSPATH.parent.mkdir(parents=True, exist_ok=True)
+        temporary = SETTINGSPATH.with_suffix(".tmp")
+        temporary.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        temporary.replace(SETTINGSPATH)
+    except OSError as error:
+        print(f'Could not save UI settings: {error}')
 
 menujobs = {}
 menusliding = set()
@@ -1903,7 +1971,14 @@ settingshade.bind("<Button-1>", closesettings)
 settingsdialog.bind("<Escape>", closesettings)
 app.bind("<Configure>", positionsettings, add="+")
 
-
+showgridsnap()
+showortho()
+showosnap()
+refreshosnap()
+def closeapp():
+    saveuisettings()
+    app.destroy()
+app.protocol("WM_DELETE_WINDOW", closeapp)
 
 
 app.after_idle(initialize_renderer)
