@@ -1939,6 +1939,30 @@ def finishairesponse():
     stopsendanimation()
     ai_input.focus_set()
 
+def getaiscene():
+    if renderer is None:
+        return {'objects': []}
+    objects = []
+    for object_id, vertices, color, height, selected in renderer.scene_data():
+        points = [
+            [round(x,4), round(y, 4), round(z, 4)]
+            for x, y, z in vertices[:250]
+        ]
+        objects.append({
+            "id": object_id,
+            "type": "polyline",
+            'vertices': points,
+            "closed": len(points) >= 3 and points[0] == points[-1],
+            "color": [round(value, 3) for value in color],
+            "height": round(height, 4),
+            "selected": selected
+        })
+    return {
+        "coordinate_system": "Y-up, drawing plane is X/Z",
+        'object_count': len(objects),
+        "objects": objects[:100]
+    }
+
 def sendai(event=None):
     global aibusy
     if aibusy:
@@ -1952,6 +1976,7 @@ def sendai(event=None):
     api_key = savedapikey
     model = saveaimodel
     requesthistory = list(chatmemory)
+    scene = getaiscene()
     rememberchatmessage("user", message)
     ai_input.delete(0, 'end')
     addchatmessage("You", message)
@@ -1961,7 +1986,7 @@ def sendai(event=None):
     startsendanimation()
     def worker():
         try:
-            response = aiconfig.sendmessage(message, api_key=api_key, model=model, history=requesthistory)
+            response = aiconfig.sendmessage(message, api_key=api_key, model=model, history=requesthistory, scene=scene)
             airesults.put(("success", response))
         except aiconfig.HackAIError as error:
             airesults.put(("error", str(error)))
