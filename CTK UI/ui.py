@@ -150,16 +150,17 @@ snapindicator = ctk.CTkLabel(
     text_color="#F4C95D",
     font=("Iceland", 12),
 )
-snapcursorhorizontal = Frame(viewport, bg='#f4c95d', bd=0)
-snapcursorvertical = Frame(viewport, bg='#f4c95d', bd=0)
+snapcursorhorizontal = Frame(viewport, bg="#F4C95D", bd=0)
+snapcursorvertical = Frame(viewport, bg="#F4C95D", bd=0)
 def hidesnapcursor():
     snapcursorhorizontal.place_forget()
     snapcursorvertical.place_forget()
 def showsnapcursor(x, y):
     snapcursorhorizontal.place(x=x - 6, y=y - 1, width=12, height=2)
-    snapcursorvertical.place(x=x-1, y=y-6, width=2, height=12)
+    snapcursorvertical.place(x=x - 1, y=y - 6, width=2, height=12)
     snapcursorhorizontal.lift()
     snapcursorvertical.lift()
+
 def hidesnapindicator(event=None):
     snapindicator.place_forget()
 def hideallsnap(event=None):
@@ -308,6 +309,7 @@ last_right_drag = None
 def viewport_right_down(event):
     global last_right_drag, rightpresspos, rightpresstime, rightdragged
     viewport.focus_set()
+    hideallsnap()
     last_right_drag = (event.x, event.y)
     rightpresspos = (event.x, event.y)
     rightpresstime = event.time
@@ -389,54 +391,8 @@ def resize_cmd_boxes(width):
         box_width = width-16
     canvas.itemconfig(command_window, width=box_width)
     canvas.itemconfig(history_window, width=box_width)
-
-# grid_size = 40
-# zoom = 1.0
-# pan_x = 0
-# pan_y = 0
-# last_mouse = None
-# def draw_grid(width, height):
-#     canvas.delete("viewport_grid")
-#     spacing = grid_size * zoom
-#     x = 101 + pan_x % spacing
-#     while x < width:
-#         canvas.create_line(x, 101, x, height, fill="#4C5746", tags="viewport_grid")
-#         x += spacing
-#     y = 101 + pan_y % spacing
-#     while y < height:
-#         canvas.create_line(101, y, width, y, fill="#4C5746", tags="viewport_grid")
-#         y += spacing
-#     canvas.tag_lower("viewport_grid")
-# def start_pan(event):
-#     global last_mouse
-#     if event.x >= 100 and event.y >= 100:
-#         last_mouse = (event.x, event.y)
-# def move_pan(event):
-#     global pan_x, pan_y, last_mouse
-#     if last_mouse is None:
-#         return
-#     pan_x += event.x - last_mouse[0]
-#     pan_y += event.y -last_mouse[1]
-#     last_mouse = (event.x, event.y)
-#     draw_grid(canvas.winfo_width(), canvas.winfo_height())
-# def stop_pan(event):
-#     global last_mouse
-#     last_mouse = None
-# canvas.bind("<Button-3>", start_pan)
-# canvas.bind("<B3-Motion>", move_pan)
-# canvas.bind("<ButtonRelease-3>", stop_pan)
-# def zoom_grid(event):
-#     global zoom, pan_x, pan_y
-#     if event.x < 101 or event.y < 101:
-#         return
-#     newzoom = max(0.25, min(4.0, zoom * (1.1 if event.delta > 0 else 1 / 1.1)))
-#     factor = newzoom / zoom
-#     pan_x = (event.x-101) - (event.x - 101 - pan_x) * factor
-#     pan_y = (event.y - 101) - (event.y - 101 - pan_y) * factor
-#     zoom = newzoom
-#     draw_grid(canvas.winfo_width(), canvas.winfo_height())
-# canvas.bind("<MouseWheel>", zoom_grid)
 snapwindow = None
+
 def resizethings(event):
     canvas.coords(horizontal, 100, 100, event.width, 100)
     canvas.coords(vertical, 100, 100, 100, event.height)

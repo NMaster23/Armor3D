@@ -232,7 +232,11 @@ impl ViewportRenderer {
     }
 
     fn orbit(&mut self, dx: f32, dy: f32) {
-        self.state.viewport.camera.orbit(dx, dy);
+        if self.state.viewport.camera.orthographic {
+            self.state.viewport.camera.pan(dx, dy);
+        } else {
+            self.state.viewport.camera.orbit(dx, dy);
+        }
     }
 
     fn zoom(&mut self, steps: f32) {
