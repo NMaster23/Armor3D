@@ -188,6 +188,9 @@ impl ViewportRenderer {
     fn snap_cursor_position(&mut self) -> Option<(f32, f32)> {
         self.state.viewport.snap_cursor_position()
     }
+    fn cursor_world_position(&mut self) -> Option<(f32, f32, f32) > {
+        self.state.viewport.cursor_world_position()
+    }
     fn scene_data(
         &self,
     ) -> Vec<(
@@ -233,7 +236,11 @@ impl ViewportRenderer {
     }
 
     fn orbit(&mut self, dx: f32, dy: f32) {
-        self.state.viewport.camera.orbit(dx, dy);
+        if self.state.viewport.camera.orthographic {
+            self.state.viewport.camera.pan(dx, dy);
+        } else {
+            self.state.viewport.camera.orbit(dx, dy);
+        }
     }
 
     fn zoom(&mut self, steps: f32) {

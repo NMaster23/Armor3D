@@ -89,6 +89,7 @@ pub struct Viewport {
     pub holding_left: bool,
     pub polyline_active: bool,
     pub polyline_color: [f32; 4],
+    pub curve_subdivisions: u32,
     move_anchor: Option<Vector3<f32>>,
     move_snapshots: Vec<(usize, Vec<Vector3<f32>>)>,
     pub point_vertices: Vec<Vertex>,
@@ -132,6 +133,7 @@ impl Viewport {
             holding_left: false,
             polyline_active: false,
             polyline_color: DEFAULT_POLYLINE_COLOR,
+            curve_subdivisions: 16,
             move_anchor: None,
             move_snapshots: Vec::new(),
             point_vertices: Vec::new(),
@@ -487,6 +489,8 @@ impl Viewport {
     }
     pub fn rebuild_vertices(&mut self) {
         let mut new_vertices = Vec::new();
+        let marker_radius = self.world_width_for_pixels(3.5);
+        let marker_color = [1.0, 1.0, 1.0, 1.0];
         for entity in &self.entities {
             let draw_color = if entity.selected {
                 [1.0, 0.8, 0.0, 1.0]
@@ -500,6 +504,22 @@ impl Viewport {
             }
             let entity_vertices = self.tessellate_polyline(&entity.vertices, entity.thickness, draw_color);
             new_vertices.extend_from_slice(&entity_vertices);
+            let closed = entity.vertices.len() > 2
+                && (entity.vertices[0] - entity.vertices[entity.vertices.len() - 1])
+                .magnitude2()
+                <= f32::EPSILON;
+        let marker_count = if closed {
+            entity.vertices.len() - 1
+        } else {
+            entity.vertices.len()
+        };
+        for point in entity.vertices.iter().take(marker_count) {
+            new_vertices.extend(Self::tessellate_vertex_circle(
+                *point,
+                marker_radius,
+                marker_color,
+         ));
+        }
         }
         let mut preview_polyline = self.active_polyline.clone();
         if let Some(preview_point) = self.preview_point {
@@ -511,18 +531,18 @@ impl Viewport {
                 preview_polyline.push(preview_point);
             }
         }
-        if preview_polyline.len() == 1 {
-            let marker_size = self.world_width_for_pixels(POLYLINE_WIDTH_PIXELS * 3.0) * 0.5;
-            new_vertices.extend_from_slice(&Self::tessellate_ground_point(
-                preview_polyline[0],
-                marker_size,
-                self.polyline_color,
-            ));
-        } else if preview_polyline.len() > 1 {
+        if preview_polyline.len() > 1 {
             new_vertices.extend(self.tessellate_polyline(
                 &preview_polyline,
                 POLYLINE_WIDTH_PIXELS,
                 self.polyline_color,
+            ));
+        }
+        for point in &preview_polyline {
+            new_vertices.extend(Self::tessellate_vertex_circle(
+                *point,
+                marker_radius,
+                marker_color,
             ));
         }
         self.point_vertices = new_vertices;
@@ -649,6 +669,48 @@ impl Viewport {
             Vertex { position: p3, coords: [0.0; 3], color },
         ]
     }
+    fn tessellate_vertex_circle(
+    point: Vector3<f32>,
+    radius: f32,
+    color: [f32; 4],
+) -> Vec<Vertex> {
+    const SEGMENTS: usize = 16;
+
+    let mut vertices = Vec::with_capacity(SEGMENTS * 3);
+    let center = Vector3::new(
+        point.x,
+        point.y + POLYLINE_HEIGHT * 2.0,
+        point.z,
+    );
+
+    for index in 0..SEGMENTS {
+        let angle1 =
+            index as f32 / SEGMENTS as f32 * std::f32::consts::TAU;
+        let angle2 =
+            (index + 1) as f32 / SEGMENTS as f32 * std::f32::consts::TAU;
+
+        let point1 = Vector3::new(
+            center.x + angle1.cos() * radius,
+            center.y,
+            center.z + angle1.sin() * radius,
+        );
+        let point2 = Vector3::new(
+            center.x + angle2.cos() * radius,
+            center.y,
+            center.z + angle2.sin() * radius,
+        );
+
+        for position in [center, point1, point2] {
+            vertices.push(Vertex {
+                position: position.into(),
+                coords: [0.0; 3],
+                color,
+            });
+        }
+    }
+
+    vertices
+}
     pub fn add_polyline(&mut self, vertices: Vec<Vector3<f32>>, color: [f32; 4], thickness: f32) {
         let id = self.next_entity;
         self.next_entity += 1;
@@ -797,6 +859,22 @@ impl Viewport {
         };
         let screen = self.world_to_screen(snapped)?;
         Some((screen.x, screen.y))
+    }
+    pub fn cursor_world_position(&mut self) -> Option<(f32, f32, f32)> {
+        let raw_point = self.fetch_point(self.cursor_pos)?;
+
+        let point = if self.polyline_active {
+            if let Some(preview) = self.preview_point {
+                preview
+            } else {
+                self.get_snap_pos(raw_point).0
+            }
+        } else if self.grid_snap_enabled {
+            self.grid_snap_point(raw_point)
+        } else {
+            raw_point
+        };
+        Some((point.x, point.z, point.y))
     }
 
     pub fn set_polyline_color(&mut self, red: f32, green: f32, blue: f32, alpha: f32) {
@@ -1177,8 +1255,17 @@ impl Viewport {
         let point = self.fetch_point(self.cursor_pos)?;
         let (position, _, snap_kind) = self.get_snap_pos(point);
         if !self.active_polyline.is_empty() {
-            self.preview_point = Some(position);
-            self.rebuild_vertices();
+            let position_changed = self
+                .preview_point
+                .map(|previous| {
+                    (previous - position).magnitude2() > 0.00000001
+                })
+                .unwrap_or(true);
+
+            if position_changed {
+                self.preview_point = Some(position);
+                self.rebuild_vertices();
+            }
         }
         snap_kind.map(str::to_owned)
     }
