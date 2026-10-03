@@ -1251,3 +1251,22 @@ mod tests {
         assert_eq!(snap_kind, Some("End"));
     }
 }
+
+pub fn egui_extrude_input(ctx: &egui::Context, viewport: &mut Viewport) {
+    egui::Window::new("Extrude Selected")
+        .resizable(false)
+        .collapsible(false)
+        .show(ctx, |ui| {
+            ui.horizontal(|ui| {
+                ui.label("Height:");
+                let mut height = viewport
+                    .selected_entity
+                    .and_then(|id| viewport.entities.iter().find(|e| e.id == id))
+                    .map(|e| e.height)
+                    .unwrap_or(0.0);
+                if ui.add(egui::DragValue::new(&mut height).speed(0.1)).changed() {
+                    viewport.extrude_selected(height);
+                }
+            });
+        });
+}
