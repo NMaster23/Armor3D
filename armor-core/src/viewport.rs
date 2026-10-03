@@ -86,11 +86,14 @@ pub struct Viewport {
     pub osnap: bool,
     pub end_snap_enabled: bool,
     pub near_snap_enabled: bool,
+    pub grid_snap_enabled: bool,
+    pub grid_spacing: f32,
     pub cursor_pos: PhysicalPosition<f64>,
     pub holding_left: bool,
     pub polyline_active: bool,
     pub polyline_color: [f32; 4],
     move_anchor: Option<Vector3<f32>>,
+    move_snapshots: Vec<(usize, Vec<Vector3<f32>>)>,
     pub point_vertices: Vec<Vertex>,
     next_entity: usize,
     pub camera: Camera,
@@ -125,11 +128,14 @@ impl Viewport {
             osnap: true,
             end_snap_enabled: false,
             near_snap_enabled: false,
+            grid_snap_enabled: false,
+            grid_spacing: 0.1,
             cursor_pos: PhysicalPosition::new(0.0, 0.0),
             holding_left: false,
             polyline_active: false,
             polyline_color: DEFAULT_POLYLINE_COLOR,
             move_anchor: None,
+            move_snapshots: Vec::new(),
             point_vertices: Vec::new(),
             next_entity: 0,
             camera,
@@ -420,9 +426,18 @@ impl Viewport {
         });
         if !hit_selected {
             self.move_anchor = None;
+            self.move_snapshots.clear();
             return false;
         }
         self.move_anchor = self.fetch_point(PhysicalPosition::new(x as f64, y as f64));
+        if self.move_anchor.is_some() {
+            self.move_snapshots = self
+                .entities
+                .iter()
+                .filter(|entity| entity.selected)
+                .map(|entity| (entity.id, entity.vertices.clone()))
+                .collect();
+        }
         self.move_anchor.is_some()
     }
 
@@ -430,24 +445,26 @@ impl Viewport {
         let Some(anchor) = self.move_anchor else {
             return false;
         };
-        let Some(current) = self.fetch_point(PhysicalPosition::new(x as f64, y as f64)) else {
+        self.cursor_pos = PhysicalPosition::new(x as f64, y as f64);
+        let Some(current) = self.fetch_point(self.cursor_pos) else {
             return false;
         };
-        let offset = current - anchor;
-        for entity in &mut self.entities {
-            if entity.selected {
-                for vertex in &mut entity.vertices {
-                    *vertex += offset;
-                }
+        let offset = self.grid_snap_offset(current - anchor);
+        for (entity_id, original_vertices) in &self.move_snapshots {
+            if let Some(entity) = self.entities.iter_mut().find(|entity| entity.id == *entity_id) {
+                entity.vertices = original_vertices
+                    .iter()
+                    .map(|vertex| *vertex + offset)
+                    .collect();
             }
         }
-        self.move_anchor = Some(current);
         self.rebuild_vertices();
         true
     }
 
     pub fn end_move_selected(&mut self) {
         self.move_anchor = None;
+        self.move_snapshots.clear();
     }
     pub fn world_to_screen(&self, world_pos: cgmath::Vector3<f32>) -> Option<cgmath::Vector2<f32>> {
         let view_proj = self.camera.build_view_projection_matrix();
@@ -729,6 +746,60 @@ impl Viewport {
         }
     }
 
+    pub fn set_grid_snap(&mut self, enabled: bool) {
+        self.grid_snap_enabled = enabled;
+    }
+
+    pub fn set_grid_spacing(&mut self, spacing: f32) {
+        if spacing.is_finite() && spacing > 0.0 {
+            self.grid_spacing = spacing;
+        }
+    }
+
+    fn grid_snap_point(&self, point: Vector3<f32>) -> Vector3<f32> {
+        if !self.grid_snap_enabled {
+            return point;
+        }
+        Vector3::new(
+            (point.x / self.grid_spacing).round() * self.grid_spacing,
+            0.0,
+            (point.z / self.grid_spacing).round() * self.grid_spacing,
+        )
+    }
+
+    fn grid_snap_offset(&self, offset: Vector3<f32>) -> Vector3<f32> {
+        if !self.grid_snap_enabled {
+            return offset;
+        }
+        Vector3::new(
+            (offset.x / self.grid_spacing).round() * self.grid_spacing,
+            offset.y,
+            (offset.z / self.grid_spacing).round() * self.grid_spacing,
+        )
+    }
+
+    pub fn snap_cursor_position(&mut self) -> Option<(f32, f32)> {
+        let point = self.fetch_point(self.cursor_pos)?;
+        let snapped = if self.polyline_active {
+            let (snapped, _, snap_kind) = self.get_snap_pos(point);
+            snap_kind?;
+            snapped
+        } else if self.grid_snap_enabled {
+            if let Some(anchor) = self.move_anchor {
+                anchor + self.grid_snap_offset(point - anchor)
+            } else if self.grab_mode {
+                let origin = self.grab_origin?;
+                origin + self.grid_snap_offset(point - origin)
+            } else {
+                return None;
+            }
+        } else {
+            return None;
+        };
+        let screen = self.world_to_screen(snapped)?;
+        Some((screen.x, screen.y))
+    }
+
     pub fn set_polyline_color(&mut self, red: f32, green: f32, blue: f32, alpha: f32) {
         let color = [
             red.clamp(0.0, 1.0),
@@ -749,10 +820,6 @@ impl Viewport {
         &self,
         point: Vector3<f32>,
     ) -> (Vector3<f32>, bool, Option<&'static str>) {
-        if !self.osnap {
-            return (point, false, None);
-        }
-
         if self.end_snap_enabled {
             let radius = self.world_width_for_pixels(END_SNAP_RADIUS_PIXELS);
             let mut best_end: Option<(f32, Vector3<f32>, bool)> = None;
@@ -785,32 +852,52 @@ impl Viewport {
         }
 
         if self.near_snap_enabled {
-            let radius = self.world_width_for_pixels(NEAR_SNAP_RADIUS_PIXELS);
             let mut best_near: Option<(f32, Vector3<f32>)> = None;
-            for entity in &self.entities {
-                for segment in entity.vertices.windows(2) {
-                    let start = segment[0];
-                    let direction = segment[1] - start;
-                    let length_squared = direction.magnitude2();
-                    if length_squared <= f32::EPSILON {
-                        continue;
+            if let Some(mouse_screen) = self.world_to_screen(point) {
+                let mut consider_segment = |start: Vector3<f32>, end: Vector3<f32>| {
+                    let (Some(start_screen), Some(end_screen)) =
+                        (self.world_to_screen(start), self.world_to_screen(end))
+                    else {
+                        return;
+                    };
+                    let screen_direction = end_screen - start_screen;
+                    let screen_length_squared = screen_direction.magnitude2();
+                    if screen_length_squared <= f32::EPSILON {
+                        return;
                     }
-                    let amount = ((point - start).dot(direction) / length_squared).clamp(0.0, 1.0);
-                    let candidate = start + direction * amount;
-                    let distance = (point - candidate).magnitude();
-                    if distance <= radius
+                    let amount = ((mouse_screen - start_screen).dot(screen_direction)
+                        / screen_length_squared)
+                        .clamp(0.0, 1.0);
+                    let projected_screen = start_screen + screen_direction * amount;
+                    let distance_pixels = (mouse_screen - projected_screen).magnitude();
+                    if distance_pixels <= NEAR_SNAP_RADIUS_PIXELS
                         && best_near
                             .as_ref()
-                            .map(|(best_distance, _)| distance < *best_distance)
+                            .map(|(best_distance, _)| distance_pixels < *best_distance)
                             .unwrap_or(true)
                     {
-                        best_near = Some((distance, candidate));
+                        let candidate = start + (end - start) * amount;
+                        best_near = Some((distance_pixels, candidate));
+                    }
+                };
+
+                for segment in self.active_polyline.windows(2) {
+                    consider_segment(segment[0], segment[1]);
+                }
+                for entity in &self.entities {
+                    for segment in entity.vertices.windows(2) {
+                        consider_segment(segment[0], segment[1]);
                     }
                 }
             }
             if let Some((_, position)) = best_near {
                 return (position, false, Some("Near"));
             }
+        }
+
+        if self.grid_snap_enabled {
+            let snapped = self.grid_snap_point(point);
+            return (snapped, false, Some("Grid"));
         }
 
         (point, false, None)
@@ -911,7 +998,7 @@ impl Viewport {
         };
         let (snap_pos, shape_close, _) = self.get_snap_pos(hit_pos);
         if shape_close {
-            self.active_polyline.push(self.active_polyline[0]);
+            self.active_polyline.push(snap_pos);
             let points = self.active_polyline.clone();
             self.add_polyline(points, self.polyline_color, POLYLINE_WIDTH_PIXELS);
             self.active_polyline.clear();
@@ -991,7 +1078,7 @@ impl Viewport {
         if self.grab_mode {
             let current = self.fetch_point(self.cursor_pos)?;
             let origin = self.grab_origin?;
-            let offset = current - origin;
+            let offset = self.grid_snap_offset(current - origin);
             if let Some(selected_id) = self.selected_entity {
                 if let Some(entity) = self.entities.iter_mut().find(|entity| entity.id == selected_id) {
                     entity.vertices = self
@@ -1108,23 +1195,59 @@ mod tests {
         assert!(viewport.preview_point.unwrap().magnitude() < 0.00001);
         assert_eq!(viewport.active_polyline.len(), 1);
     }
-}
 
-pub fn egui_extrude_input(ctx: &egui::Context, viewport: &mut Viewport) {
-    egui::Window::new("Extrude Selected")
-        .resizable(false)
-        .collapsible(false)
-        .show(ctx, |ui| {
-            ui.horizontal(|ui| {
-                ui.label("Height:");
-                let mut height = viewport
-                    .selected_entity
-                    .and_then(|id| viewport.entities.iter().find(|e| e.id == id))
-                    .map(|e| e.height)
-                    .unwrap_or(0.0);
-                if ui.add(egui::DragValue::new(&mut height).speed(0.1)).changed() {
-                    viewport.extrude_selected(height);
-                }
-            });
-        });
+    #[test]
+    fn grid_snap_rounds_to_rendered_subgrid_intersections() {
+        let mut viewport = Viewport::new(800, 600);
+        viewport.set_grid_snap(true);
+
+        let (snapped, closes_shape, snap_kind) =
+            viewport.get_snap_pos(Vector3::new(0.14, 0.0, -0.26));
+
+        assert!((snapped.x - 0.1).abs() < 0.00001);
+        assert!((snapped.z + 0.3).abs() < 0.00001);
+        assert!(!closes_shape);
+        assert_eq!(snap_kind, Some("Grid"));
+
+        viewport.set_grid_spacing(0.5);
+        let (coarse, _, _) = viewport.get_snap_pos(Vector3::new(0.31, 0.0, -0.74));
+        assert!((coarse.x - 0.5).abs() < 0.00001);
+        assert!((coarse.z + 0.5).abs() < 0.00001);
+    }
+
+    #[test]
+    fn near_snap_uses_active_polyline_before_grid_snap() {
+        let mut viewport = Viewport::new(800, 600);
+        viewport.active_polyline = vec![
+            Vector3::new(-0.5, 0.0, 0.0),
+            Vector3::new(0.5, 0.0, 0.0),
+        ];
+        viewport.set_osnap_modes(false, true);
+        viewport.set_grid_snap(true);
+
+        let (snapped, closes_shape, snap_kind) =
+            viewport.get_snap_pos(Vector3::new(0.23, 0.0, 0.01));
+
+        assert!(snapped.z.abs() < 0.00001);
+        assert!(!closes_shape);
+        assert_eq!(snap_kind, Some("Near"));
+    }
+
+    #[test]
+    fn end_snap_to_another_figure_keeps_active_polyline_open() {
+        let mut viewport = Viewport::new(800, 600);
+        viewport.entities.push(shape(
+            1,
+            vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.0, 0.0)],
+        ));
+        viewport.active_polyline = vec![Vector3::new(-0.5, 0.0, -0.5)];
+        viewport.set_osnap_modes(true, false);
+
+        let (snapped, finishes_polyline, snap_kind) =
+            viewport.get_snap_pos(Vector3::new(0.01, 0.0, 0.01));
+
+        assert!(snapped.magnitude() < 0.00001);
+        assert!(!finishes_polyline);
+        assert_eq!(snap_kind, Some("End"));
+    }
 }
