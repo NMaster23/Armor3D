@@ -259,7 +259,15 @@ impl State {
             multiview_mask: None,
             cache: None,
         });
-        let viewport = Viewport::new(size.width, size.height);
+        let viewport = Viewport::new(
+            size.width,
+            size.height,
+            device.clone(),
+            queue.clone(),
+            config.format,
+            14.0,
+            18.0,
+        );
         Ok(Self {
             surface,
             device,
@@ -464,7 +472,15 @@ impl State {
 
         let render_pipeline = create_pipeline(&shader, Some(wgpu::BlendState::REPLACE));
         let graph_pipeline = create_pipeline(&graph_shader, Some(wgpu::BlendState::ALPHA_BLENDING));
-        let viewport = Viewport::new(width, height);
+        let viewport = Viewport::new(
+            width,
+            height,
+            device.clone(),
+            queue.clone(),
+            config.format,
+            14.0,
+            18.0,
+        );
         Ok(Self {
             surface,
             device,

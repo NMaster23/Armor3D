@@ -9,7 +9,7 @@ use lyon::lyon_tessellation::{
 use lyon::math::point;
 use lyon::path::Path;
 use std::mem;
-use glyphon::{Attrs, Buffer, Family, FontSystem, Metrics, Resolution, SwashCache, TextAtlas, TextRenderer};
+use glyphon::{Attrs, Buffer, Cache, Family, FontSystem, Metrics, Resolution, Shaping, SwashCache, TextAtlas, TextRenderer};
 use wgpu::{Device, Queue, TextureFormat};
 use winit::dpi::PhysicalPosition;
 use winit::event::MouseButton;
@@ -109,9 +109,8 @@ pub struct Viewport {
     swash_cache: SwashCache,
     viewport_res: Resolution,
     atlas: TextAtlas,
-    renderer: TextRenderer,
+    text_renderer: TextRenderer,
     text_buffer: Buffer,
-    text: String,
 }
 
 impl Viewport {
@@ -128,16 +127,17 @@ impl Viewport {
         };
         let camera_controller = CameraController::new(0.02);
         let mut font_system = FontSystem::new();
+        let cache = glyphon::Cache::new(&device);
         let swash_cache = SwashCache::new();
         let cache_state = wgpu::MultisampleState::default();
-        let mut atlas = TextAtlas::new(&device, &queue, format);
-        let text_render = TextRenderer::new(&mut atlas, &device, cache_state, None);
+        let mut atlas = TextAtlas::new(&device, &queue, &cache, format);
+        let text_renderer = TextRenderer::new(&mut atlas, &device, cache_state, None);
         let mut text_buffer = Buffer::new(&mut font_system, Metrics::new(fontsize, line_height));
-        text_buffer.set_size(&mut font_system, Some(width as f32), Some(height as f32));
+        text_buffer.set_size(Some(width as f32), Some(height as f32));
         text_buffer.set_text(
-            &mut font_system,
             "",
-            Attrs::new().family(Family::SansSerif),
+            &Attrs::new().family(Family::SansSerif),
+            Shaping::Advanced,
             None,
         );
         Self {
@@ -171,9 +171,9 @@ impl Viewport {
             circle_center: None,
             font_system,
             swash_cache,
-            viewport_res: Resolution,
+            viewport_res: Resolution { width, height },
             atlas,
-            renderer,
+            text_renderer,
             text_buffer,
         }
     }
@@ -1370,7 +1370,7 @@ mod tests {
 
         viewport.extrude_selected(2.0);
 
-        assert_eq!(viewport.entities[0].height, 2.0);
+        assert_eq!(viewport.entities[0]s.height, 2.0);
         assert_eq!(viewport.entities[1].height, 0.0);
     }
 
