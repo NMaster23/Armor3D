@@ -3,6 +3,7 @@ from ctypes import windll
 from tkinter import Canvas, Frame, filedialog, Toplevel, StringVar
 import sys
 import re
+import math
 import threading
 import json
 import queue
@@ -1941,27 +1942,81 @@ def finishairesponse():
 
 def getaiscene():
     if renderer is None:
-        return {'objects': []}
+        return {"scene_version": 1, "objects": []}
     objects = []
     for object_id, vertices, color, height, selected in renderer.scene_data():
         points = [
-            [round(x,4), round(y, 4), round(z, 4)]
-            for x, y, z in vertices[:250]
-        ]
+            [round(x, 5), round(y, 5), round(z, 5)]
+            for x, y, z in vertices ]
+        closed = (
+            len(points) >= 3
+            and points[0] == points[-1] )
+        unique_points = points[:-1] if closed else points
+        segment_lengths = []
+        for start, end in zip(points, points[1:]):
+            length = math.dist(start, end)
+            segment_lengths.append(round(length, 5))
+        if unique_points:
+            xs = [point[0] for point in unique_points]
+            ys = [point[1] for point in unique_points]
+            zs = [point[2] for point in unique_points]
+            minimum = [min(xs), min(ys), min(zs)]
+            maximum = [max(xs), max(ys), max(zs)]
+            size = [
+                round(maximum[i] - minimum[i], 5)
+                for i in range(3)]
+            center = [
+                round(sum(axis) / len(axis), 5)
+                for axis in (xs, ys, zs)]
+        else:
+            minimum = maximum = size = center = [0, 0, 0]
+        area = None
+        if closed and len(unique_points) >= 3:
+            doubled_area = 0
+            for index, point in enumerate(unique_points):
+                next_point = unique_points[
+                    (index + 1) % len(unique_points)]
+                doubled_area += (
+                    point[0] * next_point[2]
+                    - next_point[0] * point[2])
+            area = round(abs(doubled_area) / 2, 5)
         objects.append({
             "id": object_id,
-            "type": "polyline",
-            'vertices': points,
-            "closed": len(points) >= 3 and points[0] == points[-1],
-            "color": [round(value, 3) for value in color],
-            "height": round(height, 4),
-            "selected": selected
-        })
+            "object_type": "curve",
+            "geometry_type": "polyline",
+            "geometry": {
+                "vertices": points,
+                "closed": closed,
+                "vertex_count": len(unique_points),
+                "segment_count": len(segment_lengths), },
+            "measurements": {
+                "segment_lengths": segment_lengths,
+                "total_length": round(sum(segment_lengths), 5),
+                "area": area,
+                "bounding_box": {
+                    "minimum": minimum,
+                    "maximum": maximum,
+                    "size": size,
+                }, "center": center,},
+            "appearance": {
+                "color_rgba": [
+                    round(value, 3)
+                    for value in color],},
+            "properties": { "height": round(height, 5), "selected": selected, },})
     return {
-        "coordinate_system": "Y-up, drawing plane is X/Z",
-        'object_count': len(objects),
-        "objects": objects[:100]
-    }
+        "scene_version": 1,
+        "units": {"name": "model-units",},
+        "coordinate_system": { "up_axis": "Y", "drawing_plane": "XZ", },
+        "settings": {
+            "grid_snap": gridsnapon,
+            "grid_spacing": gridspacing,
+            "ortho": orthoon,
+            "osnap": onsapon,},
+        "selection": [
+            item["id"]
+            for item in objects
+            if item["properties"]["selected"] ],
+        "object_count": len(objects), "objects": objects,}
 
 def sendai(event=None):
     global aibusy
@@ -2022,8 +2077,8 @@ ctk.CTkLabel(settingspanel, text='API key', font=("Lexend", 12), text_color="#F3
 apikeyentry= ctk.CTkEntry(settingspanel, width=460,height=36, show='*', placeholder_text="Enter API key", font=("Lexend", 12), fg_color="#191D1A", border_color=HOVER_BG)
 apikeyentry.place(x=25, y=105)
 ctk.CTkLabel(settingspanel, text="Model", font=("Lexend", 12), text_color="#F3E6C5").place(x=25, y=160)
-modelmenu = ctk.CTkOptionMenu(settingspanel, width=220, height=36, values=["openai/gpt-6-sol-pro","openai/gpt-4o-mini", "qwen/qwen3-32b", "google/gemini-2.5-flash"], font=("Lexend", 12), fg_color=HOVER_BG, button_color="#A77A2F", button_hover_color=HOVER_BORDER, dropdown_fg_color="#342719")
-modelmenu.set("gpt-4o-mini")
+modelmenu = ctk.CTkOptionMenu(settingspanel, width=220, height=36, values=["openai/gpt-6-sol-pro","openai/gpt-4o-mini", "qwen/qwen3-32b", "google/gemini-2.5-flash", "moonshotai/kimi-k2", ], font=("Lexend", 12), fg_color=HOVER_BG, button_color="#A77A2F", button_hover_color=HOVER_BORDER, dropdown_fg_color="#342719")
+modelmenu.set("voyageai/voyage-4")
 modelmenu.place(x=25, y=185)
 def positionsettings(event=None):
     if event is not None and event.widget is not app:

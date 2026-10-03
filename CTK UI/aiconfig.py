@@ -3,7 +3,7 @@ import os
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 API_URL = "https://ai.hackclub.com/proxy/v1/chat/completions"
-DEFAULTMODEL = 'openai/gpt-6-sol-pro'
+DEFAULTMODEL = "qwen/qwen3-32b"
 class HackAIError(RuntimeError):
     pass
 def sendmessage(
@@ -30,7 +30,15 @@ def sendmessage(
                 "You receive structured information about the current drawing. "
                 "Use the object coordinates, colors, selected state, and closed "
                 "state to answer questions about the drawing. Also, colors are green, gold, brown, and white btw answer accordingly"
-                "Do not invent objects that are not in the scene.\n\n"
+                "Do not invent objects that are not in the scene."
+                "The scene data below is private internal context"
+                "Never repeat, display, quote or mention the raw JSON"
+                "Answer naturally, be chill, and a good assistant in english"
+                "Treat the scene as private application state"
+                "never print, quote, or expose scene JSOn"
+                "Do not recount vertices or recalculate dimensions unless requested."
+                "Respond naturally to the user"
+                "Provide info the user requested. \n"
                 f"CURRENT ARMOR3D SCENE:\n{scene_text}"
             ),
         }
