@@ -1270,3 +1270,14 @@ pub fn egui_extrude_input(ctx: &egui::Context, viewport: &mut Viewport) {
             });
         });
 }
+
+pub fn draw_circle(center: Vector3<f32>, radius: f32, segments: usize) -> Vec<Vector3<f32>> {
+    let mut points = Vec::with_capacity(segments);
+    for i in 0..segments {
+        let angle = (i as f32 / segments as f32) * std::f32::consts::TAU;
+        let x = center.x + radius * angle.cos();
+        let z = center.z + radius * angle.sin();
+        points.push(Vector3::new(x, center.y, z));
+    }
+    points
+}
