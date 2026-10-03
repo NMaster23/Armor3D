@@ -9,6 +9,8 @@ use lyon::lyon_tessellation::{
 use lyon::math::point;
 use lyon::path::Path;
 use std::mem;
+use glyphon::{Attrs, Buffer, Family, FontSystem, Metrics, Resolution, SwashCache, TextAtlas, TextRenderer};
+use wgpu::{Device, Queue, TextureFormat};
 use winit::dpi::PhysicalPosition;
 use winit::event::MouseButton;
 use winit::event_loop::{self, ActiveEventLoop};
@@ -103,10 +105,17 @@ pub struct Viewport {
     grab_origin: Option<Vector3<f32>>,
     grab_snapshot: Vec<Vector3<f32>>,
     circle_center: Option<Vector3<f32>>,
+    font_system: FontSystem,
+    swash_cache: SwashCache,
+    viewport_res: Resolution,
+    atlas: TextAtlas,
+    renderer: TextRenderer,
+    text_buffer: Buffer,
+    text: String,
 }
 
 impl Viewport {
-    pub fn new(width: u32, height: u32) -> Self {
+    pub fn new(width: u32, height: u32, device: Device, queue: Queue, format: TextureFormat, fontsize: f32, line_height: f32) -> Self {
         let camera = Camera {
             eye: (0.0, 1.0, 2.0).into(),
             target: (0.0, 0.0, 0.0).into(),
@@ -118,6 +127,19 @@ impl Viewport {
             orthographic: false,
         };
         let camera_controller = CameraController::new(0.02);
+        let mut font_system = FontSystem::new();
+        let swash_cache = SwashCache::new();
+        let cache_state = wgpu::MultisampleState::default();
+        let mut atlas = TextAtlas::new(&device, &queue, format);
+        let text_render = TextRenderer::new(&mut atlas, &device, cache_state, None);
+        let mut text_buffer = Buffer::new(&mut font_system, Metrics::new(fontsize, line_height));
+        text_buffer.set_size(&mut font_system, Some(width as f32), Some(height as f32));
+        text_buffer.set_text(
+            &mut font_system,
+            "",
+            Attrs::new().family(Family::SansSerif),
+            None,
+        );
         Self {
             hist_entities: ShapeUndoStore::new(Vec::new()),
             entities: Vec::new(),
@@ -147,6 +169,12 @@ impl Viewport {
             grab_origin: None,
             grab_snapshot: Vec::new(),
             circle_center: None,
+            font_system,
+            swash_cache,
+            viewport_res: Resolution,
+            atlas,
+            renderer,
+            text_buffer,
         }
     }
 }
@@ -1123,6 +1151,9 @@ impl Viewport {
         points.push(points[0]);
         self.add_polyline(points, self.polyline_color, POLYLINE_WIDTH_PIXELS);
         self.rebuild_vertices();
+    }
+    pub fn draw_text(&mut self, text: &str) {
+
     }
     pub fn draw_curve(&mut self, subdivisions: usize) {
         if self.active_polyline.len() < 2 || subdivisions == 0 {
