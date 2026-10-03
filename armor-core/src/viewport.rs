@@ -1100,7 +1100,7 @@ impl Viewport {
         };
         if let Some(center) = self.circle_center.take() {
             let delta = point - center;
-            let radius = Vector3::new(delta.x, 0.0, delta.z).magnitude();
+            let radius = (delta.x * delta.x + delta.z * delta.z).sqrt();
             self.draw_circle_command(subdivisions, radius, center);
         } else {
             self.circle_center = Some(point)

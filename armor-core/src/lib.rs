@@ -2,7 +2,11 @@ mod camera;
 mod render;
 mod viewport;
 
+use cgmath::Vector3;
+use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
+use winit::dpi::PhysicalPosition;
+use winit::event::MouseButton;
 use render::State;
 use winit::keyboard::KeyCode;
 
@@ -90,6 +94,24 @@ pub struct ViewportRenderer {
     state: State,
 }
 
+#[pyfunction]
+#[pyo3(name = "handle_input")]
+pub fn handle_input(
+    pos: (f64, f64),
+    button: &str,
+    vec: (f32, f32, f32),
+) -> PyResult<()> {
+    let pos = PhysicalPosition::new(pos.0, pos.1);
+    let mouse_button = match button {
+        "left" => MouseButton::Left,
+        "middle" => MouseButton::Middle,
+        "right" => MouseButton::Right,
+        _ => return Err(PyValueError::new_err(format!("Unknown button {}", button))),
+    };
+    let vector = Vector3::new(vec.0 as f32, vec.1 as f32, vec.2 as f32);
+    Ok(())
+}
+
 #[pymethods]
 impl ViewportRenderer {
     #[new]
@@ -105,7 +127,23 @@ impl ViewportRenderer {
     fn resize(&mut self, width: u32, height: u32) {
         self.state.resize(width, height);
     }
-    
+
+    fn draw_circle_mouse(&mut self, subdivisions: usize, mouse_pos: (f64, f64), mouse_button: &str) {
+        let pos = PhysicalPosition::new(mouse_pos.0, mouse_pos.1);
+        let button = match mouse_button {
+            "left" => MouseButton::Left,
+            "middle" => MouseButton::Middle,
+            "right" => MouseButton::Right,
+            _ => return,
+        };
+        self.state.viewport.draw_circle_mouse(subdivisions, pos, button);
+    }
+
+    fn draw_circle_command(&mut self, subdivisions: usize, radius: f32, circle_pos: (f32, f32, f32)) {
+        let pos = Vector3::new(circle_pos.0, circle_pos.1, circle_pos.2);
+        self.state.viewport.draw_circle_command(subdivisions, radius, pos);
+    }
+
     fn draw_curve(&mut self, subdivisions: usize) {
         self.state.viewport.draw_curve(subdivisions);
     }
