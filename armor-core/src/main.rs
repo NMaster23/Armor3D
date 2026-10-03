@@ -110,6 +110,7 @@ pub struct App {
     holding_right: bool,
     popup_window: Option<Arc<Window>>,
     popup_state: Option<State>,
+    popup_content: Option<PopupContent>,
 }
 
 #[derive(PartialEq)]
@@ -124,21 +125,35 @@ impl App {
         &mut self,
         event_loop: &ActiveEventLoop,
         title: &str,
-        mode: PopupContent,
+        case: i32,
+        ctx: &egui::Context,
     ) -> Result<(), Box<dyn std::error::Error>> {
         if self.popup_window.is_some() {
             return Ok(());
         }
-        self.pop
-        let attributes = Window::default_attributes()
-            .with_blur(true)
-            .with_title(title)
-            .with_inner_size(winit::dpi::PhysicalSize::new(420, 320));
-        let window = Arc::new(event_loop.create_window(attributes)?);
+        self.popup_window = Some(Arc::new(event_loop.create_window(Window::default_attributes())?));
+        let Some(state) = self.state.as_mut() else {
+            return Ok(());
+        };
+        let viewport_local = &mut state.viewport;
         if case == 1 {
-
+            egui::Window::new(title)
+                .resizable(false)
+                .collapsible(false)
+                .show(ctx, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label("Height:");
+                        let mut height = viewport_local
+                            .selected_entity
+                            .and_then(|id| viewport_local.entities.iter().find(|e| e.id == id))
+                            .map(|e| e.height)
+                            .unwrap_or(0.0);
+                        if ui.add(egui::DragValue::new(&mut height).speed(0.1)).changed() {
+                            viewport_local.extrude_selected(height);
+                        }
+                    });
+                });
         }
-        self.popup_window = Some(window);
         Ok(())
     }
     pub fn close_popup(&mut self) {
@@ -153,6 +168,7 @@ impl App {
             holding_right: false,
             popup_window: None,
             popup_state: None,
+            popup_content: None,
         }
     }
 }
@@ -227,7 +243,7 @@ impl ApplicationHandler<State> for App {
                 return;
             }
             if *code == winit::keyboard::KeyCode::KeyP && key_state.is_pressed() {
-                if let Err(e) = self.popup_window(event_loop, "Popup Window") {
+                if let Err(e) = self.popup_window(event_loop, "Popup Window", 1, &egui::Context::default()) {
                     log::error!("Failed to create popup window: {:?}", e);
                 }
                 return;
