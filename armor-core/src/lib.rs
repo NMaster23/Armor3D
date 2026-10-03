@@ -184,6 +184,39 @@ impl ViewportRenderer {
     fn snap_cursor_position(&mut self) -> Option<(f32, f32)> {
         self.state.viewport.snap_cursor_position()
     }
+    fn scene_data(
+        &self,
+    ) -> Vec<(
+        usize,
+        Vec<(f32, f32, f32)>,
+        (f32, f32, f32, f32),
+        f32,
+        bool,
+    )> {
+        self.state
+            .viewport
+            .entities
+            .iter()
+            .map(|entity| {
+                (
+                    entity.id,
+                    entity
+                        .vertices
+                        .iter()
+                        .map(|point| (point.x, point.y, point.z))
+                        .collect(),
+                    (
+                        entity.color[0],
+                        entity.color[1],
+                        entity.color[2],
+                        entity.color[3],
+                    ),
+                    entity.height,
+                    entity.selected,
+                )
+            })
+            .collect()
+    }
 
     fn set_polyline_color(&mut self, red: f32, green: f32, blue: f32, alpha: f32) {
         self.state
