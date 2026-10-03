@@ -188,6 +188,7 @@ def viewport_mouse_move(event):
     if renderer is None:
         return
     snapkind = renderer.mouse_move(event.x, event.y)
+    updatecoords()
     snapposition = renderer.snap_cursor_position()
     if snapposition and (activecommand =='polyline' or gridsnapon):
         snap_x, snap_y = map(round, snapposition)
@@ -948,6 +949,16 @@ canvas.tag_bind(filez, "<Enter>", file_enter, add="+")
 canvas.tag_bind(filez, "<Leave>", cancelfilehover, add="+")
 canvas.tag_bind(filez, "<Button-1>", file_click)
 
+
+coords_text = canvas.create_text(275, 8, text="X:  --  Y:  --  Z:  --", anchor='w', font=("Lexend", 8), fill="#F3E6C5")
+def updatecoords():
+    if renderer is None:
+        return
+    position = renderer.cursor_world_position()
+    if position is None:
+        return
+    x, y, z = position
+    canvas.itemconfig(coords_text, text=f"X: {x:.3f}   Y: {y:.3f}   Z: {z:.3f}")
 
 
 importz = canvas.create_text(68, 8, text='Import', font=("Lexend", 8), fill='#F3E6C5')

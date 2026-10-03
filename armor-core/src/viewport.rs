@@ -89,6 +89,7 @@ pub struct Viewport {
     pub holding_left: bool,
     pub polyline_active: bool,
     pub polyline_color: [f32; 4],
+    pub curve_subdivisions: u32,
     move_anchor: Option<Vector3<f32>>,
     move_snapshots: Vec<(usize, Vec<Vector3<f32>>)>,
     pub point_vertices: Vec<Vertex>,
@@ -131,6 +132,7 @@ impl Viewport {
             holding_left: false,
             polyline_active: false,
             polyline_color: DEFAULT_POLYLINE_COLOR,
+            curve_subdivisions: 16,
             move_anchor: None,
             move_snapshots: Vec::new(),
             point_vertices: Vec::new(),
@@ -795,6 +797,22 @@ impl Viewport {
         };
         let screen = self.world_to_screen(snapped)?;
         Some((screen.x, screen.y))
+    }
+    pub fn cursor_world_position(&mut self) -> Option<(f32, f32, f32)> {
+        let raw_point = self.fetch_point(self.cursor_pos)?;
+
+        let point = if self.polyline_active {
+            if let Some(preview) = self.preview_point {
+                preview
+            } else {
+                self.get_snap_pos(raw_point).0
+            }
+        } else if self.grid_snap_enabled {
+            self.grid_snap_point(raw_point)
+        } else {
+            raw_point
+        };
+        Some((point.x, point.z, point.y))
     }
 
     pub fn set_polyline_color(&mut self, red: f32, green: f32, blue: f32, alpha: f32) {
