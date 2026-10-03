@@ -101,6 +101,7 @@ pub struct Viewport {
     grab_mode: bool,
     grab_origin: Option<Vector3<f32>>,
     grab_snapshot: Vec<Vector3<f32>>,
+    circle_center: Option<Vector3<f32>>,
 }
 
 impl Viewport {
@@ -143,6 +144,7 @@ impl Viewport {
             grab_mode: false,
             grab_origin: None,
             grab_snapshot: Vec::new(),
+            circle_center: None,
         }
     }
 }
@@ -1011,11 +1013,85 @@ impl Viewport {
             false
         }
     }
-    pub fn draw_curve(&mut self) {
-        let mut points = self.active_polyline.clone();
-        let subdivisions = self.curve_subdivisions;
-        let vertices = (points.len() as u32 - 1) * subdivisions;
-
+    pub fn draw_circle_mouse(&mut self, subdivisions: usize, mouse_pos: PhysicalPosition<f64>, mouse_button: MouseButton) {
+        if mouse_button != MouseButton::Left {
+            return;
+        }
+        let Some(point) = self.fetch_point(mouse_pos) else {
+            return;
+        };
+        if let Some(center) = self.circle_center.take() {
+            let delta = point - center;
+            let radius = Vector3::new(delta.x, 0.0, delta.z).magnitude();
+            self.draw_circle_command(subdivisions, radius, center);
+        } else {
+            self.circle_center = Some(point)
+        }
+    }
+    pub fn draw_circle_command(&mut self, subdivisions: usize, radius: f32, circle_pos: Vector3<f32>) {
+        if subdivisions < 3 || !radius.is_finite() || radius <= 0.0 {
+            return;
+        }
+        let mut points: Vec<_> = (0..subdivisions)
+            .map(|i| {
+                let theta = i as f32 / subdivisions as f32 * std::f32::consts::TAU;
+                Vector3::new(
+                    circle_pos.x + radius * theta.cos(),
+                    circle_pos.y,
+                    circle_pos.z + radius * theta.sin(),
+                )
+            })
+            .collect();
+        points.push(points[0]);
+        self.add_polyline(points, self.polyline_color, POLYLINE_WIDTH_PIXELS);
+        self.rebuild_vertices();
+    }
+    pub fn draw_curve(&mut self, subdivisions: usize) {
+        if self.active_polyline.len() < 2 || subdivisions == 0 {
+            self.active_polyline.clear();
+            self.preview_point = None;
+            self.polyline_active = false;
+            self.holding_left = false;
+            self.rebuild_vertices();
+            return;
+        }
+        let points = mem::take(&mut self.active_polyline);
+        let mut sampled_points = Vec::new();
+        for i in 0..points.len() - 1 {
+            let p0 = points[i.saturating_sub(1)];
+            let p1 = points[i];
+            let p2 = points[i + 1];
+            let p3 = points[(i + 2).min(points.len() - 1)];
+            for step in 0..subdivisions {
+                let t = step as f32 / subdivisions as f32;
+                sampled_points.push(Self::catmull_rom(p0, p1, p2, p3, t));
+            }
+        }
+        sampled_points.push(*points.last().expect("Missing last point"));
+        self.add_polyline(
+            sampled_points,
+            self.polyline_color,
+            POLYLINE_WIDTH_PIXELS,
+        );
+        self.preview_point = None;
+        self.polyline_active = false;
+        self.holding_left = false;
+        self.rebuild_vertices();
+    }
+    pub fn catmull_rom(
+        p0: Vector3<f32>,
+        p1: Vector3<f32>,
+        p2: Vector3<f32>,
+        p3: Vector3<f32>,
+        t: f32,
+    ) -> Vector3<f32> {
+        let t2 = t * t;
+        let t3 = t2 * t;
+        (p1 * 2.0
+            + (p2 - p0) * t
+            + (p0 * 2.0 - p1 * 5.0 + p2 * 4.0 - p3) * t2
+            + (-p0 + p1 * 3.0 - p2 * 3.0 + p3) * t3)
+            * 0.5
     }
     pub fn add_line(&mut self, point1: Vector3<f32>, point2: Vector3<f32>, step_size: f32) {
         let dir = point2 - point1;

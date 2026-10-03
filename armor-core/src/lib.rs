@@ -105,7 +105,11 @@ impl ViewportRenderer {
     fn resize(&mut self, width: u32, height: u32) {
         self.state.resize(width, height);
     }
-
+    
+    fn draw_curve(&mut self, subdivisions: usize) {
+        self.state.viewport.draw_curve(subdivisions);
+    }
+    
     fn render(&mut self) -> PyResult<()> {
         self.state
             .render()
