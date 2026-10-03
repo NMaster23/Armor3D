@@ -1,6 +1,5 @@
 use crate::Vertex;
 use crate::camera::{Camera, CameraController};
-use crate::render::State;
 use cgmath::{
     InnerSpace, SquareMatrix, Vector3, Vector4, Zero,
 };
@@ -9,13 +8,11 @@ use lyon::lyon_tessellation::{
 };
 use lyon::math::point;
 use lyon::path::Path;
-use winit::window::Window;
 use std::mem;
 use winit::dpi::PhysicalPosition;
 use winit::event::MouseButton;
 use winit::event_loop::{self, ActiveEventLoop};
 use winit::keyboard::KeyCode;
-use std::sync::Arc;
 
 const END_SNAP_RADIUS_PIXELS: f32 = 12.0;
 const NEAR_SNAP_RADIUS_PIXELS: f32 = 10.0;
@@ -1014,6 +1011,12 @@ impl Viewport {
             false
         }
     }
+    pub fn draw_curve(&mut self) {
+        let mut points = self.active_polyline.clone();
+        let subdivisions = self.curve_subdivisions;
+        let vertices = (points.len() as u32 - 1) * subdivisions;
+
+    }
     pub fn add_line(&mut self, point1: Vector3<f32>, point2: Vector3<f32>, step_size: f32) {
         let dir = point2 - point1;
         let distance = dir.magnitude();
@@ -1269,15 +1272,4 @@ pub fn egui_extrude_input(ctx: &egui::Context, viewport: &mut Viewport) {
                 }
             });
         });
-}
-
-pub fn draw_circle(center: Vector3<f32>, radius: f32, segments: usize) -> Vec<Vector3<f32>> {
-    let mut points = Vec::with_capacity(segments);
-    for i in 0..segments {
-        let angle = (i as f32 / segments as f32) * std::f32::consts::TAU;
-        let x = center.x + radius * angle.cos();
-        let z = center.z + radius * angle.sin();
-        points.push(Vector3::new(x, center.y, z));
-    }
-    points
 }
