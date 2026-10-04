@@ -1,21 +1,13 @@
-use crate::camera::{Camera, CameraController, CameraUniform, OPENGL_TO_WGPU_MATRIX};
+use crate::camera::{Camera, CameraController, CameraUniform};
 use crate::{GRAPH_INDICES, GRAPH_VERTICES, Vertex};
-use cgmath::{Deg, EuclideanSpace, InnerSpace, Matrix4, SquareMatrix, Vector3, Vector4, Zero, perspective};
+use cgmath::{Vector2, Vector3};
 use glyphon::{Attrs, Buffer, Color, FontSystem, Metrics, Resolution, SwashCache, TextArea, TextAtlas, TextBounds, TextRenderer};
-use lyon::math::point;
-use lyon::path::Path;
-use lyon::tessellation::{BuffersBuilder, FillOptions, FillTessellator, FillVertex, VertexBuffers};
+use lyon::math::Vector;
+use wgpu::SurfaceConfiguration;
 use std::sync::Arc;
-use pyo3::impl_::wrap::SomeWrap;
 use wgpu::util::DeviceExt;
-use wgpu::wgt::BufferDescriptor;
 use winit::dpi::PhysicalPosition;
-use winit::{
-    event::*,
-    event_loop::ActiveEventLoop,
-    keyboard::KeyCode,
-    window::Window,
-};
+use winit::window::Window;
 use crate::viewport::{PolyLine, Viewport};
 
 const INITIAL_POINT_SIZE: usize = 16;
@@ -55,11 +47,6 @@ pub struct State {
     next_entity: usize,
     pub viewport: Viewport,
     text_pos: Vector3<f32>,
-}
-
-pub struct Shape {
-    pub vertices: Vec<Vector3<f32>>,
-    pub is_3d: bool,
 }
 
 impl State {
@@ -323,7 +310,7 @@ impl State {
             text_pos: Vector3::new(0.0, 0.0, 0.0),
         })
     }
-    pub fn set_world_text(&mut self, text: &str, pos: Vector3<f32>) {
+    pub fn draw_text(&mut self, text: &str, pos: Vector3<f32>) {
         self.text_buffer.set_text(
             text,
             &Attrs::new().family(glyphon::Family::SansSerif),
@@ -511,10 +498,10 @@ impl State {
         );
         let mut font_system = FontSystem::new();
         let cache = glyphon::Cache::new(&device);
-        let text_viewport = glyphon::Viewport::new(&device, &cache);
+        let _text_viewport = glyphon::Viewport::new(&device, &cache);
         let text_viewport = glyphon::Viewport::new(&device, &cache);
         let swash_cache = SwashCache::new();
-        let cache_state = wgpu::MultisampleState::default();
+        let _cache_state = wgpu::MultisampleState::default();
         let mut text_atlas = TextAtlas::new(&device, &queue, &cache, config.format);
         let text_renderer = TextRenderer::new(&mut text_atlas, &device, wgpu::MultisampleState::default(), None);
         let mut text_buffer = Buffer::new(&mut font_system, Metrics::new(16.0, 20.0));
@@ -699,5 +686,146 @@ impl State {
         self.queue.present(output);
 
         Ok(())
+    }
+}
+
+pub struct ShapeRenderer {
+    pub id: u32,
+    pub shape_vertex_buffer: wgpu::Buffer,
+    pub vertices_num: u32,
+    pub material_bind_group: wgpu::BindGroup,
+}
+
+pub struct Renderer {
+    pub render_pipeline: wgpu::RenderPipeline,
+    pub texture_bind_group: wgpu::BindGroupLayout,
+    pub shapes: Vec<ShapeRenderer>,
+    pub render_target: wgpu::TextureView,
+}
+
+impl Renderer {
+    pub fn new(
+        device: wgpu::Device,
+        render_pipeline: wgpu::RenderPipeline,
+        texture_layout: wgpu::BindGroupLayout,
+        shapes: Vec<ShapeRenderer>,
+        img_size: Vector2<f32>,
+        light_pos: Vector3<f32>,
+    ) -> Self {
+        let texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("Render Target Texture"),
+            size: wgpu::Extent3d {
+                width: img_size.x as u32,
+                height: img_size.y as u32,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Bgra8UnormSrgb,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        });
+        let render_target = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        Self {
+            render_pipeline,
+            texture_bind_group: texture_layout,
+            shapes,
+            render_target,
+        }
+    }
+    pub fn parse_texture(&mut self, img: image::DynamicImage, queue: &wgpu::Queue, device: &wgpu::Device) -> wgpu::BindGroup {
+        let image = img.to_rgba8();
+        let (width, height) = image.dimensions();
+        let texture_size = wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        };
+        let texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("Parsed Texture"),
+            size: texture_size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            &image,
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(width * 4),
+                rows_per_image: Some(height),
+            },
+            texture_size
+        );
+        let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Nearest,
+            ..Default::default()
+        });
+        device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &self.texture_bind_group,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&texture_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&sampler),
+                },
+            ],
+            label: Some("Shape Material Bind Group")
+        })
+    }
+    pub fn render(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("Render Encoder"),
+        });
+
+        {
+            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Render Pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &self.render_target,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color {
+                            r: 0.0,
+                            g: 0.0,
+                            b: 0.0,
+                            a: 1.0,
+                        }),
+                        store: wgpu::StoreOp::Store,
+                    },
+                    depth_slice: None,
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+
+            render_pass.set_pipeline(&self.render_pipeline);
+            for shape in &self.shapes {
+                render_pass.set_bind_group(0, &shape.material_bind_group, &[]);
+                render_pass.set_vertex_buffer(0, shape.shape_vertex_buffer.slice(..));
+                render_pass.draw(0..shape.vertices_num, 0..1);
+            }
+        }
+
+        queue.submit(std::iter::once(encoder.finish()));
     }
 }
