@@ -160,6 +160,10 @@ impl ViewportRenderer {
     fn draw_curve(&mut self, subdivisions: usize) {
         self.state.viewport.draw_curve(subdivisions);
     }
+
+    fn duplicate_selected(&mut self, x: f32, y: f32, z: f32) -> usize {
+        self.state.viewport.duplicate_selected(cgmath::Vector3::new(x, y, z))
+    }
     
     fn render(&mut self) -> PyResult<()> {
         self.state

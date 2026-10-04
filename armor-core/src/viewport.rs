@@ -106,6 +106,57 @@ pub struct Viewport {
 }
 
 impl Viewport {
+    pub fn duplicate_selected(&mut self, offset: Vector3<f32>) -> usize {
+        let selected: Vec<PolyLine> = self
+            .entities
+            .iter()
+            .filter(|entity| entity.selected)
+            .cloned()
+            .collect();
+
+        if selected.is_empty() {
+            return 0;
+        }
+
+        for entity in &mut self.entities {
+            entity.selected = false;
+        }
+
+        let mut first_new_id = None;
+
+        for source in selected {
+            let duplicated_vertices: Vec<Vector3<f32>> = source
+                .vertices
+                .iter()
+                .map(|point| *point + offset)
+                .collect();
+
+            let id = self.next_entity;
+            self.next_entity += 1;
+
+            if first_new_id.is_none() {
+                first_new_id = Some(id);
+            }
+
+            self.entities.push(PolyLine {
+                id,
+                vertices: duplicated_vertices,
+                color: source.color,
+                thickness: source.thickness,
+                selected: true,
+                height: source.height,
+            });
+        }
+
+        self.selected_entity = first_new_id;
+        self.rebuild_vertices();
+
+        self.entities
+            .iter()
+            .filter(|entity| entity.selected)
+            .count()
+    }
+
     pub fn mirror_selected(
         &mut self,
         start: cgmath::Vector2<f32>,
@@ -382,6 +433,32 @@ impl Viewport {
             .collect();
         self.vertice_append(&vertices);
         self.rebuild_vertices();
+    }
+    pub fn move_shape_key(
+        &mut self,
+        code: KeyCode,
+        step_size: f32,
+    ) -> bool {
+        let mut move_pos = Vector3::zero();
+        match code {
+            KeyCode::ArrowLeft => move_pos.x -= step_size,
+            KeyCode::ArrowRight => move_pos.x += step_size,
+            KeyCode::ArrowUp => move_pos.z += step_size,
+            KeyCode::ArrowDown => move_pos.z -= step_size,
+            _ => return false,
+        }
+        let offset = self.grid_snap_offset(move_pos);
+        let Some(sel_id) = self.selected_entity else {
+            return false;
+        };
+        let Some(entity) = self.entities.iter_mut().find(|entity| entity.id == sel_id) else {
+            return false;
+        };
+        for point in &mut entity.vertices {
+            *point += offset;
+        }
+        self.rebuild_vertices();
+        true
     }
     pub fn select_shape(
         &mut self,
@@ -1445,6 +1522,9 @@ impl Viewport {
 
     pub fn handle_key(&mut self, _event_loop: &ActiveEventLoop, code: KeyCode, is_pressed: bool) {
         if self.graph_handle_key(code, is_pressed) {
+            return;
+        }
+        if is_pressed && self.move_shape_key(code, 0.1) {
             return;
         }
         self.camera_controller

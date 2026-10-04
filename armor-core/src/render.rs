@@ -348,7 +348,7 @@ impl State {
         };
         Self::new_with_surface(instance, surface, width, height).await
     }
-    async fn new_with_surface(
+    pub async fn new_with_surface(
         instance: wgpu::Instance,
         surface: wgpu::Surface<'static>,
         width: u32,
