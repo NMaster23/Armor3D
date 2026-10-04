@@ -319,7 +319,7 @@ impl ApplicationHandler<State> for App {
                         match button {
                             MouseButton::Middle => {
                                 let mouse_px = cgmath::Vector2::new(self.cursor_pos.x as f32, self.cursor_pos.y as f32);
-                                state.viewport.select_shape(mouse_px, 10.0);
+                                state.viewport.select_shape(mouse_px,10.0,false);
                             }
                             MouseButton::Left => {
                                 let cursor = cgmath::vec2(self.cursor_pos.x as f32, self.cursor_pos.y as f32);

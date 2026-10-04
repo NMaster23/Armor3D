@@ -3,6 +3,8 @@ from ctypes import windll
 from tkinter import Canvas, Frame, filedialog, Toplevel, StringVar
 import sys
 import re
+import ezdxf
+from ezdxf import units
 import math
 import threading
 import json
@@ -17,6 +19,196 @@ ctk.set_appearance_mode('dark')
 HOVER_BG = "#754822"
 HOVER_BORDER = "#f2a65a"
 HOVER_TEXT = "#EBA119"
+
+currentfilepath = None
+importedfiles = []
+def updatewindowtitle():
+    if currentfilepath:
+        title = f"Armor 3D - {Path(currentfilepath).name}"
+    elif not importedfiles:
+        title=  "Armor 3D - New File"
+    elif len(importedfiles) == 1:
+        title = f"Armor 3D - New File ({importedfiles[0]})"
+    else:
+        title = (
+        f"Armor 3D - New File "
+        f"({len(importedfiles)} imports)"
+    )
+    app.title(title)
+
+def newfilecommand():
+    global activecommand
+    activecommand = "confirmnew"
+    command.delete(0, "end")
+    command.configure(
+        placeholder_text = "Create a new file? Press Y or N"
+    )
+    writehistory(
+        "> New\nCreate a new file (Y/N)"
+    )
+    command.focus_set()
+def cancelnewfile():
+    global activecommand
+    activecommand = None
+    command.delete(0, "end")
+    command.configure(placeholder_text="Command:")
+    writehistory("New file cancelled")
+    viewport.focus_set()
+def createnewfile():
+    global activecommand, currentfilepath
+    if renderer is not None:
+        renderer.clear()
+        renderer.render()
+    importedfiles.clear()
+    currentfilepath = None
+    activecommand = None
+    command.delete(0, 'end')
+    command.configure(placeholder_text="Command:")
+    updatewindowtitle()
+    writehistory("Created a new file")
+    viewport.focus_set()
+
+def importdxcommand(event=None):
+    global currentfilepath
+    if renderer is None:
+        writehistory("> Import DXF\nViewport is not ready")
+        return
+    path = filedialog.askopenfilename(
+        parent=app, title="Import DXF drawing", filetypes=[("DXF drawing", "*.dxf")]
+    )
+    if not path:
+        return
+    try:
+        doc = ezdxf.readfile(path)
+        modelspace=  doc.modelspace()
+        unit_scales = {
+            0: 1.0,
+            1: 25.4,
+            4: 1.0,
+            5: 10.0,
+            6: 1000.0,
+        }
+        scale = unit_scales.get(doc.units, 1.0)
+        imported = 0
+        for entity in modelspace:
+            entity_type = entity.dxftype()
+            points_2d = []
+            closed = False
+            if entity_type == "LWPOLYLINE":
+                points_2d = [
+                    (float(point[0]), float(point[1]))
+                    for point in entity.get_points("xy")
+                ]
+                closed = entity.closed
+            elif entity_type == 'LINE':
+                start = entity.dxf.start
+                end = entity.dxf.end 
+                points_2d = [
+                    (float(start.x), float(start.y)),
+                    (float(end.x), float(end.y))
+                ]
+            else:
+                continue
+            if len(points_2d) <2:
+                continue
+            armor_points = [
+                (
+                    x* scale,
+                    0.0,
+                    -y * scale
+                )
+                for x, y in points_2d
+            ]
+            rgb = getattr(entity, "rgb", None)
+            if rgb is None:
+                color = (0.839, 0.651, 0.251, 1.0)
+            else:
+                color = (
+                    rgb[0] / 255,
+                    rgb[1] / 255,
+                    rgb[2] / 255,
+                    1.0
+                )
+            if renderer.import_polyline(armor_points, color, closed):
+                imported+= 1
+        renderer.render()
+        if imported > 0:
+            importedfiles.append(Path(path).name)
+            if currentfilepath is None:
+                currentfilepath = str(Path(path).resolve())
+            updatewindowtitle()
+        writehistory(
+            f"> Import DXF\nImported {imported} objects"
+        )
+    except Exception as error:
+        writehistory(f"> Import DXF\nImport failed {error}")
+
+def savedxcommands(path=None):
+    global currentfilepath
+    if renderer is None:
+        writehistory("> DXF\nViewport is not ready")
+        return
+    scene = renderer.scene_data()
+    if not scene:
+        writehistory("> DXF\nThere is nothing to export")
+        return
+    if path is None:
+        path = filedialog.asksaveasfilename(
+            parent =app, 
+            title = "Save drawing as DXF",
+            defaultextension=".dxf",
+            filetypes=[("DXF drawing", "*.dxf")],
+            initialfile = "Armor3D.dxf"
+        )
+    if not path:
+        return
+    try:
+        doc = ezdxf.new("R2010")
+        doc.units = units.MM
+        doc.header["$MEASUREMENT"] = 1
+        doc.layers.add(
+            name='CUT',
+            color=7
+        )
+        modelspace = doc.modelspace()
+        for object_id, vertices, color, height, selected in scene:
+            if len(vertices) <2:
+                continue
+            points = [
+                (float(x), float(-z))
+                for x, y, z in vertices
+            ]
+            closed = (
+                len(points) >= 3
+                and abs(points[0][0] - points[-1][0]) < 0.0001
+                and abs(points[0][1] - points[-1][1]) < 0.0001
+            )
+            if closed:
+                points = points[:-1]
+            polyline = modelspace.add_lwpolyline(
+                points,
+                close=closed,
+                dxfattribs={
+                    "layer":"CUT"
+                }
+            )
+            polyline.rgb=tuple(max(0, min(255, round(channel*255)))
+                               for channel in color[:3])
+        doc.saveas(path)
+        currentfilepath = str(Path(path).resolve())
+        updatewindowtitle()
+        writehistory(f"> DXF\nSaved to {path}")
+    except Exception as error:
+        writehistory(f"> DXF\nExport failed: {error}")
+def savecommand():
+    if not currentfilepath:
+        writehistory(
+            "> Save \nNo existing file. Choose a save As format"
+        )
+        opensaveascommand()
+        return
+    savedxcommands(currentfilepath)
+
 
 SETTINGSPATH = (Path(os.getenv("APPDATA") or Path.home())
                 / 'Armor3D'
@@ -58,7 +250,7 @@ MEMORYPATH = (
     Path(os.getenv("APPDATA", Path.home()))
     / "Armor3D"
     / "chat_memory.json")
-MAXMEMORYMESSAGES = 12
+MAXMEMORYMESSAGES = 24
 def loadchatmemory():
     if not MEMORYPATH.exists():
         return []
@@ -126,9 +318,9 @@ loadfont(getpath("Assets/Lexend-VariableFont_wght.ttf"))
 loadfont(getpath("Assets/Iceland-Regular.ttf"))
 app = ctk.CTk()
 from tkinter import font
-app.title("Armor 3D")
+app.title("Armor 3D - New File")
 app.geometry("1100x700")
-app.minsize(850, 560)
+app.minsize(850, 730)
 canvas = Canvas(app, bg="#191D1A", highlightthickness=0)
 canvas.pack(fill='both', expand=True)
 command = ctk.CTkEntry(canvas, placeholder_text="Command:", font=("Lexend", 12), fg_color="#342719", border_color="#80602B")
@@ -251,6 +443,18 @@ def viewport_mouse_down(event):
     global left_drag_start, left_dragged, moving_selection
     hidesnapindicator()
     viewport.focus_set()
+    if renderer is None:
+        return
+    if activecommand == 'mirror_select':
+        hide_selection_box()
+        left_drag_start = (event.x, event.y)
+        left_dragged = False
+        return
+    if activecommand in ('mirror_first', "mirror_second"):
+        renderer.mouse_move(event.x, event.y)
+        pickmirrorpoint()
+        return   
+
     if activecommand is None:
         hide_selection_box()
         moving_selection = renderer is not None and renderer.begin_move_selected(event.x, event.y)
@@ -277,7 +481,7 @@ def viewport_left_drag(event):
             else:
                 hidesnapcursor()
         return
-    if activecommand is not None or left_drag_start is None:
+    if (activecommand not in (None, "mirror_select") or left_drag_start is None):
         return
     dx = event.x-left_drag_start[0]
     dy = event.y-left_drag_start[1]
@@ -289,6 +493,35 @@ def viewport_mouse_up(event):
     global left_drag_start, left_dragged, moving_selection
     if renderer is None:
         return
+    if activecommand == "mirror_select":
+        additive = bool(event.state & 0x0001)
+        if left_drag_start is not None:
+            if left_dragged:
+                count= renderer.select_box(
+                    left_drag_start[0],
+                    left_drag_start[1],
+                    event.x,
+                    event.y,
+                    additive
+                )
+            else:
+                renderer.select_at(
+                    event.x, event.y, additive
+                )
+                count = selectedobjectcount()
+            if count:
+                command.configure(
+                    placeholder_text = (f'{count} selected. Press Enter')
+                )
+            else:
+                command.configure(
+                    placeholder_text=("Select objects, then press enter")
+                )
+        hide_selection_box()
+        left_drag_start = None
+        left_dragged = False
+        return
+    
     if moving_selection:
         hidesnapcursor()
         renderer.end_move_selected()
@@ -346,6 +579,9 @@ def viewport_wheel(event):
     if renderer is not None:
         renderer.zoom(event.delta / 120)
 def viewport_key(event, pressed):
+    if (pressed and event.keysym == 'Return' and activecommand =='mirror_select'):
+        confirmmirrorselection()
+        return 'break'
     if event.keysym in ("2", "K_2", 'bracketright'):
         return
     if pressed and event.keysym in ("Delete", "BackSpace"):
@@ -408,6 +644,84 @@ history_index = 0
 
 activecommand = None
 lastcommand = None
+mirrorpoint1= None
+
+def selectedobjectcount():
+    if renderer is None:
+        return 0
+    return sum(
+        1
+        for _, _, _, _, selected in renderer.scene_data()
+        if selected
+    )
+def startmirror(event=None):
+    global activecommand, mirrorpoint1
+    mirrorpoint1 = None
+    command.delete(0, 'end')
+    if selectedobjectcount() == 0:
+        activecommand = "mirror_select"
+        command.configure(
+            placeholder_text="Select object, then press Enter"
+        )
+        writehistory(
+            "> Mirror\nSelect object, then press Enter"
+        )
+    else:
+        activecommand = 'mirror_first'
+        command.configure(
+            placeholder_text="Pick first point of mirror line"
+        )
+        writehistory("> Mirror\nPick first point of mirror line")
+    viewport.focus_set()
+def confirmmirrorselection():
+    global activecommand
+    if selectedobjectcount() == 0:
+        writehistory("No object selected")
+        command.configure(
+            placeholder_text = "Select object, then press enter"
+        )
+        return
+    activecommand='mirror_first'
+    command.configure(
+        placeholder_text="Pick first point of mirror line"
+    )
+    writehistory("Pick first point of mirror line")
+    viewport.focus_set()
+def pickmirrorpoint():
+    global activecommand, mirrorpoint1
+    position = renderer.cursor_world_position()
+    if position is None:
+        return
+    if activecommand == 'mirror_first':
+        mirrorpoint1 = (position[0], position[1])
+        renderer.start_polyline()
+        renderer.mouse_button(True)
+        renderer.mouse_button(False)
+        points = renderer.active_polyline_data()
+        if points:
+            mirrorpoint1 = (
+                points[0][0],
+                points[0][2]
+            )
+        activecommand = 'mirror_second'
+        command.configure(placeholder_text="Pick second point of mirror line")
+        writehistory("Pick second point of mirror line")
+    elif activecommand == 'mirror_second':
+        secondpoint = (position[0], position[1])
+        renderer.cancel_polyline()
+        mirrored = renderer.mirror_selected(
+            mirrorpoint1,
+            secondpoint
+        )
+        activecommand = None
+        mirrorpoint1 = None
+        command.configure(placeholder_text='Command:')
+        viewport.configure(cursor='arrow')
+        writehistory(
+            f"Mirrored {mirrored} object"
+            f"{'s' if mirrored != 1 else ''}"
+        )
+
 def writehistory(text):
     history.configure(state='normal')
     history.insert('end', text+ '\n')
@@ -484,12 +798,12 @@ def runnamedcommand(name):
         "angle": lambda: startplaceholdercmd("Angle", "Select first point"),
         "revolve": lambda: startplaceholdercmd("Revolve", "Select objects to revolve"),
         "extrude": lambda: startplaceholdercmd("Extrude", "Select objects to extrude"),
-        "mirror": lambda: startplaceholdercmd("Mirror", "Select objects to mirror"),
+        "mirror": startmirror,
         "copy": lambda: startplaceholdercmd( "Copy", "Select objects to copy"),
-        "new": lambda: startplaceholdercmd("New", "New file is not implemented yet"),
-        "save": lambda: startplaceholdercmd("Save", "Save is not implemented"),
+        "new": newfilecommand,
+        "save": savecommand,
         "3dm": lambda: startplaceholdercmd("3DM", "3DM export is not implemented yet"),
-        "dxf": lambda: startplaceholdercmd("DXF", "DXF export is not implemented yet"),
+        "dxf": savedxcommands,
         "file": open_file_menu,
         "analyze": openanalyzemenu,
         "tools": opentoolsmenu,
@@ -498,7 +812,9 @@ def runnamedcommand(name):
         "circle": lambda: startplaceholdercmd("Circle", "Choose circle center"),
         "fillet": lambda: startplaceholdercmd("Fillet", "Select curves to fillet"),
         "trim": lambda: startplaceholdercmd("Trim", "Select objects to trim"),
-        "arc": lambda: startplaceholdercmd("Arc", "Choose arc start point")
+        "arc": lambda: startplaceholdercmd("Arc", "Choose arc start point"),
+        "import": importdxcommand,
+        "importdxf": importdxcommand
     }
     action = actions.get(normalized)
     if action is None:
@@ -519,6 +835,8 @@ def closeactivecommand(commit=False):
     global activecommand
     if activecommand is None:
         return
+    if activecommand == 'mirror_second' and renderer is not None:
+        renderer.cancel_polyline()
     if activecommand == "polyline" and renderer is not None:
         if commit:
             renderer.finish_polyline()
@@ -554,34 +872,89 @@ app.bind("<Escape>", cancelactivecommand)
 command.bind("<Escape>", cancelactivecommand)
 viewport.bind("<Escape>", cancelactivecommand)
 def runcmd(event):
-    global history_index
+    global history_index, activecommand
+    if activecommand == "mirror_select":
+        confirmmirrorselection()
+        return "break"
     typed = command.get().strip()
     if not typed:
-        return 'break'
-    command.delete(0, 'end')
+        return "break"
+    command.delete(0, "end")
     past_commands.append(typed)
     history_index = len(past_commands)
     if not runnamedcommand(typed):
-        writehistory(f"> {typed}\nCommand not found")
-        command.configure(placeholder_text = "Command:")
+        writehistory(
+            f"> {typed}\nCommand not found")
+        command.configure(
+            placeholder_text="Command:")
         viewport.focus_set()
-    return 'break'
+    return "break"
 command.bind("<Return>", runcmd)
 commandnames = ["Polyline", "Curve", "Join", "Explode", "Rectangle", "Text", "File", "New", "Save", "Save as", '3DM', "PNG", "DXF", "Analyze", "Distance", "Angle", "Tools", "Revolve", "Extrude", "Mirror", "Copy", 
-                'Circle', "Fillet", "Trim", "Arc"]
+                'Circle', "Fillet", "Trim", "Arc", "Import DXF", "Import"]
+
+def handlenewconfirmation(event):
+    if activecommand != "confirmnew":
+        return
+    key = event.keysym.lower()
+    if key == 'y':
+        createnewfile()
+    elif key == 'n':
+        cancelnewfile()
+    elif key == 'escape':
+        cancelnewfile()
+    return 'break'
+command.bind("<KeyPress>", handlenewconfirmation, add="+")
 
 command._entry.configure(selectbackground="#666666", selectforeground="#F3E6C5")
 def updatecommandsuggestion(event=None):
     if activecommand is not None:
         return
-    if event is not None and event.keysym in ( "Return", "Up", "Down", "Left", "Right", "Escape", "Tab", "bracketright"):
+    if event is not None and event.keysym in (
+        "Return",
+        "Up",
+        "Down",
+        "Left",
+        "Right",
+        "Escape",
+        'Tab',
+        "bracketright",
+        "BackSpace",
+        "Delete"
+    ):
         return
-    typed = command.get()
-    if not typed:
-       return
+    value = command.get()
+    try:
+        if command._entry.selection_present():
+            selection_start = int(
+                command._entry.index('sel.first')
+            )
+            typed = value[:selection_start]
+        else:
+            typed = value
+    except Exception:
+        typed = value
+    typed = typed.strip()
+    if not typed: 
+        return
     typedkey = typed.lower().replace(" ", "")
-    match = next((name for name in commandnames if name.lower().replace(" ", "").startswith(typedkey) and 
-                  name.lower().replace(" ", "") != typedkey), None)
+    exactmatch = any(
+        name.lower().replace(" ", "") == typedkey
+        for name in commandnames
+    )
+    if exactmatch:
+        command.delete(0, 'end')
+        command.insert(0, typed)
+        command._entry.icursor("end")
+        return
+    match = next(
+        (
+            name for name in commandnames
+            if name.lower()
+            .replace(" ", "")
+            .startswith(typedkey)
+        ), None
+    )
     if match is None:
         return
     typedlength = len(typed)
@@ -589,7 +962,10 @@ def updatecommandsuggestion(event=None):
     command.insert(0, match)
     command._entry.selection_range(typedlength, "end")
     command._entry.icursor(typedlength)
+
 def commandbackspace(event):
+    if activecommand == 'confirmnew':
+        return 'break'
     try:
         selectionstart = int(command._entry.index("sel.first"))
     except Exception:
@@ -602,9 +978,9 @@ def commandbackspace(event):
     command._entry.icursor('end')
     app.after_idle(updatecommandsuggestion)
     return 'break'
-command.bind("<KeyRelease>", updatecommandsuggestion, add="+")
-command.bind("<KeyPress-BackSpace>", commandbackspace, add="+")
-
+command._entry.bind("<KeyRelease>", updatecommandsuggestion, add='+')
+command._entry.bind("<KeyPress-BackSpace>", commandbackspace, add="+")
+command._entry.bind("<KeyPress>", handlenewconfirmation, add='+')
 
 def toggle2dshort(event=None):
     if renderer is not None:
@@ -615,16 +991,23 @@ def toggle2dshort(event=None):
 command.bind("<KeyPress-bracketright>", toggle2dshort)
 app.bind("<KeyPress-bracketright>", toggle2dshort)
 def typecmduni(event):
-    global activecommand
     if event.state & 0x0004:
         return
     focused = app.focus_get()
-    if focused is not None and focused.winfo_class() in ("Entry", "Text"):
+    if focused is command._entry:
         return
+    if focused is not None:
+        widget_class = focused.winfo_class()
+        if widget_class in (
+            "Entry",
+            "TEntry",
+            "Text"
+        ):
+            return
     if activecommand is not None:
         return
     if event.char and event.char.isprintable():
-        command.focus_set()
+        command._entry.focus_set()
         command.insert("end", event.char)
         app.after_idle(updatecommandsuggestion)
         return 'break'
@@ -920,6 +1303,7 @@ def updatecoords():
 importz = canvas.create_text(68, 8, text='Import', font=("Lexend", 8), fill='#F3E6C5')
 canvas.tag_bind(importz, "<Enter>", lambda event: canvas.itemconfig(importz, fill='#F4C95D'))
 canvas.tag_bind(importz, "<Leave>", lambda event: canvas.itemconfig(importz, fill='#F3E6C5'))
+canvas.tag_bind(importz, "<Button-1>", importdxcommand)
 
 analyze = canvas.create_text(120, 8, text='Analyze', font=("Lexend", 8), fill='#F3E6C5')
 analyze_menu = Canvas(app, width=160, height=72, bg="#3B332A", highlightthickness=1, highlightbackground="#A77A2F")
@@ -1087,7 +1471,6 @@ prompt_label.pack(pady=(24, 10))
 ai_input = ctk.CTkEntry( sidebar, placeholder_text="Start typing...", font=("Lexend", 12), fg_color="#342719", border_color=HOVER_BORDER,  text_color="#F3E6C5", placeholder_text_color="#C5B29A")
 ai_input.configure(height=38)
 aichat = ctk.CTkTextbox(sidebar, font=("Lexend", 12), fg_color="#191D1A", border_color=HOVER_BG, border_width = 2, text_color="#F3E6C5", wrap='word')
-aichat.place(relx=0.027, y=115, relwidth=0.93, relheight=0.74)
 aichat.configure(state='disabled')
 def roundedrectangle(canvas, x1, y1, x2, y2, radius, **options):
     points = [ x1 + radius, y1, x2 - radius, y1,  x2, y1,  x2, y1 + radius, x2, y2 - radius,  x2, y2, x2 - radius, y2, x1 + radius, y2,x1, y2,  x1, y2 - radius, x1, y1 + radius, x1, y1]
@@ -1180,16 +1563,26 @@ aichat._textbox.tag_configure('mdcode', foreground="#75B98A", background='#20231
 aichat._textbox.tag_configure('mdcodeblock', foreground="#75B98A", background='#20231B', font=("Consolas", 10), lmargin1=12, lmargin2=12, rmargin=12)
 
 def positionaicomposer(event=None):
-    width = sidebar.winfo_width()
-    if width <= 1:
+    width  = sidebar.winfo_width()
+    height = sidebar.winfo_height()
+    if width <= 1 or height <=1:
         return
-    margin = max(16, round(width * 0.06))
-    gap = 8
-    button_width= 44
-    entry_width = max(120, width-(margin*2) - gap -button_width)
+    margin = max(16, round(width*0.06))
+    gap=8
+    button_width = 44
+    composer_height = 40
+    bottom_margin = 15
+    entry_width = max(120, width- (margin*2) - gap - button_width)
+    composer_y = height-bottom_margin - composer_height
     ai_input.configure(width=entry_width)
-    ai_input.place(x=margin, rely=1, y=-15, anchor='sw')
-    sendbutton.place(x=margin + entry_width + gap, rely=1, y=-15, anchor='sw')
+    ai_input.place(x=margin, y=composer_y+1)
+    sendbutton.place(x=margin+entry_width+gap, y=composer_y)
+    chat_top = 115
+    chat_gap = 10
+    chatwidth = max(150, width - (margin*2))
+    chatheight = max(80, composer_y - chat_top-chat_gap)
+    aichat.configure(width=chatwidth, height=chatheight)
+    aichat.place(x=margin, y=chat_top)
 sidebar.bind("<Configure>", positionaicomposer, add="+")
 app.after_idle(positionaicomposer)
 
@@ -1907,6 +2300,16 @@ def finishairesponse():
     stopsendanimation()
     ai_input.focus_set()
 
+def getaicolorname(rgba):
+    red, green, blue = rgba[:3]
+
+    def distance(hexcolor):
+        value = hexcolor.lstrip("#")
+        target = tuple(int(value[index:index + 2], 16) / 255 for index in (0, 2, 4))
+        return sum((actual - expected) ** 2 for actual, expected in zip((red, green, blue), target))
+
+    return min(colors, key=lambda item: distance(item[1]))[0]
+
 def getaiscene():
     if renderer is None:
         return {"scene_version": 1, "objects": []}
@@ -1966,10 +2369,66 @@ def getaiscene():
                     "size": size,
                 }, "center": center,},
             "appearance": {
+                "color_name": getaicolorname(color),
                 "color_rgba": [
                     round(value, 3)
                     for value in color],},
             "properties": { "height": round(height, 5), "selected": selected, },})
+
+    draft_points = [
+        [round(x, 5), round(y, 5), round(z, 5)]
+        for x, y, z in renderer.active_polyline_data()
+    ]
+    if draft_points:
+        draft_lengths = [
+            round(math.dist(start, end), 5)
+            for start, end in zip(draft_points, draft_points[1:])
+        ]
+        xs = [point[0] for point in draft_points]
+        ys = [point[1] for point in draft_points]
+        zs = [point[2] for point in draft_points]
+        minimum = [min(xs), min(ys), min(zs)]
+        maximum = [max(xs), max(ys), max(zs)]
+        center = [
+            round(sum(axis) / len(axis), 5)
+            for axis in (xs, ys, zs)
+        ]
+        objects.append({
+            "id": "active-polyline",
+            "object_type": "curve",
+            "geometry_type": "polyline",
+            "status": "in_progress",
+            "geometry": {
+                "vertices": draft_points,
+                "closed": False,
+                "vertex_count": len(draft_points),
+                "segment_count": len(draft_lengths),
+            },
+            "measurements": {
+                "segment_lengths": draft_lengths,
+                "total_length": round(sum(draft_lengths), 5),
+                "area": None,
+                "bounding_box": {
+                    "minimum": minimum,
+                    "maximum": maximum,
+                    "size": [
+                        round(maximum[index] - minimum[index], 5)
+                        for index in range(3)
+                    ],
+                },
+                "center": center,
+            },
+            "properties": {
+                "height": 0.0,
+                "selected": False,
+            },
+            "appearance": {
+                "color_name": next(
+                    (name for name, value in colors if value == layer_color),
+                    "Gold",
+                ),
+            },
+        })
     return {
         "scene_version": 1,
         "units": {"name": "model-units",},

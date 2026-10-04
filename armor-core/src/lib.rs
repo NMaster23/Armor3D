@@ -120,6 +120,16 @@ impl ViewportRenderer {
             .map_err(|error| pyo3::exceptions::PyRuntimeError::new_err(error.to_string()))?;
         Ok(Self { state })
     }
+    fn mirror_selected(
+        &mut self,
+        start: (f32, f32),
+        end: (f32, f32),
+    ) -> usize {
+        self.state.viewport.mirror_selected(
+            cgmath::Vector2::new(start.0, start.1),
+            cgmath::Vector2::new(end.0, end.1),
+        )
+    }
     fn clear(&mut self) {
         self.state.viewport.clear();
     }
@@ -157,6 +167,32 @@ impl ViewportRenderer {
     fn add_point(&mut self, x: f32, y: f32, z: f32) {
         self.state.viewport.add_point(cgmath::Vector3::new(x, y, z));
     }
+    fn import_polyline(
+        &mut self,
+        vertices: Vec<(f32, f32, f32)>,
+        color: (f32, f32, f32, f32),
+        closed: bool,
+    ) -> bool {
+        if vertices.len() < 2 {
+            return false;
+        }
+
+        let mut points: Vec<cgmath::Vector3<f32>> = vertices
+            .iter()
+            .map(|&(x, y, z)| cgmath::Vector3::new(x, y, z))
+            .collect();
+
+        if closed && vertices.first() != vertices.last() {
+            points.push(points[0]);
+        }
+        self.state.viewport.add_polyline(
+            points,
+            [color.0, color.1, color.2, color.3],
+            2.5,
+        );
+
+        true
+    }
     fn extrude(&mut self, height: f32) {
         self.state.viewport.extrude_selected(height);
     }
@@ -169,16 +205,41 @@ impl ViewportRenderer {
         self.state.viewport.mouse_button(pressed)
     }
 
-    fn select_at(&mut self, x: f32, y: f32) -> Option<usize> {
-        self.state
-            .viewport
-            .select_shape(cgmath::Vector2::new(x, y), 8.0)
+    #[pyo3(signature = (x, y, additive=false))]
+    fn select_at(
+        &mut self,
+        x: f32,
+        y: f32,
+        additive: bool,
+    ) -> Option<usize> {
+        self.state.viewport.select_shape(
+            cgmath::Vector2::new(x, y),
+            8.0,
+            additive,
+        )
     }
-
-    fn select_box(&mut self, start_x: f32, start_y: f32, end_x: f32, end_y: f32) -> usize {
-        self.state
-            .viewport
-            .select_box(start_x, start_y, end_x, end_y)
+    #[pyo3(signature = (
+        start_x,
+        start_y,
+        end_x,
+        end_y,
+        additive=false
+    ))]
+    fn select_box(
+        &mut self,
+        start_x: f32,
+        start_y: f32,
+        end_x: f32,
+        end_y: f32,
+        additive: bool,
+    ) -> usize {
+        self.state.viewport.select_box(
+            start_x,
+            start_y,
+            end_x,
+            end_y,
+            additive,
+        )
     }
 
     fn delete_selected(&mut self) -> usize {
@@ -260,6 +321,24 @@ impl ViewportRenderer {
                     entity.selected,
                 )
             })
+            .collect()
+    }
+
+    fn active_polyline_data(&self) -> Vec<(f32, f32, f32)> {
+        if !self.state.viewport.polyline_active {
+            return Vec::new();
+        }
+
+        let mut points = self.state.viewport.active_polyline.clone();
+        if let Some(preview) = self.state.viewport.preview_point {
+            if points.last().copied() != Some(preview) {
+                points.push(preview);
+            }
+        }
+
+        points
+            .into_iter()
+            .map(|point| (point.x, point.y, point.z))
             .collect()
     }
 
