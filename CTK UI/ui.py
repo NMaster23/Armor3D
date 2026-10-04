@@ -342,6 +342,30 @@ snapindicator = ctk.CTkLabel(
     text_color="#F4C95D",
     font=("Iceland", 12),
 )
+
+def undoaction(event=None):
+    if renderer is None or activecommand not in (None, "polyline"):
+        return "break"
+    if renderer.undo():
+        writehistory("Undo segment" if activecommand == "polyline" else "Undo")
+    else:
+        writehistory("No segment to undo" if activecommand == "polyline" else "Nothing to undo")
+    viewport.focus_set()
+    return 'break'
+
+def redoaction(event=None):
+    if renderer is None or activecommand is not None:
+        return 'break'
+    if renderer.redo():
+        writehistory("Redo")
+    else:
+        writehistory("Nothing to redo")
+    viewport.focus_set()
+    return 'break'
+app.bind_all("<Control-z>", undoaction, add="+")
+app.bind_all("<Control-y>", redoaction, add="+")
+app.bind_all("<Control-Shift-Z>", redoaction, add="+")
+
 snapcursorhorizontal = Frame(viewport, bg="#F4C95D", bd=0)
 snapcursorvertical = Frame(viewport, bg="#F4C95D", bd=0)
 def hidesnapcursor():

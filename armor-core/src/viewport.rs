@@ -108,6 +108,61 @@ pub struct Viewport {
 }
 
 impl Viewport {
+    fn save_undo_state(&mut self) {
+        self.hist_entities.current = self.entities.clone();
+        self.hist_entities.save_undo();
+    }
+    fn restore_history_state(&mut self) {
+        self.selected_entity = self
+            .entities
+            .iter()
+            .find(|entity| entity.selected)
+            .map(|entity| entity.id);
+        self.next_entity = self
+            .entities
+            .iter()
+            .map(|entity| entity.id)
+            .max()
+            .map(|id| id + 1)
+            .unwrap_or(0);
+        self.active_polyline.clear();
+        self.preview_point = None;
+        self.polyline_active = false;
+        self.rebuild_vertices();
+    }
+    pub fn undo_scene(&mut self) -> bool {
+        // During Polyline, undo only the latest completed segment instead of
+        // cancelling the command or removing an already-finished object.
+        if self.polyline_active {
+            if self.active_polyline.len() <= 1 {
+                return false;
+            }
+
+            self.active_polyline.pop();
+            self.preview_point = None;
+            self.rebuild_vertices();
+            return true;
+        }
+
+        self.hist_entities.current = self.entities.clone();
+
+        if !self.hist_entities.undo() {
+            return false;
+        }
+        self.entities = self.hist_entities.current.clone();
+        self.restore_history_state();
+        true
+    }
+    pub fn redo_scene(&mut self) -> bool {
+        self.hist_entities.current = self.entities.clone();
+
+        if !self.hist_entities.redo() {
+            return false;
+        }
+        self.entities = self.hist_entities.current.clone();
+        self.restore_history_state();
+        true
+    }
     pub fn mirror_selected(
         &mut self,
         start: cgmath::Vector2<f32>,
@@ -129,6 +184,7 @@ impl Viewport {
         if selected.is_empty() {
             return 0;
         }
+        self.save_undo_state();
         for entity in &mut self.entities {
             entity.selected = false;
         }
@@ -569,13 +625,18 @@ impl Viewport {
     }
 
     pub fn delete_selected(&mut self) -> usize {
-        let previous_len = self.entities.len();
-        self.entities.retain(|entity| !entity.selected);
-        let deleted = previous_len - self.entities.len();
-        if deleted > 0 {
-            self.selected_entity = None;
-            self.rebuild_vertices();
+        let deleted = self
+            .entities
+            .iter()
+            .filter(|entity| entity.selected)
+            .count();
+        if deleted == 0 {
+            return 0;
         }
+        self.save_undo_state();
+        self.entities.retain(|entity| !entity.selected);
+        self.selected_entity = None;
+        self.rebuild_vertices();
         deleted
     }
 
@@ -597,6 +658,7 @@ impl Viewport {
             self.move_snapshots.clear();
             return false;
         }
+        self.save_undo_state();
         self.move_anchor = self.fetch_point(PhysicalPosition::new(x as f64, y as f64));
         if self.move_anchor.is_some() {
             self.move_snapshots = self
@@ -879,6 +941,7 @@ impl Viewport {
     vertices
 }
     pub fn add_polyline(&mut self, vertices: Vec<Vector3<f32>>, color: [f32; 4], thickness: f32) {
+        self.save_undo_state();
         let id = self.next_entity;
         self.next_entity += 1;
         self.entities.push(PolyLine {
@@ -930,10 +993,16 @@ impl Viewport {
         }
     }
     pub fn clear(&mut self) {
+        if !self.entities.is_empty() {
+            self.save_undo_state();
+        }
+        self.entities.clear();
         self.point_vertices.clear();
         self.active_polyline.clear();
-        self.preview_point = None;
-        self.redraw = true;
+        self.preview_point  = None;
+        self.selected_entity = None;
+        self.polyline_active = false;
+        self.rebuild_vertices();
     }
 
     pub fn start_polyline(&mut self) {
