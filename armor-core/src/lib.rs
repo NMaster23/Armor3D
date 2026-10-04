@@ -263,6 +263,24 @@ impl ViewportRenderer {
             .collect()
     }
 
+    fn active_polyline_data(&self) -> Vec<(f32, f32, f32)> {
+        if !self.state.viewport.polyline_active {
+            return Vec::new();
+        }
+
+        let mut points = self.state.viewport.active_polyline.clone();
+        if let Some(preview) = self.state.viewport.preview_point {
+            if points.last().copied() != Some(preview) {
+                points.push(preview);
+            }
+        }
+
+        points
+            .into_iter()
+            .map(|point| (point.x, point.y, point.z))
+            .collect()
+    }
+
     fn set_polyline_color(&mut self, red: f32, green: f32, blue: f32, alpha: f32) {
         self.state
             .viewport

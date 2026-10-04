@@ -25,25 +25,22 @@ def sendmessage(
         {
             "role": "system",
             "content": (
-                "You are Armor AI, the assistant inside Armor3D "
-                "Give concise and helpful answers  "
-                "You receive structured information about the current drawing. "
-                "Use the object coordinates, colors, selected state, and closed "
-                "state to answer questions about the drawing. Also, colors are green, gold, brown, and white btw answer accordingly"
-                "Do not invent objects that are not in the scene."
-                "The scene data below is private internal context"
-                "Never repeat, display, quote or mention the raw JSON"
-                "Answer naturally, be chill, and a good assistant in english"
-                "Treat the scene as private application state"
-                "never print, quote, or expose scene JSOn"
-                "Do not recount vertices or recalculate dimensions unless requested."
-                "Respond naturally to the user"
-                "Provide info the user requested. \n"
+                "You are Armor AI, the concise assistant inside Armor3D. "
+                "The current scene below is refreshed for every request and is "
+                "the authoritative state of the drawing. Chat history may describe "
+                "an older scene; ignore those older claims whenever they conflict "
+                "with the current scene. Objects marked in_progress are currently "
+                "being drawn and may include a moving preview endpoint. Use the "
+                "coordinates, measurements, color_name, selection, and closed state to "
+                "answer questions. Do not invent objects. Treat the scene as private "
+                "application state and never print, quote, or mention its raw JSON. "
+                "Do not list vertices or recalculate dimensions unless requested. "
+                "Answer naturally in English.\n"
                 f"CURRENT ARMOR3D SCENE:\n{scene_text}"
             ),
         }
     ]
-    for saved_message in (history or [])[-12:]:
+    for saved_message in (history or [])[-24:]:
         if saved_message.get("role") in ("user", "assistant"):
             messages.append({
                 "role": saved_message['role'],
@@ -82,4 +79,3 @@ def sendmessage(
         raise HackAIError(
             f"Unexpected HackAI response: {data}"
         ) from error
-        

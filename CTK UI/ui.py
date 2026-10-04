@@ -58,7 +58,7 @@ MEMORYPATH = (
     Path(os.getenv("APPDATA", Path.home()))
     / "Armor3D"
     / "chat_memory.json")
-MAXMEMORYMESSAGES = 12
+MAXMEMORYMESSAGES = 24
 def loadchatmemory():
     if not MEMORYPATH.exists():
         return []
@@ -1907,6 +1907,16 @@ def finishairesponse():
     stopsendanimation()
     ai_input.focus_set()
 
+def getaicolorname(rgba):
+    red, green, blue = rgba[:3]
+
+    def distance(hexcolor):
+        value = hexcolor.lstrip("#")
+        target = tuple(int(value[index:index + 2], 16) / 255 for index in (0, 2, 4))
+        return sum((actual - expected) ** 2 for actual, expected in zip((red, green, blue), target))
+
+    return min(colors, key=lambda item: distance(item[1]))[0]
+
 def getaiscene():
     if renderer is None:
         return {"scene_version": 1, "objects": []}
@@ -1966,10 +1976,66 @@ def getaiscene():
                     "size": size,
                 }, "center": center,},
             "appearance": {
+                "color_name": getaicolorname(color),
                 "color_rgba": [
                     round(value, 3)
                     for value in color],},
             "properties": { "height": round(height, 5), "selected": selected, },})
+
+    draft_points = [
+        [round(x, 5), round(y, 5), round(z, 5)]
+        for x, y, z in renderer.active_polyline_data()
+    ]
+    if draft_points:
+        draft_lengths = [
+            round(math.dist(start, end), 5)
+            for start, end in zip(draft_points, draft_points[1:])
+        ]
+        xs = [point[0] for point in draft_points]
+        ys = [point[1] for point in draft_points]
+        zs = [point[2] for point in draft_points]
+        minimum = [min(xs), min(ys), min(zs)]
+        maximum = [max(xs), max(ys), max(zs)]
+        center = [
+            round(sum(axis) / len(axis), 5)
+            for axis in (xs, ys, zs)
+        ]
+        objects.append({
+            "id": "active-polyline",
+            "object_type": "curve",
+            "geometry_type": "polyline",
+            "status": "in_progress",
+            "geometry": {
+                "vertices": draft_points,
+                "closed": False,
+                "vertex_count": len(draft_points),
+                "segment_count": len(draft_lengths),
+            },
+            "measurements": {
+                "segment_lengths": draft_lengths,
+                "total_length": round(sum(draft_lengths), 5),
+                "area": None,
+                "bounding_box": {
+                    "minimum": minimum,
+                    "maximum": maximum,
+                    "size": [
+                        round(maximum[index] - minimum[index], 5)
+                        for index in range(3)
+                    ],
+                },
+                "center": center,
+            },
+            "properties": {
+                "height": 0.0,
+                "selected": False,
+            },
+            "appearance": {
+                "color_name": next(
+                    (name for name, value in colors if value == layer_color),
+                    "Gold",
+                ),
+            },
+        })
     return {
         "scene_version": 1,
         "units": {"name": "model-units",},
