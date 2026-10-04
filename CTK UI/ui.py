@@ -20,7 +20,56 @@ HOVER_BG = "#754822"
 HOVER_BORDER = "#f2a65a"
 HOVER_TEXT = "#EBA119"
 
+currentfilepath = None
+importedfiles = []
+def updatewindowtitle():
+    if currentfilepath:
+        title = f"Armor 3D - {Path(currentfilepath).name}"
+    elif not importedfiles:
+        title=  "Armor 3D - New File"
+    elif len(importedfiles) == 1:
+        title = f"Armor 3D - New File ({importedfiles[0]})"
+    else:
+        title = (
+        f"Armor 3D - New File "
+        f"({len(importedfiles)} imports)"
+    )
+    app.title(title)
+
+def newfilecommand():
+    global activecommand
+    activecommand = "confirmnew"
+    command.delete(0, "end")
+    command.configure(
+        placeholder_text = "Create a new file? Press Y or N"
+    )
+    writehistory(
+        "> New\nCreate a new file (Y/N)"
+    )
+    command.focus_set()
+def cancelnewfile():
+    global activecommand
+    activecommand = None
+    command.delete(0, "end")
+    command.configure(placeholder_text="Command:")
+    writehistory("New file cancelled")
+    viewport.focus_set()
+def createnewfile():
+    global activecommand, currentfilepath
+    if renderer is not None:
+        renderer.clear()
+        renderer.render()
+    importedfiles.clear()
+    currentfilepath = None
+    activecommand = None
+    command.delete(0, 'end')
+    command.configure(placeholder_text="Command:")
+    updatewindowtitle()
+    writehistory("Created a new file")
+    viewport.focus_set()
+
 def importdxcommand(event=None):
+    global currentfilepath
     if renderer is None:
         writehistory("> Import DXF\nViewport is not ready")
         return
@@ -83,13 +132,19 @@ def importdxcommand(event=None):
             if renderer.import_polyline(armor_points, color, closed):
                 imported+= 1
         renderer.render()
+        if imported > 0:
+            importedfiles.append(Path(path).name)
+            if currentfilepath is None:
+                currentfilepath = str(Path(path).resolve())
+            updatewindowtitle()
         writehistory(
-            f'> Import DXF\nImported {imported} objects'
+            f"> Import DXF\nImported {imported} objects"
         )
     except Exception as error:
         writehistory(f"> Import DXF\nImport failed {error}")
 
-def savedxcommands():
+def savedxcommands(path=None):
+    global currentfilepath
     if renderer is None:
         writehistory("> DXF\nViewport is not ready")
         return
@@ -97,13 +152,14 @@ def savedxcommands():
     if not scene:
         writehistory("> DXF\nThere is nothing to export")
         return
-    path = filedialog.asksaveasfilename(
-        parent=app,
-        title="Export drawing as DXF",
-        defaultextension=".dxf",
-        filetypes=[("DXF drawing", "*.dxf")],
-        initialfile="Armor3D.dxf"
-    )
+    if path is None:
+        path = filedialog.asksaveasfilename(
+            parent =app, 
+            title = "Save drawing as DXF",
+            defaultextension=".dxf",
+            filetypes=[("DXF drawing", "*.dxf")],
+            initialfile = "Armor3D.dxf"
+        )
     if not path:
         return
     try:
@@ -139,9 +195,20 @@ def savedxcommands():
             polyline.rgb=tuple(max(0, min(255, round(channel*255)))
                                for channel in color[:3])
         doc.saveas(path)
+        currentfilepath = str(Path(path).resolve())
+        updatewindowtitle()
         writehistory(f"> DXF\nSaved to {path}")
     except Exception as error:
         writehistory(f"> DXF\nExport failed: {error}")
+def savecommand():
+    if not currentfilepath:
+        writehistory(
+            "> Save \nNo existing file. Choose a save As format"
+        )
+        opensaveascommand()
+        return
+    savedxcommands(currentfilepath)
+
 
 SETTINGSPATH = (Path(os.getenv("APPDATA") or Path.home())
                 / 'Armor3D'
@@ -251,7 +318,7 @@ loadfont(getpath("Assets/Lexend-VariableFont_wght.ttf"))
 loadfont(getpath("Assets/Iceland-Regular.ttf"))
 app = ctk.CTk()
 from tkinter import font
-app.title("Armor 3D")
+app.title("Armor 3D - New File")
 app.geometry("1100x700")
 app.minsize(850, 730)
 canvas = Canvas(app, bg="#191D1A", highlightthickness=0)
@@ -611,8 +678,8 @@ def runnamedcommand(name):
         "extrude": lambda: startplaceholdercmd("Extrude", "Select objects to extrude"),
         "mirror": lambda: startplaceholdercmd("Mirror", "Select objects to mirror"),
         "copy": lambda: startplaceholdercmd( "Copy", "Select objects to copy"),
-        "new": lambda: startplaceholdercmd("New", "New file is not implemented yet"),
-        "save": lambda: startplaceholdercmd("Save", "Save is not implemented"),
+        "new": newfilecommand,
+        "save": savecommand,
         "3dm": lambda: startplaceholdercmd("3DM", "3DM export is not implemented yet"),
         "dxf": savedxcommands,
         "file": open_file_menu,
@@ -681,7 +748,7 @@ app.bind("<Escape>", cancelactivecommand)
 command.bind("<Escape>", cancelactivecommand)
 viewport.bind("<Escape>", cancelactivecommand)
 def runcmd(event):
-    global history_index
+    global history_index, activecommand
     typed = command.get().strip()
     if not typed:
         return 'break'
@@ -697,18 +764,68 @@ command.bind("<Return>", runcmd)
 commandnames = ["Polyline", "Curve", "Join", "Explode", "Rectangle", "Text", "File", "New", "Save", "Save as", '3DM', "PNG", "DXF", "Analyze", "Distance", "Angle", "Tools", "Revolve", "Extrude", "Mirror", "Copy", 
                 'Circle', "Fillet", "Trim", "Arc", "Import DXF", "Import"]
 
+def handlenewconfirmation(event):
+    if activecommand != "confirmnew":
+        return
+    key = event.keysym.lower()
+    if key == 'y':
+        createnewfile()
+    elif key == 'n':
+        cancelnewfile()
+    elif key == 'escape':
+        cancelnewfile()
+    return 'break'
+command.bind("<KeyPress>", handlenewconfirmation, add="+")
+
 command._entry.configure(selectbackground="#666666", selectforeground="#F3E6C5")
 def updatecommandsuggestion(event=None):
     if activecommand is not None:
         return
-    if event is not None and event.keysym in ( "Return", "Up", "Down", "Left", "Right", "Escape", "Tab", "bracketright"):
+    if event is not None and event.keysym in (
+        "Return",
+        "Up",
+        "Down",
+        "Left",
+        "Right",
+        "Escape",
+        'Tab',
+        "bracketright",
+        "BackSpace",
+        "Delete"
+    ):
         return
-    typed = command.get()
-    if not typed:
-       return
+    value = command.get()
+    try:
+        if command._entry.selection_present():
+            selection_start = int(
+                command._entry.index('sel.first')
+            )
+            typed = value[:selection_start]
+        else:
+            typed = value
+    except Exception:
+        typed = value
+    typed = typed.strip()
+    if not typed: 
+        return
     typedkey = typed.lower().replace(" ", "")
-    match = next((name for name in commandnames if name.lower().replace(" ", "").startswith(typedkey) and 
-                  name.lower().replace(" ", "") != typedkey), None)
+    exactmatch = any(
+        name.lower().replace(" ", "") == typedkey
+        for name in commandnames
+    )
+    if exactmatch:
+        command.delete(0, 'end')
+        command.insert(0, typed)
+        command._entry.icursor("end")
+        return
+    match = next(
+        (
+            name for name in commandnames
+            if name.lower()
+            .replace(" ", "")
+            .startswith(typedkey)
+        ), None
+    )
     if match is None:
         return
     typedlength = len(typed)
@@ -716,7 +833,10 @@ def updatecommandsuggestion(event=None):
     command.insert(0, match)
     command._entry.selection_range(typedlength, "end")
     command._entry.icursor(typedlength)
+
 def commandbackspace(event):
+    if activecommand == 'confirmnew':
+        return 'break'
     try:
         selectionstart = int(command._entry.index("sel.first"))
     except Exception:
@@ -729,9 +849,9 @@ def commandbackspace(event):
     command._entry.icursor('end')
     app.after_idle(updatecommandsuggestion)
     return 'break'
-command.bind("<KeyRelease>", updatecommandsuggestion, add="+")
-command.bind("<KeyPress-BackSpace>", commandbackspace, add="+")
-
+command._entry.bind("<KeyRelease>", updatecommandsuggestion, add='+')
+command._entry.bind("<KeyPress-BackSpace>", commandbackspace, add="+")
+command._entry.bind("<KeyPress>", handlenewconfirmation, add='+')
 
 def toggle2dshort(event=None):
     if renderer is not None:
@@ -742,16 +862,23 @@ def toggle2dshort(event=None):
 command.bind("<KeyPress-bracketright>", toggle2dshort)
 app.bind("<KeyPress-bracketright>", toggle2dshort)
 def typecmduni(event):
-    global activecommand
     if event.state & 0x0004:
         return
     focused = app.focus_get()
-    if focused is not None and focused.winfo_class() in ("Entry", "Text"):
+    if focused is command._entry:
         return
+    if focused is not None:
+        widget_class = focused.winfo_class()
+        if widget_class in (
+            "Entry",
+            "TEntry",
+            "Text"
+        ):
+            return
     if activecommand is not None:
         return
     if event.char and event.char.isprintable():
-        command.focus_set()
+        command._entry.focus_set()
         command.insert("end", event.char)
         app.after_idle(updatecommandsuggestion)
         return 'break'
