@@ -443,6 +443,18 @@ def viewport_mouse_down(event):
     global left_drag_start, left_dragged, moving_selection
     hidesnapindicator()
     viewport.focus_set()
+    if renderer is None:
+        return
+    if activecommand == 'mirror_select':
+        hide_selection_box()
+        left_drag_start = (event.x, event.y)
+        left_dragged = False
+        return
+    if activecommand in ('mirror_first', "mirror_second"):
+        renderer.mouse_move(event.x, event.y)
+        pickmirrorpoint()
+        return   
+
     if activecommand is None:
         hide_selection_box()
         moving_selection = renderer is not None and renderer.begin_move_selected(event.x, event.y)
@@ -469,7 +481,7 @@ def viewport_left_drag(event):
             else:
                 hidesnapcursor()
         return
-    if activecommand is not None or left_drag_start is None:
+    if (activecommand not in (None, "mirror_select") or left_drag_start is None):
         return
     dx = event.x-left_drag_start[0]
     dy = event.y-left_drag_start[1]
@@ -481,6 +493,35 @@ def viewport_mouse_up(event):
     global left_drag_start, left_dragged, moving_selection
     if renderer is None:
         return
+    if activecommand == "mirror_select":
+        additive = bool(event.state & 0x0001)
+        if left_drag_start is not None:
+            if left_dragged:
+                count= renderer.select_box(
+                    left_drag_start[0],
+                    left_drag_start[1],
+                    event.x,
+                    event.y,
+                    additive
+                )
+            else:
+                renderer.select_at(
+                    event.x, event.y, additive
+                )
+                count = selectedobjectcount()
+            if count:
+                command.configure(
+                    placeholder_text = (f'{count} selected. Press Enter')
+                )
+            else:
+                command.configure(
+                    placeholder_text=("Select objects, then press enter")
+                )
+        hide_selection_box()
+        left_drag_start = None
+        left_dragged = False
+        return
+    
     if moving_selection:
         hidesnapcursor()
         renderer.end_move_selected()
@@ -538,6 +579,9 @@ def viewport_wheel(event):
     if renderer is not None:
         renderer.zoom(event.delta / 120)
 def viewport_key(event, pressed):
+    if (pressed and event.keysym == 'Return' and activecommand =='mirror_select'):
+        confirmmirrorselection()
+        return 'break'
     if event.keysym in ("2", "K_2", 'bracketright'):
         return
     if pressed and event.keysym in ("Delete", "BackSpace"):
@@ -600,6 +644,84 @@ history_index = 0
 
 activecommand = None
 lastcommand = None
+mirrorpoint1= None
+
+def selectedobjectcount():
+    if renderer is None:
+        return 0
+    return sum(
+        1
+        for _, _, _, _, selected in renderer.scene_data()
+        if selected
+    )
+def startmirror(event=None):
+    global activecommand, mirrorpoint1
+    mirrorpoint1 = None
+    command.delete(0, 'end')
+    if selectedobjectcount() == 0:
+        activecommand = "mirror_select"
+        command.configure(
+            placeholder_text="Select object, then press Enter"
+        )
+        writehistory(
+            "> Mirror\nSelect object, then press Enter"
+        )
+    else:
+        activecommand = 'mirror_first'
+        command.configure(
+            placeholder_text="Pick first point of mirror line"
+        )
+        writehistory("> Mirror\nPick first point of mirror line")
+    viewport.focus_set()
+def confirmmirrorselection():
+    global activecommand
+    if selectedobjectcount() == 0:
+        writehistory("No object selected")
+        command.configure(
+            placeholder_text = "Select object, then press enter"
+        )
+        return
+    activecommand='mirror_first'
+    command.configure(
+        placeholder_text="Pick first point of mirror line"
+    )
+    writehistory("Pick first point of mirror line")
+    viewport.focus_set()
+def pickmirrorpoint():
+    global activecommand, mirrorpoint1
+    position = renderer.cursor_world_position()
+    if position is None:
+        return
+    if activecommand == 'mirror_first':
+        mirrorpoint1 = (position[0], position[1])
+        renderer.start_polyline()
+        renderer.mouse_button(True)
+        renderer.mouse_button(False)
+        points = renderer.active_polyline_data()
+        if points:
+            mirrorpoint1 = (
+                points[0][0],
+                points[0][2]
+            )
+        activecommand = 'mirror_second'
+        command.configure(placeholder_text="Pick second point of mirror line")
+        writehistory("Pick second point of mirror line")
+    elif activecommand == 'mirror_second':
+        secondpoint = (position[0], position[1])
+        renderer.cancel_polyline()
+        mirrored = renderer.mirror_selected(
+            mirrorpoint1,
+            secondpoint
+        )
+        activecommand = None
+        mirrorpoint1 = None
+        command.configure(placeholder_text='Command:')
+        viewport.configure(cursor='arrow')
+        writehistory(
+            f"Mirrored {mirrored} object"
+            f"{'s' if mirrored != 1 else ''}"
+        )
+
 def writehistory(text):
     history.configure(state='normal')
     history.insert('end', text+ '\n')
@@ -676,7 +798,7 @@ def runnamedcommand(name):
         "angle": lambda: startplaceholdercmd("Angle", "Select first point"),
         "revolve": lambda: startplaceholdercmd("Revolve", "Select objects to revolve"),
         "extrude": lambda: startplaceholdercmd("Extrude", "Select objects to extrude"),
-        "mirror": lambda: startplaceholdercmd("Mirror", "Select objects to mirror"),
+        "mirror": startmirror,
         "copy": lambda: startplaceholdercmd( "Copy", "Select objects to copy"),
         "new": newfilecommand,
         "save": savecommand,
@@ -713,6 +835,8 @@ def closeactivecommand(commit=False):
     global activecommand
     if activecommand is None:
         return
+    if activecommand == 'mirror_second' and renderer is not None:
+        renderer.cancel_polyline()
     if activecommand == "polyline" and renderer is not None:
         if commit:
             renderer.finish_polyline()
@@ -749,17 +873,22 @@ command.bind("<Escape>", cancelactivecommand)
 viewport.bind("<Escape>", cancelactivecommand)
 def runcmd(event):
     global history_index, activecommand
+    if activecommand == "mirror_select":
+        confirmmirrorselection()
+        return "break"
     typed = command.get().strip()
     if not typed:
-        return 'break'
-    command.delete(0, 'end')
+        return "break"
+    command.delete(0, "end")
     past_commands.append(typed)
     history_index = len(past_commands)
     if not runnamedcommand(typed):
-        writehistory(f"> {typed}\nCommand not found")
-        command.configure(placeholder_text = "Command:")
+        writehistory(
+            f"> {typed}\nCommand not found")
+        command.configure(
+            placeholder_text="Command:")
         viewport.focus_set()
-    return 'break'
+    return "break"
 command.bind("<Return>", runcmd)
 commandnames = ["Polyline", "Curve", "Join", "Explode", "Rectangle", "Text", "File", "New", "Save", "Save as", '3DM', "PNG", "DXF", "Analyze", "Distance", "Angle", "Tools", "Revolve", "Extrude", "Mirror", "Copy", 
                 'Circle', "Fillet", "Trim", "Arc", "Import DXF", "Import"]

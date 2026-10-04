@@ -120,6 +120,16 @@ impl ViewportRenderer {
             .map_err(|error| pyo3::exceptions::PyRuntimeError::new_err(error.to_string()))?;
         Ok(Self { state })
     }
+    fn mirror_selected(
+        &mut self,
+        start: (f32, f32),
+        end: (f32, f32),
+    ) -> usize {
+        self.state.viewport.mirror_selected(
+            cgmath::Vector2::new(start.0, start.1),
+            cgmath::Vector2::new(end.0, end.1),
+        )
+    }
     fn clear(&mut self) {
         self.state.viewport.clear();
     }
@@ -195,16 +205,41 @@ impl ViewportRenderer {
         self.state.viewport.mouse_button(pressed)
     }
 
-    fn select_at(&mut self, x: f32, y: f32) -> Option<usize> {
-        self.state
-            .viewport
-            .select_shape(cgmath::Vector2::new(x, y), 8.0)
+    #[pyo3(signature = (x, y, additive=false))]
+    fn select_at(
+        &mut self,
+        x: f32,
+        y: f32,
+        additive: bool,
+    ) -> Option<usize> {
+        self.state.viewport.select_shape(
+            cgmath::Vector2::new(x, y),
+            8.0,
+            additive,
+        )
     }
-
-    fn select_box(&mut self, start_x: f32, start_y: f32, end_x: f32, end_y: f32) -> usize {
-        self.state
-            .viewport
-            .select_box(start_x, start_y, end_x, end_y)
+    #[pyo3(signature = (
+        start_x,
+        start_y,
+        end_x,
+        end_y,
+        additive=false
+    ))]
+    fn select_box(
+        &mut self,
+        start_x: f32,
+        start_y: f32,
+        end_x: f32,
+        end_y: f32,
+        additive: bool,
+    ) -> usize {
+        self.state.viewport.select_box(
+            start_x,
+            start_y,
+            end_x,
+            end_y,
+            additive,
+        )
     }
 
     fn delete_selected(&mut self) -> usize {

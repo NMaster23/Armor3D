@@ -114,6 +114,81 @@ pub struct Viewport {
 }
 
 impl Viewport {
+    pub fn mirror_selected(
+        &mut self,
+        start: cgmath::Vector2<f32>,
+        end: cgmath::Vector2<f32>,
+    ) -> usize {
+        let direction = end - start;
+        let length_squared = direction.x * direction.x
+            + direction.y * direction.y;
+        if length_squared <= f32::EPSILON {
+            return 0;
+        }
+
+        let selected: Vec<PolyLine> = self
+            .entities
+            .iter()
+            .filter(|entity| entity.selected)
+            .cloned()
+            .collect();
+        if selected.is_empty() {
+            return 0;
+        }
+        for entity in &mut self.entities {
+            entity.selected = false;
+        }
+        let mut first_new_id = None;
+
+        for source in selected {
+            let mirrored_vertices = source
+                .vertices
+                .iter()
+                .map(|point| {
+                    let relative_x = point.x - start.x;
+                    let relative_z = point.z - start.y;
+
+                    let projection = (
+                        relative_x * direction.x
+                        + relative_z * direction.y
+                    ) / length_squared;
+
+                    let projected_x = start.x + projection * direction.x;
+                    let projected_z = start.y + projection * direction.y;
+
+                    cgmath::Vector3::new(
+                        2.0 * projected_x - point.x,
+                        point.y,
+                        2.0 * projected_z - point.z,
+                    )
+                })
+                .collect();
+
+            let id = self.next_entity;
+            self.next_entity += 1;
+
+            if first_new_id.is_none() {
+                first_new_id = Some(id);
+            }
+
+            self.entities.push(PolyLine {
+                id,
+                vertices: mirrored_vertices,
+                color: source.color,
+                thickness: source.thickness,
+                selected: true,
+                height: source.height,
+            });
+        }
+
+        self.selected_entity = first_new_id;
+        self.rebuild_vertices();
+
+        self.entities
+            .iter()
+            .filter(|entity| entity.selected)
+            .count()
+    }
     pub fn new(width: u32, height: u32, device: Device, queue: Queue, format: TextureFormat, fontsize: f32, line_height: f32) -> Self {
         let camera = Camera {
             eye: (0.0, 1.0, 2.0).into(),
@@ -318,32 +393,59 @@ impl Viewport {
         &mut self,
         mouse_px: cgmath::Vector2<f32>,
         hit_threshold_px: f32,
+        additive: bool,
     ) -> Option<usize> {
         let threshold_sq = hit_threshold_px * hit_threshold_px;
         let mut closest = None;
         let mut min_dist_sq = threshold_sq;
+
         for entity in &self.entities {
             if entity.vertices.len() < 2 {
                 continue;
             }
+
             let screen_vertices: Vec<cgmath::Vector2<f32>> = entity
                 .vertices
                 .iter()
-                .filter_map(|p| self.world_to_screen(*p))
+                .filter_map(|point| self.world_to_screen(*point))
                 .collect();
-            for i in 0..screen_vertices.len().saturating_sub(1) {
-                let dist_sq =
-                    Self::dist_to_segment(mouse_px, screen_vertices[i], screen_vertices[i + 1]);
-                if dist_sq < min_dist_sq {
-                    min_dist_sq = dist_sq;
+
+            for segment in screen_vertices.windows(2) {
+                let distance = Self::dist_to_segment(
+                    mouse_px,
+                    segment[0],
+                    segment[1],
+                );
+
+                if distance < min_dist_sq {
+                    min_dist_sq = distance;
                     closest = Some(entity.id);
                 }
             }
         }
-        self.selected_entity = closest;
-        for entity in &mut self.entities {
-            entity.selected = Some(entity.id) == closest;
+
+        if additive {
+            if let Some(id) = closest {
+                if let Some(entity) = self
+                    .entities
+                    .iter_mut()
+                    .find(|entity| entity.id == id)
+                {
+                    entity.selected = true;
+                }
+            }
+        } else {
+            for entity in &mut self.entities {
+                entity.selected = Some(entity.id) == closest;
+            }
         }
+
+        self.selected_entity = self
+            .entities
+            .iter()
+            .find(|entity| entity.selected)
+            .map(|entity| entity.id);
+
         self.rebuild_vertices();
         closest
     }
@@ -391,9 +493,24 @@ impl Viewport {
         true
     }
 
-    pub fn select_box(&mut self, start_x: f32, start_y: f32, end_x: f32, end_y: f32) -> usize {
-        let min = cgmath::Vector2::new(start_x.min(end_x), start_y.min(end_y));
-        let max = cgmath::Vector2::new(start_x.max(end_x), start_y.max(end_y));
+    pub fn select_box(
+        &mut self,
+        start_x: f32,
+        start_y: f32,
+        end_x: f32,
+        end_y: f32,
+        additive: bool,
+    ) -> usize {
+        let min = cgmath::Vector2::new(
+            start_x.min(end_x),
+            start_y.min(end_y),
+        );
+
+        let max = cgmath::Vector2::new(
+            start_x.max(end_x),
+            start_y.max(end_y),
+        );
+
         let window_selection = end_x >= start_x;
         let mut selected_ids = Vec::new();
 
@@ -403,30 +520,56 @@ impl Viewport {
                 .iter()
                 .filter_map(|point| self.world_to_screen(*point))
                 .collect();
+
             if screen_vertices.len() < 2 {
                 continue;
             }
 
             let selected = if window_selection {
-                screen_vertices
-                    .iter()
-                    .all(|point| Self::point_in_rect(*point, min, max))
+                screen_vertices.iter().all(|point| {
+                    Self::point_in_rect(*point, min, max)
+                })
             } else {
                 screen_vertices.windows(2).any(|segment| {
-                    Self::segment_intersects_rect(segment[0], segment[1], min, max)
+                    Self::segment_intersects_rect(
+                        segment[0],
+                        segment[1],
+                        min,
+                        max,
+                    )
                 })
             };
+
             if selected {
                 selected_ids.push(entity.id);
             }
         }
 
         for entity in &mut self.entities {
-            entity.selected = selected_ids.contains(&entity.id);
+            if additive {
+                if selected_ids.contains(&entity.id) {
+                    entity.selected = true;
+                }
+            } else {
+                entity.selected =
+                    selected_ids.contains(&entity.id);
+            }
         }
-        self.selected_entity = selected_ids.first().copied();
+
+        self.selected_entity = self
+            .entities
+            .iter()
+            .find(|entity| entity.selected)
+            .map(|entity| entity.id);
+
+        let total_selected = self
+            .entities
+            .iter()
+            .filter(|entity| entity.selected)
+            .count();
+
         self.rebuild_vertices();
-        selected_ids.len()
+        total_selected
     }
 
     pub fn delete_selected(&mut self) -> usize {
@@ -513,7 +656,7 @@ impl Viewport {
     pub fn click_sel_handle(&mut self, mouse_pos: PhysicalPosition<f64>) {
         let mouse_px = cgmath::Vector2::new(mouse_pos.x as f32, mouse_pos.y as f32);
         let hit_threshold = 10.0;
-        self.select_shape(mouse_px, hit_threshold);
+        self.select_shape(mouse_px, hit_threshold, false);
     }
     pub fn rebuild_vertices(&mut self) {
         let mut new_vertices = Vec::new();
@@ -1370,7 +1513,7 @@ mod tests {
 
         viewport.extrude_selected(2.0);
 
-        assert_eq!(viewport.entities[0]s.height, 2.0);
+        assert_eq!(viewport.entities[0].height, 2.0);
         assert_eq!(viewport.entities[1].height, 0.0);
     }
 
