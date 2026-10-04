@@ -22,6 +22,7 @@ HOVER_TEXT = "#EBA119"
 
 currentfilepath = None
 importedfiles = []
+circle_center = None
 def updatewindowtitle():
     if currentfilepath:
         title = f"Armor 3D - {Path(currentfilepath).name}"
@@ -67,7 +68,27 @@ def createnewfile():
     updatewindowtitle()
     writehistory("Created a new file")
     viewport.focus_set()
-
+def start_circle(event=None):
+    global activecommand, circle_center
+    activecommand = 'circle'
+    circle_center = None
+    command.delete(0, 'end')
+    command.configure(placeholder_text="Pick Circle Center")
+    writehistory("> Circle\n Pick Circle Center")
+    viewport.configure(cursor="crosshair")
+    viewport.focus_set()
+def finish_circle(center, radius):
+    global activecommand, circle_center
+    if renderer is None:
+        writehistory("Circle Failed: Viewport Is Not Ready")
+    else:
+        renderer.draw_circle_command(32, radius, (center[0], center[1], center[2]))
+        writehistory("Circle Created")
+    circle_center = None
+    activecommand = None
+    command.delete(0, 'end')
+    command.configure(placeholder_text="Command:")
+    viewport.configure(cursor="arrow")
 def importdxcommand(event=None):
     global currentfilepath
     if renderer is None:
@@ -464,7 +485,7 @@ def show_selection_box(start_x, start_y, end_x, end_y):
         line.place(x=x, y=y, width=line_width, height=line_height)
         line.lift()
 def viewport_mouse_down(event):
-    global left_drag_start, left_dragged, moving_selection
+    global left_drag_start, left_dragged, moving_selection, circle_center
     hidesnapindicator()
     viewport.focus_set()
     if renderer is None:
@@ -478,7 +499,24 @@ def viewport_mouse_down(event):
         renderer.mouse_move(event.x, event.y)
         pickmirrorpoint()
         return   
-
+    if activecommand == "circle":
+        renderer.mouse_move(event.x, event.y)
+        position = renderer.cursor_world_position()
+        if position is None:
+            return
+        if circle_center is None:
+            circle_center = position
+            command.configure(placeholder_text="Pick a point on the circle")
+            writehistory("Pick a point on the circle")
+            return
+        dx = position[0] - circle_center[0]
+        dz = position[2] - circle_center[2]
+        radius = abs(math.hypot(dx, dz))
+        if radius == 0.0:
+            writehistory("Circle radius must be greater than zero")
+            return
+        finish_circle(circle_center, radius)
+        return
     if activecommand is None:
         hide_selection_box()
         moving_selection = renderer is not None and renderer.begin_move_selected(event.x, event.y)
@@ -811,6 +849,7 @@ def runnamedcommand(name):
         'pline': startpolyline,
         'curve': startcurve,
         'crv': startcurve,
+        "circle": start_circle,
         "join": startjoin,
         "explode": startexplode,
         'exp': startexplode,
@@ -833,7 +872,6 @@ def runnamedcommand(name):
         "tools": opentoolsmenu,
         'saveas': opensaveascommand,
         "png": savepngcommand,
-        "circle": lambda: startplaceholdercmd("Circle", "Choose circle center"),
         "fillet": lambda: startplaceholdercmd("Fillet", "Select curves to fillet"),
         "trim": lambda: startplaceholdercmd("Trim", "Select objects to trim"),
         "arc": lambda: startplaceholdercmd("Arc", "Choose arc start point"),
@@ -856,7 +894,7 @@ def repeatlastcommand():
     previous = lastcommand
     runnamedcommand(previous)
 def closeactivecommand(commit=False):
-    global activecommand
+    global activecommand, circle_center
     if activecommand is None:
         return
     if activecommand == 'mirror_second' and renderer is not None:
@@ -866,6 +904,7 @@ def closeactivecommand(commit=False):
             renderer.finish_polyline()
         else:
             renderer.cancel_polyline()
+    circle_center = None
     writehistory("Command ended")
     activecommand = None
     command.delete(0, 'end')
@@ -2590,5 +2629,4 @@ app.protocol("WM_DELETE_WINDOW", closeapp)
 
 app.after_idle(initialize_renderer)
 app.mainloop()
-
 
