@@ -1,6 +1,7 @@
 use crate::camera::{Camera, CameraController, CameraUniform, OPENGL_TO_WGPU_MATRIX};
 use crate::{GRAPH_INDICES, GRAPH_VERTICES, Vertex};
 use cgmath::{Deg, EuclideanSpace, InnerSpace, Matrix4, SquareMatrix, Vector3, Vector4, Zero, perspective};
+use glyphon::{Attrs, Buffer, Color, FontSystem, Metrics, Resolution, SwashCache, TextArea, TextAtlas, TextBounds, TextRenderer};
 use lyon::math::point;
 use lyon::path::Path;
 use lyon::tessellation::{BuffersBuilder, FillOptions, FillTessellator, FillVertex, VertexBuffers};
@@ -24,6 +25,12 @@ pub struct State {
     device: wgpu::Device,
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
+    font_system: FontSystem,
+    swash_cache: SwashCache,
+    text_viewport: glyphon::Viewport,
+    text_atlas: TextAtlas,
+    text_renderer: TextRenderer,
+    text_buffer: Buffer,
     is_surface_configured: bool,
     pub(crate) window: Option<Arc<Window>>,
     render_pipeline: wgpu::RenderPipeline,
@@ -262,17 +269,33 @@ impl State {
         let viewport = Viewport::new(
             size.width,
             size.height,
-            device.clone(),
-            queue.clone(),
-            config.format,
-            14.0,
-            18.0,
+        );
+        let mut font_system = FontSystem::new();
+        let cache = glyphon::Cache::new(&device);
+        let text_viewport = glyphon::Viewport::new(&device, &cache);
+        let swash_cache = SwashCache::new();
+        let cache_state = wgpu::MultisampleState::default();
+        let mut text_atlas = TextAtlas::new(&device, &queue, &cache, config.format);
+        let text_renderer = TextRenderer::new(&mut text_atlas, &device, cache_state, None);
+        let mut text_buffer = Buffer::new(&mut font_system, Metrics::new(16.0, 20.0));
+        text_buffer.set_size(Some(size.width as f32), Some(size.height as f32));
+        text_buffer.set_text(
+            "",
+            &Attrs::new().family(glyphon::Family::SansSerif),
+            glyphon::Shaping::Advanced,
+            None,
         );
         Ok(Self {
             surface,
             device,
             queue,
             config,
+            font_system,
+            swash_cache,
+            text_viewport,
+            text_atlas,
+            text_renderer,
+            text_buffer,
             is_surface_configured: true,
             render_pipeline,
             graph_pipeline,
@@ -300,6 +323,7 @@ impl State {
     }
 
     pub async fn new_embedded(
+        &mut self,
         hwnd: isize,
         width: u32,
         height: u32,
@@ -325,10 +349,11 @@ impl State {
                 raw_window_handle: RawWindowHandle::Win32(window_handle),
             })?
         };
-        Self::new_with_surface(instance, surface, width, height).await
+        Self::new_with_surface(&mut self, instance, surface, width, height).await
     }
 
     async fn new_with_surface(
+        &mut self,
         instance: wgpu::Instance,
         surface: wgpu::Surface<'static>,
         width: u32,
@@ -474,18 +499,36 @@ impl State {
         let graph_pipeline = create_pipeline(&graph_shader, Some(wgpu::BlendState::ALPHA_BLENDING));
         let viewport = Viewport::new(
             width,
-            height,
-            device.clone(),
-            queue.clone(),
-            config.format,
-            14.0,
-            18.0,
+            height
         );
+        let mut font_system = FontSystem::new();
+        let cache = glyphon::Cache::new(&device);
+        let text_viewport = glyphon::Viewport::new(&device, &cache);
+        let text_viewport = glyphon::Viewport::new(&device, &cache);
+        let swash_cache = SwashCache::new();
+        let cache_state = wgpu::MultisampleState::default();
+        let mut text_atlas = TextAtlas::new(&device, &queue, &cache, self.config.format);
+        let text_renderer = TextRenderer::new(&mut text_atlas, &device, wgpu::MultisampleState::default(), None);
+        let mut text_buffer = Buffer::new(&mut font_system, Metrics::new(16.0, 20.0));
+        text_buffer.set_size(Some(width as f32), Some(height as f32));
+        text_buffer.set_text(
+            "Hello, World!",
+            &Attrs::new().family(glyphon::Family::SansSerif),
+            glyphon::Shaping::Advanced,
+            None,
+        );
+        text_buffer.shape_until_scroll(&mut font_system, false);
         Ok(Self {
             surface,
             device,
             queue,
             config,
+            font_system,
+            swash_cache,
+            text_viewport,
+            text_atlas,
+            text_renderer,
+            text_buffer,
             is_surface_configured: width > 0 && height > 0,
             window: None,
             render_pipeline,
@@ -521,6 +564,7 @@ impl State {
             self.viewport.rebuild_vertices();
             self.surface.configure(&self.device, &self.config);
             self.is_surface_configured = true;
+            self.text_buffer.set_size(Some(width as f32), Some(height as f32));
         }
     }
 
@@ -551,6 +595,26 @@ impl State {
         if let Some(window) = &self.window {
             window.request_redraw();
         }
+        self.text_viewport.update(&self.queue, Resolution { width: self.config.width, height: self.config.height });
+        self.text_renderer
+            .prepare(
+                &self.device,
+                &self.queue,
+                &mut self.font_system,
+                &mut self.text_atlas,
+                &self.text_viewport,
+                [TextArea {
+                    buffer: &self.text_buffer,
+                    left: 10.0,
+                    top: 10.0,
+                    scale: 1.0,
+                    bounds: TextBounds::default(),
+                    default_color: Color::rgb(255, 255, 255),
+                    custom_glyphs: &[],
+                }],
+                &mut self.swash_cache
+            )
+            .map_err(|error| anyhow::anyhow!("Preparing text failed: {error} "))?;
         if !self.is_surface_configured {
             return Ok(());
         }
@@ -610,6 +674,13 @@ impl State {
                 render_pass.set_vertex_buffer(0, self.point_buffer.slice(..));
                 render_pass.draw(0..self.viewport.point_vertices.len() as u32, 0..1);
             }
+            self.text_renderer
+                .render(
+                    &mut self.text_atlas,
+                    &self.text_viewport,
+                    &mut render_pass,
+                )
+                .map_err(|error| anyhow::anyhow!("Rendering text failed: {error} "))?;
 
         }
         self.queue.submit(std::iter::once(encoder.finish()));

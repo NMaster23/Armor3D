@@ -105,16 +105,10 @@ pub struct Viewport {
     grab_origin: Option<Vector3<f32>>,
     grab_snapshot: Vec<Vector3<f32>>,
     circle_center: Option<Vector3<f32>>,
-    font_system: FontSystem,
-    swash_cache: SwashCache,
-    viewport_res: Resolution,
-    atlas: TextAtlas,
-    text_renderer: TextRenderer,
-    text_buffer: Buffer,
 }
 
 impl Viewport {
-    pub fn new(width: u32, height: u32, device: Device, queue: Queue, format: TextureFormat, fontsize: f32, line_height: f32) -> Self {
+    pub fn new(width: u32, height: u32) -> Self {
         let camera = Camera {
             eye: (0.0, 1.0, 2.0).into(),
             target: (0.0, 0.0, 0.0).into(),
@@ -126,20 +120,6 @@ impl Viewport {
             orthographic: false,
         };
         let camera_controller = CameraController::new(0.02);
-        let mut font_system = FontSystem::new();
-        let cache = glyphon::Cache::new(&device);
-        let swash_cache = SwashCache::new();
-        let cache_state = wgpu::MultisampleState::default();
-        let mut atlas = TextAtlas::new(&device, &queue, &cache, format);
-        let text_renderer = TextRenderer::new(&mut atlas, &device, cache_state, None);
-        let mut text_buffer = Buffer::new(&mut font_system, Metrics::new(fontsize, line_height));
-        text_buffer.set_size(Some(width as f32), Some(height as f32));
-        text_buffer.set_text(
-            "",
-            &Attrs::new().family(Family::SansSerif),
-            Shaping::Advanced,
-            None,
-        );
         Self {
             hist_entities: ShapeUndoStore::new(Vec::new()),
             entities: Vec::new(),
@@ -169,12 +149,6 @@ impl Viewport {
             grab_origin: None,
             grab_snapshot: Vec::new(),
             circle_center: None,
-            font_system,
-            swash_cache,
-            viewport_res: Resolution { width, height },
-            atlas,
-            text_renderer,
-            text_buffer,
         }
     }
 }
@@ -313,6 +287,28 @@ impl Viewport {
         let t = (ap.dot(ab) / len_sq).clamp(0.0, 1.0);
         let projection = a + ab * t;
         (p - projection).magnitude2()
+    }
+    pub fn move_shape(
+        &mut self,
+        original_points: &[Vector3<f32>],
+        move_pos: &[Vector3<f32>],
+    ) {
+        let temp_points: Vec<Vector3<f32>> = original_points
+            .iter()
+            .zip(move_pos.iter())
+            .map(|(point, delta)| *point + *delta)
+            .collect();
+        let points = temp_points.iter().map(|p| self.grid_snap_point(*p)).collect::<Vec<_>>();
+        let vertices: Vec<Vertex> = points
+            .into_iter()
+            .map(|position| Vertex {
+                position: position.into(),
+                coords: position.into(),
+                color: [0.1, 0.1, 0.2, 0.5],
+            })
+            .collect();
+        self.vertice_append(&vertices);
+        self.rebuild_vertices();
     }
     pub fn select_shape(
         &mut self,
@@ -1370,7 +1366,7 @@ mod tests {
 
         viewport.extrude_selected(2.0);
 
-        assert_eq!(viewport.entities[0]s.height, 2.0);
+        assert_eq!(viewport.entities[0].height, 2.0);
         assert_eq!(viewport.entities[1].height, 0.0);
     }
 
