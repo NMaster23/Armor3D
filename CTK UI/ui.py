@@ -20,6 +20,75 @@ HOVER_BG = "#754822"
 HOVER_BORDER = "#f2a65a"
 HOVER_TEXT = "#EBA119"
 
+def importdxcommand(event=None):
+    if renderer is None:
+        writehistory("> Import DXF\nViewport is not ready")
+        return
+    path = filedialog.askopenfilename(
+        parent=app, title="Import DXF drawing", filetypes=[("DXF drawing", "*.dxf")]
+    )
+    if not path:
+        return
+    try:
+        doc = ezdxf.readfile(path)
+        modelspace=  doc.modelspace()
+        unit_scales = {
+            0: 1.0,
+            1: 25.4,
+            4: 1.0,
+            5: 10.0,
+            6: 1000.0,
+        }
+        scale = unit_scales.get(doc.units, 1.0)
+        imported = 0
+        for entity in modelspace:
+            entity_type = entity.dxftype()
+            points_2d = []
+            closed = False
+            if entity_type == "LWPOLYLINE":
+                points_2d = [
+                    (float(point[0]), float(point[1]))
+                    for point in entity.get_points("xy")
+                ]
+                closed = entity.closed
+            elif entity_type == 'LINE':
+                start = entity.dxf.start
+                end = entity.dxf.end 
+                points_2d = [
+                    (float(start.x), float(start.y)),
+                    (float(end.x), float(end.y))
+                ]
+            else:
+                continue
+            if len(points_2d) <2:
+                continue
+            armor_points = [
+                (
+                    x* scale,
+                    0.0,
+                    -y * scale
+                )
+                for x, y in points_2d
+            ]
+            rgb = getattr(entity, "rgb", None)
+            if rgb is None:
+                color = (0.839, 0.651, 0.251, 1.0)
+            else:
+                color = (
+                    rgb[0] / 255,
+                    rgb[1] / 255,
+                    rgb[2] / 255,
+                    1.0
+                )
+            if renderer.import_polyline(armor_points, color, closed):
+                imported+= 1
+        renderer.render()
+        writehistory(
+            f'> Import DXF\nImported {imported} objects'
+        )
+    except Exception as error:
+        writehistory(f"> Import DXF\nImport failed {error}")
+
 def savedxcommands():
     if renderer is None:
         writehistory("> DXF\nViewport is not ready")
@@ -554,7 +623,9 @@ def runnamedcommand(name):
         "circle": lambda: startplaceholdercmd("Circle", "Choose circle center"),
         "fillet": lambda: startplaceholdercmd("Fillet", "Select curves to fillet"),
         "trim": lambda: startplaceholdercmd("Trim", "Select objects to trim"),
-        "arc": lambda: startplaceholdercmd("Arc", "Choose arc start point")
+        "arc": lambda: startplaceholdercmd("Arc", "Choose arc start point"),
+        "import": importdxcommand,
+        "importdxf": importdxcommand
     }
     action = actions.get(normalized)
     if action is None:
@@ -624,7 +695,7 @@ def runcmd(event):
     return 'break'
 command.bind("<Return>", runcmd)
 commandnames = ["Polyline", "Curve", "Join", "Explode", "Rectangle", "Text", "File", "New", "Save", "Save as", '3DM', "PNG", "DXF", "Analyze", "Distance", "Angle", "Tools", "Revolve", "Extrude", "Mirror", "Copy", 
-                'Circle', "Fillet", "Trim", "Arc"]
+                'Circle', "Fillet", "Trim", "Arc", "Import DXF", "Import"]
 
 command._entry.configure(selectbackground="#666666", selectforeground="#F3E6C5")
 def updatecommandsuggestion(event=None):
@@ -976,6 +1047,7 @@ def updatecoords():
 importz = canvas.create_text(68, 8, text='Import', font=("Lexend", 8), fill='#F3E6C5')
 canvas.tag_bind(importz, "<Enter>", lambda event: canvas.itemconfig(importz, fill='#F4C95D'))
 canvas.tag_bind(importz, "<Leave>", lambda event: canvas.itemconfig(importz, fill='#F3E6C5'))
+canvas.tag_bind(importz, "<Button-1>", importdxcommand)
 
 analyze = canvas.create_text(120, 8, text='Analyze', font=("Lexend", 8), fill='#F3E6C5')
 analyze_menu = Canvas(app, width=160, height=72, bg="#3B332A", highlightthickness=1, highlightbackground="#A77A2F")

@@ -157,6 +157,32 @@ impl ViewportRenderer {
     fn add_point(&mut self, x: f32, y: f32, z: f32) {
         self.state.viewport.add_point(cgmath::Vector3::new(x, y, z));
     }
+    fn import_polyline(
+        &mut self,
+        vertices: Vec<(f32, f32, f32)>,
+        color: (f32, f32, f32, f32),
+        closed: bool,
+    ) -> bool {
+        if vertices.len() < 2 {
+            return false;
+        }
+
+        let mut points: Vec<cgmath::Vector3<f32>> = vertices
+            .iter()
+            .map(|&(x, y, z)| cgmath::Vector3::new(x, y, z))
+            .collect();
+
+        if closed && vertices.first() != vertices.last() {
+            points.push(points[0]);
+        }
+        self.state.viewport.add_polyline(
+            points,
+            [color.0, color.1, color.2, color.3],
+            2.5,
+        );
+
+        true
+    }
     fn extrude(&mut self, height: f32) {
         self.state.viewport.extrude_selected(height);
     }
