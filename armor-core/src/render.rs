@@ -506,12 +506,13 @@ impl State {
         let text_renderer = TextRenderer::new(&mut text_atlas, &device, wgpu::MultisampleState::default(), None);
         let mut text_buffer = Buffer::new(&mut font_system, Metrics::new(16.0, 20.0));
         text_buffer.set_size(Some(width as f32), Some(height as f32));
-        text_buffer.set_text(
-            "Hello, World!",
-            &Attrs::new().family(glyphon::Family::SansSerif),
-            glyphon::Shaping::Advanced,
-            None,
-        );
+        // Temporary viewport text disabled while the text tool is being built.
+        // text_buffer.set_text(
+        //     "Hello, World!",
+        //     &Attrs::new().family(glyphon::Family::SansSerif),
+        //     glyphon::Shaping::Advanced,
+        //     None,
+        // );
         text_buffer.shape_until_scroll(&mut font_system, false);
         Ok(Self {
             surface,
