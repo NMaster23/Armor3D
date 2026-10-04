@@ -3,6 +3,8 @@ from ctypes import windll
 from tkinter import Canvas, Frame, filedialog, Toplevel, StringVar
 import sys
 import re
+import ezdxf
+from ezdxf import units
 import math
 import threading
 import json
@@ -17,6 +19,60 @@ ctk.set_appearance_mode('dark')
 HOVER_BG = "#754822"
 HOVER_BORDER = "#f2a65a"
 HOVER_TEXT = "#EBA119"
+
+def savedxcommands():
+    if renderer is None:
+        writehistory("> DXF\nViewport is not ready")
+        return
+    scene = renderer.scene_data()
+    if not scene:
+        writehistory("> DXF\nThere is nothing to export")
+        return
+    path = filedialog.asksaveasfilename(
+        parent=app,
+        title="Export drawing as DXF",
+        defaultextension=".dxf",
+        filetypes=[("DXF drawing", "*.dxf")],
+        initialfile="Armor3D.dxf"
+    )
+    if not path:
+        return
+    try:
+        doc = ezdxf.new("R2010")
+        doc.units = units.MM
+        doc.header["$MEASUREMENT"] = 1
+        doc.layers.add(
+            name='CUT',
+            color=7
+        )
+        modelspace = doc.modelspace()
+        for object_id, vertices, color, height, selected in scene:
+            if len(vertices) <2:
+                continue
+            points = [
+                (float(x), float(-z))
+                for x, y, z in vertices
+            ]
+            closed = (
+                len(points) >= 3
+                and abs(points[0][0] - points[-1][0]) < 0.0001
+                and abs(points[0][1] - points[-1][1]) < 0.0001
+            )
+            if closed:
+                points = points[:-1]
+            polyline = modelspace.add_lwpolyline(
+                points,
+                close=closed,
+                dxfattribs={
+                    "layer":"CUT"
+                }
+            )
+            polyline.rgb=tuple(max(0, min(255, round(channel*255)))
+                               for channel in color[:3])
+        doc.saveas(path)
+        writehistory(f"> DXF\nSaved to {path}")
+    except Exception as error:
+        writehistory(f"> DXF\nExport failed: {error}")
 
 SETTINGSPATH = (Path(os.getenv("APPDATA") or Path.home())
                 / 'Armor3D'
@@ -128,7 +184,7 @@ app = ctk.CTk()
 from tkinter import font
 app.title("Armor 3D")
 app.geometry("1100x700")
-app.minsize(850, 560)
+app.minsize(850, 730)
 canvas = Canvas(app, bg="#191D1A", highlightthickness=0)
 canvas.pack(fill='both', expand=True)
 command = ctk.CTkEntry(canvas, placeholder_text="Command:", font=("Lexend", 12), fg_color="#342719", border_color="#80602B")
@@ -489,7 +545,7 @@ def runnamedcommand(name):
         "new": lambda: startplaceholdercmd("New", "New file is not implemented yet"),
         "save": lambda: startplaceholdercmd("Save", "Save is not implemented"),
         "3dm": lambda: startplaceholdercmd("3DM", "3DM export is not implemented yet"),
-        "dxf": lambda: startplaceholdercmd("DXF", "DXF export is not implemented yet"),
+        "dxf": savedxcommands,
         "file": open_file_menu,
         "analyze": openanalyzemenu,
         "tools": opentoolsmenu,
