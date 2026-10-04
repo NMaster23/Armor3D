@@ -183,7 +183,7 @@ impl Viewport {
             .filter(|entity| entity.selected)
             .count()
     }
-    pub fn new(width: u32, height: u32, device: Device, queue: Queue, format: TextureFormat, fontsize: f32, line_height: f32) -> Self {
+    pub fn new(width: u32, height: u32) -> Self {
         let camera = Camera {
             eye: (0.0, 1.0, 2.0).into(),
             target: (0.0, 0.0, 0.0).into(),
@@ -1290,9 +1290,6 @@ impl Viewport {
         points.push(points[0]);
         self.add_polyline(points, self.polyline_color, POLYLINE_WIDTH_PIXELS);
         self.rebuild_vertices();
-    }
-    pub fn draw_text(&mut self, text: &str) {
-
     }
     pub fn draw_curve(&mut self, subdivisions: usize) {
         if self.active_polyline.len() < 2 || subdivisions == 0 {

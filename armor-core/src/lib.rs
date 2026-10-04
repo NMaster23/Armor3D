@@ -120,6 +120,9 @@ impl ViewportRenderer {
             .map_err(|error| pyo3::exceptions::PyRuntimeError::new_err(error.to_string()))?;
         Ok(Self { state })
     }
+    fn draw_text(&mut self, text: &str, x: f32, y: f32, z: f32) {
+        self.state.viewport.draw_text(text, Vector3::new(x, y, z));
+    }
     fn mirror_selected(
         &mut self,
         start: (f32, f32),

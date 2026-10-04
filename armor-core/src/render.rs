@@ -54,6 +54,7 @@ pub struct State {
     pub selected_entity: Option<usize>,
     next_entity: usize,
     pub viewport: Viewport,
+    text_pos: Vector3<f32>,
 }
 
 pub struct Shape {
@@ -319,11 +320,20 @@ impl State {
             selected_entity: None,
             next_entity: 0,
             viewport,
+            text_pos: Vector3::new(0.0, 0.0, 0.0),
         })
     }
-
+    pub fn set_world_text(&mut self, text: &str, pos: Vector3<f32>) {
+        self.text_buffer.set_text(
+            text,
+            &Attrs::new().family(glyphon::Family::SansSerif),
+            glyphon::Shaping::Advanced,
+            None
+        );
+        self.text_buffer.shape_until_scroll(&mut self.font_system, false);
+        self.text_pos = pos;
+    }
     pub async fn new_embedded(
-        &mut self,
         hwnd: isize,
         width: u32,
         height: u32,
@@ -349,11 +359,9 @@ impl State {
                 raw_window_handle: RawWindowHandle::Win32(window_handle),
             })?
         };
-        Self::new_with_surface(&mut self, instance, surface, width, height).await
+        Self::new_with_surface(instance, surface, width, height).await
     }
-
     async fn new_with_surface(
-        &mut self,
         instance: wgpu::Instance,
         surface: wgpu::Surface<'static>,
         width: u32,
@@ -507,7 +515,7 @@ impl State {
         let text_viewport = glyphon::Viewport::new(&device, &cache);
         let swash_cache = SwashCache::new();
         let cache_state = wgpu::MultisampleState::default();
-        let mut text_atlas = TextAtlas::new(&device, &queue, &cache, self.config.format);
+        let mut text_atlas = TextAtlas::new(&device, &queue, &cache, config.format);
         let text_renderer = TextRenderer::new(&mut text_atlas, &device, wgpu::MultisampleState::default(), None);
         let mut text_buffer = Buffer::new(&mut font_system, Metrics::new(16.0, 20.0));
         text_buffer.set_size(Some(width as f32), Some(height as f32));
@@ -552,6 +560,7 @@ impl State {
             selected_entity: None,
             next_entity: 0,
             viewport,
+            text_pos: Vector3::new(0.0, 0.0, 0.0),
         })
     }
     pub fn resize(&mut self, width: u32, height: u32) {
@@ -596,6 +605,18 @@ impl State {
             window.request_redraw();
         }
         self.text_viewport.update(&self.queue, Resolution { width: self.config.width, height: self.config.height });
+        let text_areas = match self.viewport.world_to_screen(self.text_pos) {
+            Some(screen_pos) => vec![TextArea {
+                buffer: &self.text_buffer,
+                left: screen_pos.x as f32,
+                top: screen_pos.y as f32,
+                scale: 1.0,
+                bounds: TextBounds::default(),
+                default_color: Color::rgb(255, 255, 255),
+                custom_glyphs: &[]
+            }],
+            None => Vec::new(),
+        };
         self.text_renderer
             .prepare(
                 &self.device,
@@ -603,18 +624,9 @@ impl State {
                 &mut self.font_system,
                 &mut self.text_atlas,
                 &self.text_viewport,
-                [TextArea {
-                    buffer: &self.text_buffer,
-                    left: 10.0,
-                    top: 10.0,
-                    scale: 1.0,
-                    bounds: TextBounds::default(),
-                    default_color: Color::rgb(255, 255, 255),
-                    custom_glyphs: &[],
-                }],
-                &mut self.swash_cache
-            )
-            .map_err(|error| anyhow::anyhow!("Preparing text failed: {error} "))?;
+                text_areas,
+                &mut self.swash_cache,
+            ).map_err(|e| anyhow::anyhow!("Preparing text failed with error: {e}"))?;
         if !self.is_surface_configured {
             return Ok(());
         }
