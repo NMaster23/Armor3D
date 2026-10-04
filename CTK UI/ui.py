@@ -1087,7 +1087,6 @@ prompt_label.pack(pady=(24, 10))
 ai_input = ctk.CTkEntry( sidebar, placeholder_text="Start typing...", font=("Lexend", 12), fg_color="#342719", border_color=HOVER_BORDER,  text_color="#F3E6C5", placeholder_text_color="#C5B29A")
 ai_input.configure(height=38)
 aichat = ctk.CTkTextbox(sidebar, font=("Lexend", 12), fg_color="#191D1A", border_color=HOVER_BG, border_width = 2, text_color="#F3E6C5", wrap='word')
-aichat.place(relx=0.027, y=115, relwidth=0.93, relheight=0.74)
 aichat.configure(state='disabled')
 def roundedrectangle(canvas, x1, y1, x2, y2, radius, **options):
     points = [ x1 + radius, y1, x2 - radius, y1,  x2, y1,  x2, y1 + radius, x2, y2 - radius,  x2, y2, x2 - radius, y2, x1 + radius, y2,x1, y2,  x1, y2 - radius, x1, y1 + radius, x1, y1]
@@ -1180,16 +1179,26 @@ aichat._textbox.tag_configure('mdcode', foreground="#75B98A", background='#20231
 aichat._textbox.tag_configure('mdcodeblock', foreground="#75B98A", background='#20231B', font=("Consolas", 10), lmargin1=12, lmargin2=12, rmargin=12)
 
 def positionaicomposer(event=None):
-    width = sidebar.winfo_width()
-    if width <= 1:
+    width  = sidebar.winfo_width()
+    height = sidebar.winfo_height()
+    if width <= 1 or height <=1:
         return
-    margin = max(16, round(width * 0.06))
-    gap = 8
-    button_width= 44
-    entry_width = max(120, width-(margin*2) - gap -button_width)
+    margin = max(16, round(width*0.06))
+    gap=8
+    button_width = 44
+    composer_height = 40
+    bottom_margin = 15
+    entry_width = max(120, width- (margin*2) - gap - button_width)
+    composer_y = height-bottom_margin - composer_height
     ai_input.configure(width=entry_width)
-    ai_input.place(x=margin, rely=1, y=-15, anchor='sw')
-    sendbutton.place(x=margin + entry_width + gap, rely=1, y=-15, anchor='sw')
+    ai_input.place(x=margin, y=composer_y+1)
+    sendbutton.place(x=margin+entry_width+gap, y=composer_y)
+    chat_top = 115
+    chat_gap = 10
+    chatwidth = max(150, width - (margin*2))
+    chatheight = max(80, composer_y - chat_top-chat_gap)
+    aichat.configure(width=chatwidth, height=chatheight)
+    aichat.place(x=margin, y=chat_top)
 sidebar.bind("<Configure>", positionaicomposer, add="+")
 app.after_idle(positionaicomposer)
 
