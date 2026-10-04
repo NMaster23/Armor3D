@@ -9,11 +9,9 @@ use lyon::lyon_tessellation::{
 use lyon::math::point;
 use lyon::path::Path;
 use std::mem;
-use glyphon::{Attrs, Buffer, Cache, Family, FontSystem, Metrics, Resolution, Shaping, SwashCache, TextAtlas, TextRenderer};
-use wgpu::{Device, Queue, TextureFormat};
 use winit::dpi::PhysicalPosition;
 use winit::event::MouseButton;
-use winit::event_loop::{self, ActiveEventLoop};
+use winit::event_loop::ActiveEventLoop;
 use winit::keyboard::KeyCode;
 
 const END_SNAP_RADIUS_PIXELS: f32 = 12.0;
@@ -1223,7 +1221,7 @@ impl Viewport {
         }
         let ndc_x = (2.0 * mouse_x / width as f64) - 1.0;
         let ndc_y = 1.0 - (2.0 * mouse_y / height as f64);
-        let ndc = Vector4::new(ndc_x as f32, ndc_y as f32, 1.0, 1.0);
+        let _ndc = Vector4::new(ndc_x as f32, ndc_y as f32, 1.0, 1.0);
         let view_projection = self.camera.build_view_projection_matrix();
         let inverse = view_projection.invert()?;
         let near_ndc = Vector4::new(ndc_x as f32, ndc_y as f32, 0.0, 1.0);
@@ -1514,7 +1512,7 @@ impl Viewport {
         false
     }
 
-    pub fn handle_key(&mut self, event_loop: &ActiveEventLoop, code: KeyCode, is_pressed: bool) {
+    pub fn handle_key(&mut self, _event_loop: &ActiveEventLoop, code: KeyCode, is_pressed: bool) {
         if self.graph_handle_key(code, is_pressed) {
             return;
         }

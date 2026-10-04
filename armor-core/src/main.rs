@@ -12,7 +12,6 @@ use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::keyboard::{PhysicalKey};
 use winit::window::Window;
 use cgmath::InnerSpace;
-use winit::event_loop;
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]

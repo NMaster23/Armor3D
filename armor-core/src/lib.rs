@@ -101,14 +101,14 @@ pub fn handle_input(
     button: &str,
     vec: (f32, f32, f32),
 ) -> PyResult<()> {
-    let pos = PhysicalPosition::new(pos.0, pos.1);
-    let mouse_button = match button {
+    let _pos = PhysicalPosition::new(pos.0, pos.1);
+    let _mouse_button = match button {
         "left" => MouseButton::Left,
         "middle" => MouseButton::Middle,
         "right" => MouseButton::Right,
         _ => return Err(PyValueError::new_err(format!("Unknown button {}", button))),
     };
-    let vector = Vector3::new(vec.0 as f32, vec.1 as f32, vec.2 as f32);
+    let _vector = Vector3::new(vec.0 as f32, vec.1 as f32, vec.2 as f32);
     Ok(())
 }
 
@@ -122,7 +122,7 @@ impl ViewportRenderer {
     }
     /*
     fn draw_text(&mut self, text: &str, x: f32, y: f32, z: f32) {
-        self.state.viewport.draw_text(text, Vector3::new(x, y, z));
+        self.state.draw_text(text, Vector3::new(x, y, z));
     }
     */
     fn undo(&mut self) -> bool {
