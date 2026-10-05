@@ -2,10 +2,10 @@
 ### Armor3D is an attempt at re-making Rhinoceros 8, a CAD drawing software. Armor3D is built with Python (main UI with CTK) and Rust (grid drawing + all 3D calculations).
 
 ## NOTICE
-During week 3, we have gotten the object movement feature to work, circle creation, Command line improvements, and more. However, there may be many bugs we are unaware of, and many features we haven't implemented yet, so expect incomplete tools and occasional issues. Feedback and bug reports are appreciated!
+Armor3D is a work in progress. Some tools are incomplete, and bugs are expected. Feedback and bug reports are appreciated!
 
 ## Rust Side
-The rust side utilizes wgpu for closer system level access, albeit more boilerplate is required. This week the circle was implemented, so was extrusion, object movement, and other minor tweaks. Since this is not a final release again there maybe be many bugs that this team has not caught yet.
+The Rust core uses wgpu for viewport rendering and geometry, and is exposed to the Python interface through PyO3. The viewport handles drawing, snapping, selection, and editing operations. Some newer tools and rendering work are still being developed.
 
 ## Week 1 Progress
 - Main workspace with a command input and history
@@ -21,16 +21,17 @@ The rust side utilizes wgpu for closer system level access, albeit more boilerpl
 - Command line typing commands added
 
 ## Week 3 Progress
-- Wired Two Click Circle Command
-- Circle Uses Rust Geometry
-- Fixed Command Cleanup
-- Verified Functionality
-- Object Movement
-- Python Progress:
-
+- Added two-click circle creation using Rust geometry.
+- Added mirroring, selected-object duplication, and arrow-key movement.
+- Added undo and redo, including undoing the most recent segment while drawing a polyline.
+- Improved grid snapping with adjustable spacing and added a live coordinate readout.
+- Added DXF import and export, supporting LINE and LWPOLYLINE entities.
+- Added New and Save workflows, file names in the window title, and JSON-backed settings.
+- Improved coordinate awareness and response behavior in the AI sidebar.
+- Added text-rendering support and began work on curve drawing and a textured renderer.
 
 ## Current limitations
-Week 3 - This release allows objects to be extruded, for circles to be created, and the ability to move objects around, but doesn't have all of the main features the actual Rhino includes; we need to add that in the next week.
+Armor3D does not yet include the full feature set of Rhino. Curve drawing and the newer textured-renderer work are in progress, and some tools may be incomplete. DXF import currently handles LINE and LWPOLYLINE entities.
 
 ## Download
 Downlod the EXE from the latest release: (https://github.com/NMaster23/Armor3D/releases/tag/v3). After that is completed, ignore the Windows security feature, and then you're in the app!
@@ -71,17 +72,12 @@ Use the path to your own `python.exe` if it differs. After the wheel is installe
 
 ## Rust Core and Viewport
 The viewport and 3D handling is implemented in Rust through the use of the WGPU crate in rust. The Rust renderer is passed to the frontend using a python extension through PyO3 and was compiled via maturin.
-The Rust side provides the grid for both 2D and 3D. It also provides the camera, drawing through polyline and it's preview, tessellation, end and near object snapping, selection, and moving shapes. Python then forwards viewport input and manages the surrounding controls. Some of the more complex CAD tools are still incomplete, but are nearly done.
+The Rust side provides the 2D and 3D grid, camera, polyline drawing and preview, tessellation, end and near snapping, selection, and shape movement. Python forwards viewport input and manages the surrounding controls. More CAD tools are still in progress.
 
 ## Next Steps
-### Week 2
-- Add curves
-- Fully implement AI control
-- Add grid snap featrues
-- Add advanced export features
-- Add Polyline Selection
-- Add Polyline
-- Add Edit Mode
+- Continue curve-drawing and renderer development.
+- Expand drawing, editing, and file-import/export tools.
+- Improve and complete the existing CAD commands.
 
 ## Week 1 theme
 Week 1 used a harvest-inspired palette of orange and green.
