@@ -172,6 +172,26 @@ impl ViewportRenderer {
     fn duplicate_selected(&mut self, x: f32, y: f32, z: f32) -> usize {
         self.state.viewport.duplicate_selected(cgmath::Vector3::new(x, y, z))
     }
+
+    fn begin_copy(&mut self) -> usize {
+        self.state.viewport.begin_copy()
+    }
+
+    fn set_copy_base(&mut self, x: f32, y: f32) -> bool {
+        self.state.viewport.set_copy_base(x, y)
+    }
+
+    fn update_copy_preview(&mut self, x: f32, y: f32) -> Option<f32> {
+        self.state.viewport.update_copy_preview(x, y)
+    }
+
+    fn place_copy(&mut self) -> usize {
+        self.state.viewport.place_copy()
+    }
+
+    fn cancel_copy(&mut self) {
+        self.state.viewport.cancel_copy();
+    }
     
     fn render(&mut self) -> PyResult<()> {
         self.state

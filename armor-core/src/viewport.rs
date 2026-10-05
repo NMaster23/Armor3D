@@ -103,6 +103,9 @@ pub struct Viewport {
     grab_origin: Option<Vector3<f32>>,
     grab_snapshot: Vec<Vector3<f32>>,
     circle_center: Option<Vector3<f32>>,
+    copy_sources: Vec<PolyLine>,
+    copy_base: Option<Vector3<f32>>,
+    copy_target: Option<Vector3<f32>>,
 }
 
 impl Viewport {
@@ -157,6 +160,86 @@ impl Viewport {
             .count()
     }
 
+    pub fn begin_copy(&mut self) -> usize {
+        self.copy_sources = self
+            .entities
+            .iter()
+            .filter(|entity| entity.selected)
+            .cloned()
+            .collect();
+        self.copy_base = None;
+        self.copy_target = None;
+        self.rebuild_vertices();
+        self.copy_sources.len()
+    }
+
+    pub fn set_copy_base(&mut self, x: f32, y: f32) -> bool {
+        let screen = PhysicalPosition::new(x as f64, y as f64);
+        let Some(raw_point) = self.fetch_point(screen) else {
+            return false;
+        };
+        let point = self.get_snap_pos(raw_point).0;
+        self.copy_base = Some(point);
+        self.copy_target = Some(point);
+        self.rebuild_vertices();
+        true
+    }
+
+    pub fn update_copy_preview(&mut self, x: f32, y: f32) -> Option<f32> {
+        let base = self.copy_base?;
+        self.cursor_pos = PhysicalPosition::new(x as f64, y as f64);
+        let raw_point = self.fetch_point(self.cursor_pos)?;
+        let target = self.get_snap_pos(raw_point).0;
+        self.copy_target = Some(target);
+        self.rebuild_vertices();
+
+        let offset = target - base;
+        Some((offset.x * offset.x + offset.z * offset.z).sqrt())
+    }
+
+    pub fn place_copy(&mut self) -> usize {
+        let Some(base) = self.copy_base else {
+            return 0;
+        };
+        let Some(target) = self.copy_target else {
+            return 0;
+        };
+        let offset = target - base;
+        if offset.magnitude2() <= f32::EPSILON || self.copy_sources.is_empty() {
+            return 0;
+        }
+
+        let sources = self.copy_sources.clone();
+        self.save_undo_state();
+
+        for source in sources {
+            let id = self.next_entity;
+            self.next_entity += 1;
+            self.entities.push(PolyLine {
+                id,
+                vertices: source
+                    .vertices
+                    .iter()
+                    .map(|point| *point + offset)
+                    .collect(),
+                color: source.color,
+                thickness: source.thickness,
+                selected: false,
+                height: source.height,
+            });
+        }
+
+        self.rebuild_vertices();
+        self.copy_sources.len()
+    }
+
+    pub fn cancel_copy(&mut self) {
+        self.copy_sources.clear();
+        self.copy_base = None;
+        self.copy_target = None;
+        self.rebuild_vertices();
+    }
+
     fn save_undo_state(&mut self) {
         self.hist_entities.current = self.entities.clone();
         self.hist_entities.save_undo();
@@ -177,6 +260,9 @@ impl Viewport {
         self.active_polyline.clear();
         self.preview_point = None;
         self.polyline_active = false;
+        self.copy_sources.clear();
+        self.copy_base = None;
+        self.copy_target = None;
         self.rebuild_vertices();
     }
     pub fn undo_scene(&mut self) -> bool {
@@ -329,6 +415,9 @@ impl Viewport {
             grab_origin: None,
             grab_snapshot: Vec::new(),
             circle_center: None,
+            copy_sources: Vec::new(),
+            copy_base: None,
+            copy_target: None,
         }
     }
 }
@@ -825,6 +914,36 @@ impl Viewport {
          ));
         }
         }
+        if let (Some(base), Some(target)) = (self.copy_base, self.copy_target) {
+            let offset = target - base;
+            let preview_color = [1.0, 0.65, 0.15, 0.85];
+
+            for source in &self.copy_sources {
+                let preview_vertices: Vec<Vector3<f32>> = source
+                    .vertices
+                    .iter()
+                    .map(|point| *point + offset)
+                    .collect();
+                new_vertices.extend(self.tessellate_polyline(
+                    &preview_vertices,
+                    source.thickness,
+                    preview_color,
+                ));
+            }
+
+            if offset.magnitude2() > f32::EPSILON {
+                let guide = [
+                    base + Vector3::new(0.0, POLYLINE_HEIGHT * 3.0, 0.0),
+                    target + Vector3::new(0.0, POLYLINE_HEIGHT * 3.0, 0.0),
+                ];
+                new_vertices.extend(self.tessellate_polyline(
+                    &guide,
+                    1.0,
+                    [1.0, 0.72, 0.25, 0.75],
+                ));
+            }
+        }
+
         let mut preview_polyline = self.active_polyline.clone();
         if let Some(preview_point) = self.preview_point {
             let should_append = preview_polyline
@@ -1051,10 +1170,6 @@ impl Viewport {
             return false;
         }
         match code {
-            KeyCode::KeyC => {
-                self.clear();
-                true
-            }
             KeyCode::Tab => {
                 self.osnap = !self.osnap;
                 self.redraw = true;
@@ -1077,6 +1192,9 @@ impl Viewport {
         self.preview_point  = None;
         self.selected_entity = None;
         self.polyline_active = false;
+        self.copy_sources.clear();
+        self.copy_base = None;
+        self.copy_target = None;
         self.rebuild_vertices();
     }
 
@@ -1156,6 +1274,8 @@ impl Viewport {
             let (snapped, _, snap_kind) = self.get_snap_pos(point);
             snap_kind?;
             snapped
+        } else if let Some(target) = self.copy_target {
+            target
         } else if self.grid_snap_enabled {
             if let Some(anchor) = self.move_anchor {
                 anchor + self.grid_snap_offset(point - anchor)

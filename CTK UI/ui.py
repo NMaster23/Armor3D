@@ -426,9 +426,15 @@ def viewport_mouse_move(event):
     if renderer is None:
         return
     snapkind = renderer.mouse_move(event.x, event.y)
+    if activecommand == "copy_place":
+        distance = renderer.update_copy_preview(event.x, event.y)
+        if distance is not None:
+            command.configure(
+                placeholder_text=f"Place copy  Distance: {distance:.3f}"
+            )
     updatecoords()
     snapposition = renderer.snap_cursor_position()
-    if snapposition and (activecommand =='polyline' or gridsnapon):
+    if snapposition and (activecommand in ('polyline', 'copy_place') or gridsnapon):
         snap_x, snap_y = map(round, snapposition)
         showsnapcursor(snap_x, snap_y)
         if snapkind and snapkind != 'Grid':
@@ -490,7 +496,7 @@ def viewport_mouse_down(event):
     viewport.focus_set()
     if renderer is None:
         return
-    if activecommand == 'mirror_select':
+    if activecommand in ('mirror_select', 'copy_select'):
         hide_selection_box()
         left_drag_start = (event.x, event.y)
         left_dragged = False
@@ -499,6 +505,10 @@ def viewport_mouse_down(event):
         renderer.mouse_move(event.x, event.y)
         pickmirrorpoint()
         return   
+    if activecommand in ('copy_base', 'copy_place'):
+        renderer.mouse_move(event.x, event.y)
+        pickcopypoint(event.x, event.y)
+        return
     if activecommand == "circle":
         renderer.mouse_move(event.x, event.y)
         position = renderer.cursor_world_position()
@@ -543,7 +553,7 @@ def viewport_left_drag(event):
             else:
                 hidesnapcursor()
         return
-    if (activecommand not in (None, "mirror_select") or left_drag_start is None):
+    if (activecommand not in (None, "mirror_select", "copy_select") or left_drag_start is None):
         return
     dx = event.x-left_drag_start[0]
     dy = event.y-left_drag_start[1]
@@ -555,7 +565,7 @@ def viewport_mouse_up(event):
     global left_drag_start, left_dragged, moving_selection
     if renderer is None:
         return
-    if activecommand == "mirror_select":
+    if activecommand in ("mirror_select", "copy_select"):
         additive = bool(event.state & 0x0001)
         if left_drag_start is not None:
             if left_dragged:
@@ -643,6 +653,9 @@ def viewport_wheel(event):
 def viewport_key(event, pressed):
     if (pressed and event.keysym == 'Return' and activecommand =='mirror_select'):
         confirmmirrorselection()
+        return 'break'
+    if pressed and event.keysym == 'Return' and activecommand == 'copy_select':
+        confirmcopyselection()
         return 'break'
     if event.keysym in ("2", "K_2", 'bracketright'):
         return
@@ -784,6 +797,53 @@ def pickmirrorpoint():
             f"{'s' if mirrored != 1 else ''}"
         )
 
+def startcopy(event=None):
+    global activecommand
+    command.delete(0, "end")
+    if selectedobjectcount() == 0:
+        activecommand = "copy_select"
+        command.configure(placeholder_text="Select objects, then press Enter")
+        writehistory("> Copy\nSelect objects, then press Enter")
+    else:
+        begincopyplacement()
+    viewport.focus_set()
+
+def begincopyplacement():
+    global activecommand
+    count = renderer.begin_copy()
+    if count == 0:
+        writehistory("No objects selected")
+        return
+    activecommand = "copy_base"
+    command.configure(placeholder_text="Pick base point")
+    writehistory("Pick base point")
+    viewport.configure(cursor="crosshair")
+    viewport.focus_set()
+
+def confirmcopyselection():
+    if selectedobjectcount() == 0:
+        writehistory("No objects selected")
+        command.configure(placeholder_text="Select objects, then press Enter")
+        return
+    begincopyplacement()
+
+def pickcopypoint(x, y):
+    global activecommand
+    if activecommand == "copy_base":
+        if renderer.set_copy_base(x, y):
+            activecommand = "copy_place"
+            command.configure(
+                placeholder_text="Place copy; right-click when finished"
+            )
+            writehistory("Pick destination point")
+    elif activecommand == "copy_place":
+        renderer.update_copy_preview(x, y)
+        count = renderer.place_copy()
+        if count:
+            writehistory(
+                f"Copied {count} object{'s' if count != 1 else ''}"
+            )
+
 def writehistory(text):
     history.configure(state='normal')
     history.insert('end', text+ '\n')
@@ -862,7 +922,7 @@ def runnamedcommand(name):
         "revolve": lambda: startplaceholdercmd("Revolve", "Select objects to revolve"),
         "extrude": lambda: startplaceholdercmd("Extrude", "Select objects to extrude"),
         "mirror": startmirror,
-        "copy": lambda: startplaceholdercmd( "Copy", "Select objects to copy"),
+        "copy": startcopy,
         "new": newfilecommand,
         "save": savecommand,
         "3dm": lambda: startplaceholdercmd("3DM", "3DM export is not implemented yet"),
@@ -899,6 +959,8 @@ def closeactivecommand(commit=False):
         return
     if activecommand == 'mirror_second' and renderer is not None:
         renderer.cancel_polyline()
+    if activecommand in ('copy_base', 'copy_place') and renderer is not None:
+        renderer.cancel_copy()
     if activecommand == "polyline" and renderer is not None:
         if commit:
             renderer.finish_polyline()
@@ -938,6 +1000,9 @@ def runcmd(event):
     global history_index, activecommand
     if activecommand == "mirror_select":
         confirmmirrorselection()
+        return "break"
+    if activecommand == "copy_select":
+        confirmcopyselection()
         return "break"
     typed = command.get().strip()
     if not typed:
