@@ -21,6 +21,7 @@ The Rust core uses wgpu for viewport rendering and geometry, and is exposed to t
 - Command line typing commands added
 
 ## Week 3 Progress
+- Added save and importing DXF drawings
 - Added two-click circle creation using Rust geometry.
 - Added mirroring, selected-object duplication, and arrow-key movement.
 - Added undo and redo, including undoing the most recent segment while drawing a polyline.
