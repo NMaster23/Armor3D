@@ -29,12 +29,14 @@ The Rust core uses wgpu for viewport rendering and geometry, and is exposed to t
 - Added New and Save workflows, file names in the window title, and JSON-backed settings.
 - Improved coordinate awareness and response behavior in the AI sidebar.
 - Added text-rendering support and began work on curve drawing and a textured renderer.
+- Added ability to copy objects
+- Control Z and Control Y capabilities
 
 ## Current limitations
 Armor3D does not yet include the full feature set of Rhino. Curve drawing and the newer textured-renderer work are in progress, and some tools may be incomplete. DXF import currently handles LINE and LWPOLYLINE entities.
 
 ## Download
-Downlod the EXE from the latest release: (https://github.com/NMaster23/Armor3D/releases/tag/v3). After that is completed, ignore the Windows security feature, and then you're in the app!
+Downlod the EXE from the latest release: (https://github.com/NMaster23/Armor3D/releases/tag/v3.1). After that is completed, ignore the Windows security feature, and then you're in the app!
 
 ## Run locally
 This version is specifically built for Windows.
@@ -91,6 +93,7 @@ This week we could not implement the theme but next week we will try to include 
 - Ideas/inspiration
 - Merging Rust grid and Python UI - AI was used here because of the time concern
 - Merging controls between Python and Rust - and adding binds
+- Fixing Rust features
 - Rest of AI usage that has not been mentioned here is most likely in the commits
 
 ## Credits
