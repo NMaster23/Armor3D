@@ -811,16 +811,32 @@ impl Viewport {
     pub fn begin_move_selected(&mut self, x: f32, y: f32) -> bool {
         let mouse = cgmath::Vector2::new(x, y);
         let threshold_sq = 8.0 * 8.0;
-        let hit_selected = self.entities.iter().filter(|entity| entity.selected).any(|entity| {
-            let screen_vertices: Vec<cgmath::Vector2<f32>> = entity
-                .vertices
-                .iter()
-                .filter_map(|point| self.world_to_screen(*point))
-                .collect();
-            screen_vertices.windows(2).any(|segment| {
-                Self::dist_to_segment(mouse, segment[0], segment[1]) <= threshold_sq
-            })
-        });
+        let hit_selected = self
+            .entities
+            .iter()
+            .filter(|entity| entity.selected)
+            .any(|entity| {
+                let screen_vertices: Vec<cgmath::Vector2<f32>> = entity
+                    .vertices
+                    .iter()
+                    .filter_map(|point| self.world_to_screen(*point))
+                    .collect();
+                let segment_hit = screen_vertices.windows(2).any(|segment| {
+                    Self::dist_to_segment(mouse, segment[0], segment[1]) <= threshold_sq
+                });
+                if segment_hit {
+                    return true;
+                }
+                if let Some((center, endpoint)) =
+                    Self::circle_control_points(&entity.vertices)
+                {
+                    return [center, endpoint]
+                        .into_iter()
+                        .filter_map(|point| self.world_to_screen(point))
+                        .any(|screen| (screen - mouse).magnitude2() <= threshold_sq);
+                }
+                false
+            });
         if !hit_selected {
             self.move_anchor = None;
             self.move_snapshots.clear();
@@ -864,9 +880,13 @@ impl Viewport {
         self.move_anchor = None;
         self.move_snapshots.clear();
     }
-    pub fn world_to_screen(&self, world_pos: cgmath::Vector3<f32>) -> Option<cgmath::Vector2<f32>> {
+    pub fn world_to_screen(
+        &self,
+        world_pos: cgmath::Vector3<f32>,
+    ) -> Option<cgmath::Vector2<f32>> {
         let view_proj = self.camera.build_view_projection_matrix();
-        let clip_pos = view_proj * cgmath::Vector4::new(world_pos.x, world_pos.y, world_pos.z, 1.0);
+        let clip_pos =
+            view_proj * cgmath::Vector4::new(world_pos.x, world_pos.y, world_pos.z, 1.0);
         if clip_pos.w <= 0.0 {
             return None;
         }
@@ -876,66 +896,129 @@ impl Viewport {
         }
         let screen_x = (ndc.x + 1.0) * 0.5 * self.width as f32;
         let screen_y = (1.0 - ndc.y) * 0.5 * self.height as f32;
-
         Some(cgmath::Vector2::new(screen_x, screen_y))
     }
+
     pub fn click_sel_handle(&mut self, mouse_pos: PhysicalPosition<f64>) {
         let mouse_px = cgmath::Vector2::new(mouse_pos.x as f32, mouse_pos.y as f32);
         let hit_threshold = 10.0;
         self.select_shape(mouse_px, hit_threshold, false);
     }
+
+    fn circle_control_points(
+        points: &[Vector3<f32>],
+    ) -> Option<(Vector3<f32>, Vector3<f32>)> {
+        if points.len() < 33 {
+            return None;
+        }
+
+        let first = *points.first()?;
+        let last = *points.last()?;
+        if (first - last).magnitude2() > 0.0001 {
+            return None;
+        }
+
+        let unique = &points[..points.len() - 1];
+        let mut center = Vector3::new(0.0, 0.0, 0.0);
+        for point in unique {
+            center += *point;
+        }
+        center /= unique.len() as f32;
+
+        let radii: Vec<f32> = unique
+            .iter()
+            .map(|point| {
+                let offset = *point - center;
+                (offset.x * offset.x + offset.z * offset.z).sqrt()
+            })
+            .collect();
+        let radius = radii.iter().sum::<f32>() / radii.len() as f32;
+        if radius <= f32::EPSILON {
+            return None;
+        }
+
+        let largest_error = radii
+            .iter()
+            .map(|value| (value - radius).abs())
+            .fold(0.0_f32, f32::max);
+        if largest_error > radius * 0.02 {
+            return None;
+        }
+
+        Some((center, first))
+    }
     pub fn rebuild_vertices(&mut self) {
         let mut new_vertices = Vec::new();
         let marker_radius = self.world_width_for_pixels(3.5);
         let marker_color = [1.0, 1.0, 1.0, 1.0];
+
         for entity in &self.entities {
             let draw_color = if entity.selected {
                 [1.0, 0.8, 0.0, 1.0]
             } else {
                 entity.color
             };
+
             if entity.vertices.len() >= 3 && entity.height > 0.0 {
                 let fill_color = [draw_color[0], draw_color[1], draw_color[2], draw_color[3]];
                 let mesh_vertices = Self::extrude(&entity.vertices, fill_color, entity.height);
                 new_vertices.extend_from_slice(&mesh_vertices);
             }
-            let entity_vertices = self.tessellate_polyline(&entity.vertices, entity.thickness, draw_color);
+
+            let entity_vertices =
+                self.tessellate_polyline(&entity.vertices, entity.thickness, draw_color);
             new_vertices.extend_from_slice(&entity_vertices);
-            let closed = entity.vertices.len() > 2
-                && (entity.vertices[0] - entity.vertices[entity.vertices.len() - 1])
-                .magnitude2()
-                <= f32::EPSILON;
-        let marker_count = if closed {
-            entity.vertices.len() - 1
-        } else {
-            entity.vertices.len()
-        };
-        for point in entity.vertices.iter().take(marker_count) {
-            new_vertices.extend(Self::tessellate_vertex_circle(
-                *point,
-                marker_radius,
-                marker_color,
-         ));
-        }
-        }
-        if let (Some(center), Some(target)) =
-        (self.circle_center, self.circle_target)
-        {
-            let difference = target-center;
-            let radius = (
-                difference.x * difference.x + difference.z * difference.z
-            ).sqrt();
-            if radius > f32::EPSILON {
-                let preview = Self::circle_points(center, radius, 64);
-                new_vertices.extend(self.tessellate_polyline(
-                    &preview,
-                    POLYLINE_WIDTH_PIXELS,
-                    [1.0, 0.65, 0.15, 0.9]
-                ));
-                let radius_line = [center, target];
-                new_vertices.extend(self.tessellate_polyline(&radius_line, 1.0, [1.0, 0.72, 0.25, 0.65]));
+
+            if Self::circle_control_points(&entity.vertices).is_none() {
+                let closed = entity.vertices.len() > 2
+                    && (entity.vertices[0]
+                        - entity.vertices[entity.vertices.len() - 1])
+                        .magnitude2()
+                        < 0.0001;
+                let marker_count = if closed {
+                    entity.vertices.len() - 1
+                } else {
+                    entity.vertices.len()
+                };
+
+                for point in entity.vertices.iter().take(marker_count) {
+                    new_vertices.extend(Self::tessellate_vertex_circle(
+                        *point,
+                        marker_radius,
+                        marker_color,
+                    ));
+                }
             }
         }
+
+        if let (Some(center), Some(target)) = (self.circle_center, self.circle_target) {
+            let preview_points = Self::circle_points_from_target(center, target, 64);
+            if preview_points.len() >= 2 {
+                new_vertices.extend(self.tessellate_polyline(
+                    &preview_points,
+                    POLYLINE_WIDTH_PIXELS,
+                    self.polyline_color,
+                ));
+            }
+
+            if (target - center).magnitude2() > f32::EPSILON {
+                let radius_guide = [center, target];
+                new_vertices.extend(self.tessellate_polyline(
+                    &radius_guide,
+                    1.0,
+                    [1.0, 0.72, 0.25, 0.8],
+                ));
+            }
+
+            for point in [center, target] {
+                new_vertices.extend(Self::tessellate_vertex_circle(
+                    point,
+                    marker_radius,
+                    marker_color,
+                ));
+            }
+        }
+
         if let (Some(base), Some(target)) = (self.copy_base, self.copy_target) {
             let offset = target - base;
             let preview_color = [1.0, 0.65, 0.15, 0.85];
@@ -1548,24 +1631,27 @@ impl Viewport {
             false
         }
     }
-    fn circle_points(
+    fn circle_points_from_target(
         center: Vector3<f32>,
-        radius: f32,
+        target: Vector3<f32>,
         subdivisions: usize,
     ) -> Vec<Vector3<f32>> {
-        let mut points: Vec<_> = (0..subdivisions)
-            .map(|index| {
-                let angle = index as f32 / subdivisions as f32 * std::f32::consts::TAU;
-                Vector3::new(
-                    center.x + radius * angle.cos(),
-                    center.y,
-                    center.z + radius * angle.sin(),
-                )
-            })
-            .collect();
-
-        if let Some(first) = points.first().copied() {
-            points.push(first);
+        let subdivisions = subdivisions.max(16);
+        let delta = target - center;
+        let radius = (delta.x * delta.x + delta.z * delta.z).sqrt();
+        if radius <= f32::EPSILON {
+            return Vec::new();
+        }
+        let start_angle = delta.z.atan2(delta.x);
+        let mut points = Vec::with_capacity(subdivisions + 1);
+        for index in 0..=subdivisions {
+            let angle = start_angle
+                + std::f32::consts::TAU * index as f32 / subdivisions as f32;
+            points.push(Vector3::new(
+                center.x + radius * angle.cos(),
+                center.y,
+                center.z + radius * angle.sin(),
+            ));
         }
         points
     }
@@ -1595,20 +1681,17 @@ impl Viewport {
     }
 
     pub fn commit_circle(&mut self, subdivisions: usize) -> bool {
-        let Some(center) = self.circle_center else {
+        let (Some(center), Some(target)) = (self.circle_center, self.circle_target) else {
             return false;
         };
-        let Some(target) = self.circle_target else {
-            return false;
-        };
-        let difference = target - center;
-        let radius = (difference.x * difference.x + difference.z * difference.z).sqrt();
-        if !radius.is_finite() || radius <= f32::EPSILON {
-            return false;
-        }
+        let points = Self::circle_points_from_target(center, target, subdivisions);
         self.circle_center = None;
         self.circle_target = None;
-        self.draw_circle_command(subdivisions, radius, center);
+        if points.is_empty() {
+            self.rebuild_vertices();
+            return false;
+        }
+        self.add_polyline(points, self.polyline_color, POLYLINE_WIDTH_PIXELS);
         true
     }
 
@@ -1644,13 +1727,11 @@ impl Viewport {
         if subdivisions < 3 || !radius.is_finite() || radius <= 0.0 {
             return;
         }
-        let points = Self::circle_points(center, radius, subdivisions);
-        self.add_polyline(
-            points,
-            self.polyline_color,
-            POLYLINE_WIDTH_PIXELS,
-        );
-        self.rebuild_vertices();
+        let target = center + Vector3::new(radius, 0.0, 0.0);
+        let points = Self::circle_points_from_target(center, target, subdivisions);
+        if !points.is_empty() {
+            self.add_polyline(points, self.polyline_color, POLYLINE_WIDTH_PIXELS);
+        }
     }
     pub fn draw_curve(&mut self, subdivisions: usize) {
         if self.active_polyline.len() < 2 || subdivisions == 0 {

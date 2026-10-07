@@ -70,14 +70,16 @@ def createnewfile():
     viewport.focus_set()
 def start_circle(event=None):
     global activecommand, circle_center
-    activecommand = "circle"
+    if renderer is None:
+        return
+    syncgridsnaprenderer()
+    renderer.cancel_circle()
     circle_center = None
-    if renderer is not None:
-        renderer.cancel_circle()
-    command.delete(0, 'end')
-    command.configure(placeholder_text="Pick circle center")
-    writehistory("> Circle\nPick circle center")
-    viewport.configure(cursor='crosshair')
+    activecommand = "circle"
+    command.delete(0, "end")
+    command.configure(placeholder_text="Circle: select center point")
+    writehistory("> Circle\nSelect center point")
+    viewport.configure(cursor="crosshair")
     viewport.focus_set()
 def importdxcommand(event=None):
     global currentfilepath
