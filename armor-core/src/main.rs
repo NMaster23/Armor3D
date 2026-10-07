@@ -277,7 +277,7 @@ impl ApplicationHandler<State> for App {
                         window.request_redraw();
                     }
                 }
-                let handled = state.camera_controller.handle_key(
+                let handled = state.viewport.camera_controller.handle_key(
                     &mut state.viewport.camera,
                     code,
                     key_state.is_pressed(),
@@ -294,7 +294,7 @@ impl ApplicationHandler<State> for App {
                 phase: _phase,
             } => {
                 let _ = &mut state.viewport.camera_controller
-                    .handle_scroll(&mut state.camera, &delta);
+                    .handle_scroll(&mut state.viewport.camera, &delta);
                 if let Some(window) = &state.window {
                     window.request_redraw();
                 }

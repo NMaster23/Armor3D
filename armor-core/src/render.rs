@@ -35,11 +35,9 @@ pub struct State {
     point_vertices: Vec<Vertex>,
     pub osnap: bool,
     pub active_polyline: Vec<Vector3<f32>>,
-    pub camera: Camera,
     camera_uniform: CameraUniform,
     camera_buffer: wgpu::Buffer,
     camera_bind_group: wgpu::BindGroup,
-    pub camera_controller: CameraController,
     cursor_pos: PhysicalPosition<f64>,
     holding_left: bool,
     pub entities: Vec<PolyLine>,
@@ -296,11 +294,9 @@ impl State {
             active_polyline: Vec::new(),
             point_buffer,
             point_buffer_capacity: INITIAL_POINT_SIZE,
-            camera,
             camera_uniform,
             camera_buffer,
             camera_bind_group,
-            camera_controller,
             cursor_pos: PhysicalPosition::new(0.0, 0.0),
             holding_left: false,
             entities: Vec::new(),
@@ -537,11 +533,9 @@ impl State {
             point_vertices: Vec::new(),
             osnap: true,
             active_polyline: Vec::new(),
-            camera,
             camera_uniform,
             camera_buffer,
             camera_bind_group,
-            camera_controller,
             cursor_pos: PhysicalPosition::new(0.0, 0.0),
             holding_left: false,
             entities: Vec::new(),
@@ -582,7 +576,7 @@ impl State {
             }
             self.viewport.redraw = false;
         }
-        self.camera_controller.update_camera(&mut self.viewport.camera);
+        self.viewport.camera_controller.update_camera(&mut self.viewport.camera);
         self.camera_uniform.update_view_proj(&self.viewport.camera);
         self.queue.write_buffer(
             &self.camera_buffer,

@@ -433,7 +433,7 @@ impl ViewportRenderer {
         if self.state.viewport.graph_handle_key(code, pressed) {
             return true;
         }
-        let handled = self.state
+        let handled = self.state.viewport
             .camera_controller
             .handle_key(&mut self.state.viewport.camera, code, pressed);
         if handled {
