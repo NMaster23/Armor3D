@@ -103,6 +103,7 @@ pub struct Viewport {
     grab_origin: Option<Vector3<f32>>,
     grab_snapshot: Vec<Vector3<f32>>,
     circle_center: Option<Vector3<f32>>,
+    circle_target: Option<Vector3<f32>>,
     copy_sources: Vec<PolyLine>,
     copy_base: Option<Vector3<f32>>,
     copy_target: Option<Vector3<f32>>,
@@ -260,6 +261,8 @@ impl Viewport {
         self.active_polyline.clear();
         self.preview_point = None;
         self.polyline_active = false;
+        self.circle_center = None;
+        self.circle_target = None;
         self.copy_sources.clear();
         self.copy_base = None;
         self.copy_target = None;
@@ -415,6 +418,7 @@ impl Viewport {
             grab_origin: None,
             grab_snapshot: Vec::new(),
             circle_center: None,
+            circle_target: None,
             copy_sources: Vec::new(),
             copy_base: None,
             copy_target: None,
@@ -914,6 +918,24 @@ impl Viewport {
          ));
         }
         }
+        if let (Some(center), Some(target)) =
+        (self.circle_center, self.circle_target)
+        {
+            let difference = target-center;
+            let radius = (
+                difference.x * difference.x + difference.z * difference.z
+            ).sqrt();
+            if radius > f32::EPSILON {
+                let preview = Self::circle_points(center, radius, 64);
+                new_vertices.extend(self.tessellate_polyline(
+                    &preview,
+                    POLYLINE_WIDTH_PIXELS,
+                    [1.0, 0.65, 0.15, 0.9]
+                ));
+                let radius_line = [center, target];
+                new_vertices.extend(self.tessellate_polyline(&radius_line, 1.0, [1.0, 0.72, 0.25, 0.65]));
+            }
+        }
         if let (Some(base), Some(target)) = (self.copy_base, self.copy_target) {
             let offset = target - base;
             let preview_color = [1.0, 0.65, 0.15, 0.85];
@@ -1192,6 +1214,8 @@ impl Viewport {
         self.preview_point  = None;
         self.selected_entity = None;
         self.polyline_active = false;
+        self.circle_center = None;
+        self.circle_target = None;
         self.copy_sources.clear();
         self.copy_base = None;
         self.copy_target = None;
@@ -1274,6 +1298,8 @@ impl Viewport {
             let (snapped, _, snap_kind) = self.get_snap_pos(point);
             snap_kind?;
             snapped
+        } else if let Some(target) = self.circle_target {
+            target
         } else if let Some(target) = self.copy_target {
             target
         } else if self.grid_snap_enabled {
@@ -1522,37 +1548,108 @@ impl Viewport {
             false
         }
     }
-    pub fn draw_circle_mouse(&mut self, subdivisions: usize, mouse_pos: PhysicalPosition<f64>, mouse_button: MouseButton) {
-        if mouse_button != MouseButton::Left {
-            return;
-        }
-        let Some(point) = self.fetch_point(mouse_pos) else {
-            return;
-        };
-        if let Some(center) = self.circle_center.take() {
-            let delta = point - center;
-            let radius = (delta.x * delta.x + delta.z * delta.z).sqrt();
-            self.draw_circle_command(subdivisions, radius, center);
-        } else {
-            self.circle_center = Some(point)
-        }
-    }
-    pub fn draw_circle_command(&mut self, subdivisions: usize, radius: f32, circle_pos: Vector3<f32>) {
-        if subdivisions < 3 || !radius.is_finite() || radius <= 0.0 {
-            return;
-        }
+    fn circle_points(
+        center: Vector3<f32>,
+        radius: f32,
+        subdivisions: usize,
+    ) -> Vec<Vector3<f32>> {
         let mut points: Vec<_> = (0..subdivisions)
-            .map(|i| {
-                let theta = i as f32 / subdivisions as f32 * std::f32::consts::TAU;
+            .map(|index| {
+                let angle = index as f32 / subdivisions as f32 * std::f32::consts::TAU;
                 Vector3::new(
-                    circle_pos.x + radius * theta.cos(),
-                    circle_pos.y,
-                    circle_pos.z + radius * theta.sin(),
+                    center.x + radius * angle.cos(),
+                    center.y,
+                    center.z + radius * angle.sin(),
                 )
             })
             .collect();
-        points.push(points[0]);
-        self.add_polyline(points, self.polyline_color, POLYLINE_WIDTH_PIXELS);
+
+        if let Some(first) = points.first().copied() {
+            points.push(first);
+        }
+        points
+    }
+
+    pub fn begin_circle(&mut self, x: f32, y: f32) -> bool {
+        self.cursor_pos = PhysicalPosition::new(x as f64, y as f64);
+        let Some(raw_point) = self.fetch_point(self.cursor_pos) else {
+            return false;
+        };
+        let center = self.get_snap_pos(raw_point).0;
+        self.circle_center = Some(center);
+        self.circle_target = Some(center);
+        self.rebuild_vertices();
+        true
+    }
+
+    pub fn update_circle_preview(&mut self, x: f32, y: f32) -> Option<f32> {
+        let center = self.circle_center?;
+        self.cursor_pos = PhysicalPosition::new(x as f64, y as f64);
+        let raw_point = self.fetch_point(self.cursor_pos)?;
+        let target = self.get_snap_pos(raw_point).0;
+        self.circle_target = Some(target);
+        let difference = target - center;
+        let radius = (difference.x * difference.x + difference.z * difference.z).sqrt();
+        self.rebuild_vertices();
+        Some(radius)
+    }
+
+    pub fn commit_circle(&mut self, subdivisions: usize) -> bool {
+        let Some(center) = self.circle_center else {
+            return false;
+        };
+        let Some(target) = self.circle_target else {
+            return false;
+        };
+        let difference = target - center;
+        let radius = (difference.x * difference.x + difference.z * difference.z).sqrt();
+        if !radius.is_finite() || radius <= f32::EPSILON {
+            return false;
+        }
+        self.circle_center = None;
+        self.circle_target = None;
+        self.draw_circle_command(subdivisions, radius, center);
+        true
+    }
+
+    pub fn cancel_circle(&mut self) {
+        self.circle_center = None;
+        self.circle_target = None;
+        self.rebuild_vertices();
+    }
+
+    pub fn draw_circle_mouse(
+        &mut self,
+        subdivisions: usize,
+        mouse_pos: PhysicalPosition<f64>,
+        mouse_button: MouseButton,
+    ) {
+        if mouse_button != MouseButton::Left {
+            return;
+        }
+        if self.circle_center.is_none() {
+            self.begin_circle(mouse_pos.x as f32, mouse_pos.y as f32);
+        } else {
+            self.update_circle_preview(mouse_pos.x as f32, mouse_pos.y as f32);
+            self.commit_circle(subdivisions);
+        }
+    }
+
+    pub fn draw_circle_command(
+        &mut self,
+        subdivisions: usize,
+        radius: f32,
+        center: Vector3<f32>,
+    ) {
+        if subdivisions < 3 || !radius.is_finite() || radius <= 0.0 {
+            return;
+        }
+        let points = Self::circle_points(center, radius, subdivisions);
+        self.add_polyline(
+            points,
+            self.polyline_color,
+            POLYLINE_WIDTH_PIXELS,
+        );
         self.rebuild_vertices();
     }
     pub fn draw_curve(&mut self, subdivisions: usize) {

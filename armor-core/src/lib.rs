@@ -131,6 +131,19 @@ impl ViewportRenderer {
     fn redo(&mut self) -> bool {
         self.state.viewport.redo_scene()
     }
+    fn begin_circle(&mut self, x: f32, y: f32) ->bool {
+        self.state.viewport.begin_circle(x, y)
+    }
+    fn update_circle_preview(&mut self, x: f32, y:f32,
+    ) -> Option<f32> {
+        self.state.viewport.update_circle_preview(x, y)
+    }
+    fn commit_circle(&mut self, subdivisions: usize) -> bool {
+        self.state.viewport.commit_circle(subdivisions)
+    }
+    fn cancel_circle(&mut self) {
+        self.state.viewport.cancel_circle();
+    }
     fn mirror_selected(
         &mut self,
         start: (f32, f32),

@@ -70,25 +70,15 @@ def createnewfile():
     viewport.focus_set()
 def start_circle(event=None):
     global activecommand, circle_center
-    activecommand = 'circle'
+    activecommand = "circle"
     circle_center = None
+    if renderer is not None:
+        renderer.cancel_circle()
     command.delete(0, 'end')
-    command.configure(placeholder_text="Pick Circle Center")
-    writehistory("> Circle\n Pick Circle Center")
-    viewport.configure(cursor="crosshair")
+    command.configure(placeholder_text="Pick circle center")
+    writehistory("> Circle\nPick circle center")
+    viewport.configure(cursor='crosshair')
     viewport.focus_set()
-def finish_circle(center, radius):
-    global activecommand, circle_center
-    if renderer is None:
-        writehistory("Circle Failed: Viewport Is Not Ready")
-    else:
-        renderer.draw_circle_command(32, radius, (center[0], center[1], center[2]))
-        writehistory("Circle Created")
-    circle_center = None
-    activecommand = None
-    command.delete(0, 'end')
-    command.configure(placeholder_text="Command:")
-    viewport.configure(cursor="arrow")
 def importdxcommand(event=None):
     global currentfilepath
     if renderer is None:
@@ -426,6 +416,12 @@ def viewport_mouse_move(event):
     if renderer is None:
         return
     snapkind = renderer.mouse_move(event.x, event.y)
+    if activecommand == 'circle' and circle_center is not None:
+        radius = renderer.update_circle_preview(event.x, event.y)
+        if radius is not None:
+            command.configure(
+                placeholder_text=f"Radius: {radius:.3f}"
+            )
     if activecommand == "copy_place":
         distance = renderer.update_copy_preview(event.x, event.y)
         if distance is not None:
@@ -434,7 +430,7 @@ def viewport_mouse_move(event):
             )
     updatecoords()
     snapposition = renderer.snap_cursor_position()
-    if snapposition and (activecommand in ('polyline', 'copy_place') or gridsnapon):
+    if snapposition and (activecommand in ('polyline', 'copy_place', 'circle') or gridsnapon):
         snap_x, snap_y = map(round, snapposition)
         showsnapcursor(snap_x, snap_y)
         if snapkind and snapkind != 'Grid':
@@ -491,7 +487,8 @@ def show_selection_box(start_x, start_y, end_x, end_y):
         line.place(x=x, y=y, width=line_width, height=line_height)
         line.lift()
 def viewport_mouse_down(event):
-    global left_drag_start, left_dragged, moving_selection, circle_center
+    global left_drag_start, left_dragged, moving_selection
+    global circle_center, activecommand
     hidesnapindicator()
     viewport.focus_set()
     if renderer is None:
@@ -510,22 +507,21 @@ def viewport_mouse_down(event):
         pickcopypoint(event.x, event.y)
         return
     if activecommand == "circle":
-        renderer.mouse_move(event.x, event.y)
-        position = renderer.cursor_world_position()
-        if position is None:
-            return
         if circle_center is None:
-            circle_center = position
-            command.configure(placeholder_text="Pick a point on the circle")
-            writehistory("Pick a point on the circle")
-            return
-        dx = position[0] - circle_center[0]
-        dz = position[2] - circle_center[2]
-        radius = abs(math.hypot(dx, dz))
-        if radius == 0.0:
-            writehistory("Circle radius must be greater than zero")
-            return
-        finish_circle(circle_center, radius)
+            if renderer.begin_circle(event.x, event.y):
+                circle_center = True
+                command.configure(
+                    placeholder_text="Pick radius point"
+                )
+                writehistory("Pick radius point")
+        else:
+            renderer.update_circle_preview(event.x, event.y)
+            if renderer.commit_circle(64):
+                circle_center = None
+                activecommand = None
+                command.configure(placeholder_text="Command:")
+                writehistory("Circle created")
+                viewport.configure(cursor='arrow')
         return
     if activecommand is None:
         hide_selection_box()
@@ -959,6 +955,8 @@ def closeactivecommand(commit=False):
         return
     if activecommand == 'mirror_second' and renderer is not None:
         renderer.cancel_polyline()
+    if activecommand == 'circle' and renderer is not None:
+        renderer.cancel_circle()
     if activecommand in ('copy_base', 'copy_place') and renderer is not None:
         renderer.cancel_copy()
     if activecommand == "polyline" and renderer is not None:
