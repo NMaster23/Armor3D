@@ -327,10 +327,23 @@ impl ViewportRenderer {
         self.state.viewport.cancel_polyline();
     }
 
-    fn set_osnap_modes(&mut self, end_enabled: bool, near_enabled: bool) {
-        self.state
-            .viewport
-            .set_osnap_modes(end_enabled, near_enabled);
+    fn set_osnap_modes(
+        &mut self,
+        end_enabled: bool,
+        near_enabled: bool,
+        mid_enabled: bool,
+        int_enabled: bool,
+    ) {
+        self.state.viewport.set_osnap_modes(
+            end_enabled,
+            near_enabled,
+            mid_enabled,
+            int_enabled,
+        );
+    }
+
+    fn set_construction_snap(&mut self, enabled: bool) {
+        self.state.viewport.set_construction_snap(enabled);
     }
 
     fn set_grid_snap(&mut self, enabled: bool) {

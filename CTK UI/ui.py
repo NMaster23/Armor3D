@@ -432,7 +432,12 @@ def viewport_mouse_move(event):
             )
     updatecoords()
     snapposition = renderer.snap_cursor_position()
-    if snapposition and (activecommand in ('polyline', 'copy_place', 'circle') or gridsnapon):
+    if snapposition and (
+        activecommand in (
+            'polyline', 'curve', 'copy_place', 'circle',
+            'mirror_first', 'mirror_second'
+        ) or gridsnapon
+    ):
         snap_x, snap_y = map(round, snapposition)
         showsnapcursor(snap_x, snap_y)
         if snapkind and snapkind != 'Grid':
@@ -741,6 +746,8 @@ def startmirror(event=None):
         )
     else:
         activecommand = 'mirror_first'
+        renderer.set_construction_snap(True)
+        renderer.start_polyline()
         command.configure(
             placeholder_text="Pick first point of mirror line"
         )
@@ -751,10 +758,11 @@ def confirmmirrorselection():
     if selectedobjectcount() == 0:
         writehistory("No object selected")
         command.configure(
-            placeholder_text = "Select object, then press enter"
-        )
+            placeholder_text = "Select object, then press enter")
         return
     activecommand='mirror_first'
+    renderer.set_construction_snap(True)
+    renderer.start_polyline()
     command.configure(
         placeholder_text="Pick first point of mirror line"
     )
@@ -767,7 +775,6 @@ def pickmirrorpoint():
         return
     if activecommand == 'mirror_first':
         mirrorpoint1 = (position[0], position[1])
-        renderer.start_polyline()
         renderer.mouse_button(True)
         renderer.mouse_button(False)
         points = renderer.active_polyline_data()
@@ -782,6 +789,7 @@ def pickmirrorpoint():
     elif activecommand == 'mirror_second':
         secondpoint = (position[0], position[1])
         renderer.cancel_polyline()
+        renderer.set_construction_snap(False)
         mirrored = renderer.mirror_selected(
             mirrorpoint1,
             secondpoint
@@ -964,8 +972,9 @@ def closeactivecommand(commit=False):
     global activecommand, circle_center
     if activecommand is None:
         return
-    if activecommand == 'mirror_second' and renderer is not None:
+    if activecommand in ('mirror_first', 'mirror_second') and renderer is not None:
         renderer.cancel_polyline()
+        renderer.set_construction_snap(False)
     if activecommand == 'circle' and renderer is not None:
         renderer.cancel_circle()
     if activecommand in ('copy_base', 'copy_place') and renderer is not None:
@@ -2187,14 +2196,27 @@ def syncgridsnaprenderer():
     if renderer is not None:
         renderer.set_grid_snap(gridsnapon)
         renderer.set_grid_spacing(gridspacing)
-        # Grid snap is only a fallback; keep active object snaps enabled.
         syncosnaprenderer()
 def syncosnaprenderer():
-    end_enabled = onsapon and snapenabled.get("End", False)
-    near_enabled = onsapon and snapenabled.get("Near", False)
+    end_enabled = (
+        onsapon and snapenabled.get("End", False)
+    )
+    near_enabled = (onsapon and snapenabled.get("Near", False))
+    mid_enabled = (onsapon and snapenabled.get('Mid', False))
+    int_enabled = (onsapon and snapenabled.get("Int", False))
     if renderer is not None:
-        renderer.set_osnap_modes(end_enabled, near_enabled)
-    if not end_enabled and not near_enabled:
+        renderer.set_osnap_modes(
+            end_enabled,
+            near_enabled,
+            mid_enabled,
+            int_enabled
+        )
+    if not any((
+        end_enabled,
+        near_enabled,
+        mid_enabled,
+        int_enabled,
+    )):
         hidesnapindicator()
 def refreshosnap():
     snapcanvas.itemconfig(snapheading, fill="#F3E6C5" if onsapon else "#777777" )
