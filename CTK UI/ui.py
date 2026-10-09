@@ -432,7 +432,7 @@ def viewport_mouse_move(event):
             )
     updatecoords()
     snapposition = renderer.snap_cursor_position()
-    if snapposition and (activecommand in ('polyline', 'copy_place', 'circle') or gridsnapon):
+    if snapposition and (activecommand in ('polyline', 'curve', 'copy_place', 'circle') or gridsnapon):
         snap_x, snap_y = map(round, snapposition)
         showsnapcursor(snap_x, snap_y)
         if snapkind and snapkind != 'Grid':

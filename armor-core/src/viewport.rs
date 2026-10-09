@@ -34,6 +34,7 @@ pub struct PolyLine {
     pub thickness: f32,
     pub selected: bool,
     pub height: f32,
+    pub show_markers: bool,
 }
 
 pub struct ShapeUndoStore<T> {
@@ -83,6 +84,9 @@ pub struct Viewport {
     pub osnap: bool,
     pub end_snap_enabled: bool,
     pub near_snap_enabled: bool,
+    pub mid_snap_enabled: bool,
+    pub int_snap_enabled: bool,
+    pub construction_snap_enabled: bool,
     pub grid_snap_enabled: bool,
     pub grid_spacing: f32,
     pub cursor_pos: PhysicalPosition<f64>,
@@ -150,6 +154,7 @@ impl Viewport {
                 thickness: source.thickness,
                 selected: true,
                 height: source.height,
+                show_markers: source.show_markers,
             });
         }
 
@@ -228,6 +233,7 @@ impl Viewport {
                 thickness: source.thickness,
                 selected: false,
                 height: source.height,
+                show_markers: source.show_markers,
             });
         }
 
@@ -367,6 +373,7 @@ impl Viewport {
                 thickness: source.thickness,
                 selected: true,
                 height: source.height,
+                show_markers: source.show_markers,
             });
         }
 
@@ -399,6 +406,8 @@ impl Viewport {
             osnap: true,
             end_snap_enabled: false,
             near_snap_enabled: false,
+            mid_snap_enabled: false,
+            construction_snap_enabled: false,
             grid_snap_enabled: false,
             grid_spacing: 0.1,
             cursor_pos: PhysicalPosition::new(0.0, 0.0),
@@ -452,6 +461,7 @@ impl Viewport {
             thickness: 1.0,
             selected: false,
             height: 0.0,
+            show_markers: true,
         };
         self.next_entity += 1;
         self.hist_entities.current.push(shape);
@@ -971,7 +981,7 @@ impl Viewport {
                 self.tessellate_polyline(&entity.vertices, entity.thickness, draw_color);
             new_vertices.extend_from_slice(&entity_vertices);
 
-            if Self::circle_control_points(&entity.vertices).is_none() {
+            if entity.show_markers && Self::circle_control_points(&entity.vertices).is_none() {
                 let closed = entity.vertices.len() > 2
                     && (entity.vertices[0]
                         - entity.vertices[entity.vertices.len() - 1])
@@ -1262,6 +1272,7 @@ impl Viewport {
             thickness,
             selected: false,
             height: 0.0,
+            show_markers: true,
         })
     }
     pub fn graph_handle_key(&mut self, code: KeyCode, is_pressed: bool) -> bool {
@@ -1326,7 +1337,6 @@ impl Viewport {
         self.polyline_active = true;
         self.rebuild_vertices();
     }
-
     pub fn finish_polyline(&mut self) {
         self.holding_left = false;
         self.polyline_active = false;
@@ -1339,7 +1349,6 @@ impl Viewport {
         }
         self.rebuild_vertices();
     }
-
     pub fn cancel_polyline(&mut self) {
         self.holding_left = false;
         self.polyline_active = false;
@@ -1364,14 +1373,26 @@ impl Viewport {
         self.curve_active = false;
         self.cancel_polyline();
     }
-    pub fn set_osnap_modes(&mut self, end_enabled: bool, near_enabled: bool) {
-        self.osnap = end_enabled || near_enabled;
+    pub fn set_osnap_modes(
+        &mut self,
+        end_enabled: bool,
+        near_enabled: bool,
+        mid_enabled: bool,
+        int_enabled: bool,
+    ) {
         self.end_snap_enabled = end_enabled;
         self.near_snap_enabled = near_enabled;
-        if !self.osnap {
+        self.mid_snap_enabled = mid_enabled;
+        self.int_snap_enabled = int_enabled;
+        self.osnap = 
+            end_enabled || near_enabled || mid_enabled || int_enabled;
+        if !self.osnap && !self.construction_snap_enabled {
             self.preview_point = None;
             self.rebuild_vertices();
         }
+    }
+    pub fn set_construction_snap(&mut self, enabled:bool) {
+        self.construction_snap_enabled = enabled;
     }
 
     pub fn set_grid_snap(&mut self, enabled: bool) {
@@ -1463,7 +1484,7 @@ impl Viewport {
         }
         self.rebuild_vertices();
     }
-
+    
     pub fn get_snap_pos(
         &self,
         point: Vector3<f32>,
@@ -1817,6 +1838,9 @@ impl Viewport {
                 self.polyline_color, 
                 POLYLINE_WIDTH_PIXELS
             );
+            if let Some(curve) = self.entities.last_mut() {
+                curve.show_markers = false;
+            }
         }
         self.rebuild_vertices();
     }
@@ -1966,6 +1990,7 @@ mod tests {
             thickness: 1.0,
             selected: false,
             height: 0.0,
+            show_markers: true,
         }
     }
 
