@@ -128,6 +128,15 @@ impl ViewportRenderer {
     fn undo(&mut self) -> bool {
         self.state.viewport.undo_scene()
     }
+    fn start_curve(&mut self) {
+        self.state.viewport.start_curve();
+    }
+    fn finish_curve(&mut self) {
+        self.state.viewport.finish_curve();
+    }
+    fn cancel_curve(&mut self) {
+        self.state.viewport.cancel_curve();
+    }
     fn redo(&mut self) -> bool {
         self.state.viewport.redo_scene()
     }

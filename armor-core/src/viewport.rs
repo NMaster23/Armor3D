@@ -90,6 +90,7 @@ pub struct Viewport {
     pub polyline_active: bool,
     pub polyline_color: [f32; 4],
     pub curve_subdivisions: u32,
+    pub curve_active: bool,
     move_anchor: Option<Vector3<f32>>,
     move_snapshots: Vec<(usize, Vec<Vector3<f32>>)>,
     pub point_vertices: Vec<Vertex>,
@@ -405,6 +406,7 @@ impl Viewport {
             polyline_active: false,
             polyline_color: DEFAULT_POLYLINE_COLOR,
             curve_subdivisions: 16,
+            curve_active: false,
             move_anchor: None,
             move_snapshots: Vec::new(),
             point_vertices: Vec::new(),
@@ -1049,32 +1051,42 @@ impl Viewport {
             }
         }
 
-        let mut preview_polyline = self.active_polyline.clone();
-        if let Some(preview_point) = self.preview_point {
-            let should_append = preview_polyline
-                .last()
-                .map(|last| (*last - preview_point).magnitude2() > f32::EPSILON)
-                .unwrap_or(false);
-            if should_append {
-                preview_polyline.push(preview_point);
-            }
+    let mut preview_controls = self.active_polyline.clone();
+    if let Some(preview_point) = self.preview_point {
+        let should_append = preview_controls
+            .last()
+            .map(|last|{
+                (*last - preview_point).magnitude2() > f32:: EPSILON
+            })
+            .unwrap_or(false);
+        if should_append {
+            preview_controls.push(preview_point);
         }
-        if preview_polyline.len() > 1 {
-            new_vertices.extend(self.tessellate_polyline(
-                &preview_polyline,
-                POLYLINE_WIDTH_PIXELS,
-                self.polyline_color,
-            ));
-        }
-        for point in &preview_polyline {
-            new_vertices.extend(Self::tessellate_vertex_circle(
-                *point,
-                marker_radius,
-                marker_color,
-            ));
-        }
-        self.point_vertices = new_vertices;
-        self.redraw = true;
+    }
+    let renderer_preview = if self.curve_active {
+        Self::sample_curve(
+            &preview_controls,
+            self.curve_subdivisions.max(4) as usize
+        )
+    } else {
+        preview_controls.clone()
+    };
+    if renderer_preview.len() > 1 {
+        new_vertices.extend(self.tessellate_polyline(
+            &renderer_preview,
+            POLYLINE_WIDTH_PIXELS,
+            self.polyline_color
+        ));
+    }
+    for point in &preview_controls {
+        new_vertices.extend(Self::tessellate_vertex_circle(
+            *point,
+            marker_radius,
+            marker_color,
+        ));
+    }
+    self.point_vertices = new_vertices;
+    self.redraw = true;
     }
     pub fn extrude_selected(&mut self, height: f32) {
         let entity = match self.selected_entity {
@@ -1297,6 +1309,7 @@ impl Viewport {
         self.preview_point  = None;
         self.selected_entity = None;
         self.polyline_active = false;
+        self.curve_active = false;
         self.circle_center = None;
         self.circle_target = None;
         self.copy_sources.clear();
@@ -1308,6 +1321,7 @@ impl Viewport {
     pub fn start_polyline(&mut self) {
         self.active_polyline.clear();
         self.preview_point = None;
+        self.curve_active = false;
         self.holding_left = false;
         self.polyline_active = true;
         self.rebuild_vertices();
@@ -1330,8 +1344,25 @@ impl Viewport {
         self.holding_left = false;
         self.polyline_active = false;
         self.active_polyline.clear();
+        self.curve_active = false;
         self.preview_point = None;
         self.rebuild_vertices();
+    }
+    pub fn start_curve(&mut self) {
+        self.active_polyline.clear();
+        self.preview_point = None;
+        self.holding_left = false;
+        self.polyline_active = true;
+        self.curve_active = true;
+        self.rebuild_vertices();
+    }
+    pub fn finish_curve(&mut self) {
+        let subdivisions = self.curve_subdivisions.max(4) as usize;
+        self.draw_curve(subdivisions)
+    }
+    pub fn cancel_curve(&mut self) {
+        self.curve_active = false;
+        self.cancel_polyline();
     }
     pub fn set_osnap_modes(&mut self, end_enabled: bool, near_enabled: bool) {
         self.osnap = end_enabled || near_enabled;
@@ -1614,7 +1645,7 @@ impl Viewport {
             None => return false,
         };
         let (snap_pos, shape_close, _) = self.get_snap_pos(hit_pos);
-        if shape_close {
+        if shape_close && !self.curve_active {
             self.active_polyline.push(snap_pos);
             let points = self.active_polyline.clone();
             self.add_polyline(points, self.polyline_color, POLYLINE_WIDTH_PIXELS);
@@ -1717,7 +1748,6 @@ impl Viewport {
             self.commit_circle(subdivisions);
         }
     }
-
     pub fn draw_circle_command(
         &mut self,
         subdivisions: usize,
@@ -1733,36 +1763,61 @@ impl Viewport {
             self.add_polyline(points, self.polyline_color, POLYLINE_WIDTH_PIXELS);
         }
     }
+    fn sample_curve(
+        points: &[Vector3<f32>],
+        subdivisions: usize,
+    ) -> Vec<Vector3<f32>> {
+        if points.len() < 2 {
+            return Vec::new();
+        }
+        if points.len() == 2 {
+            return points.to_vec();
+        }
+        let subdivisions = subdivisions.max(4);
+        let mut sampled = Vec::new();
+        for index in 0..points.len() - 1 {
+            let p0 = if index == 0 {
+                points[index]
+            } else {
+                points[index - 1]
+            };
+            let p1 = points[index];
+            let p2 = points[index + 1];
+            let p3 = if index + 2 < points.len() {
+                points[index + 2]
+            } else {
+                points[index + 1]
+            };
+            for step in 0..subdivisions {
+                let t = step as f32 / subdivisions as f32;
+                sampled.push(Self::catmull_rom(
+                    p0, p1, p2, p3, t,
+                ));
+            }
+        }
+        sampled.push(*points.last().unwrap());
+        sampled
+    }
     pub fn draw_curve(&mut self, subdivisions: usize) {
-        if self.active_polyline.len() < 2 || subdivisions == 0 {
+        self.holding_left = false;
+        self.polyline_active = false;
+        self.curve_active = false;
+        self.preview_point = None;
+        if self.active_polyline.len() < 2 {
             self.active_polyline.clear();
-            self.preview_point = None;
-            self.polyline_active = false;
-            self.holding_left = false;
             self.rebuild_vertices();
             return;
         }
-        let points = mem::take(&mut self.active_polyline);
-        let mut sampled_points = Vec::new();
-        for i in 0..points.len() - 1 {
-            let p0 = points[i.saturating_sub(1)];
-            let p1 = points[i];
-            let p2 = points[i + 1];
-            let p3 = points[(i + 2).min(points.len() - 1)];
-            for step in 0..subdivisions {
-                let t = step as f32 / subdivisions as f32;
-                sampled_points.push(Self::catmull_rom(p0, p1, p2, p3, t));
-            }
+        let control_points = mem::take(&mut self.active_polyline);
+        let sampled_points = 
+            Self::sample_curve(&control_points, subdivisions);
+        if sampled_points.len() >= 2 {
+            self.add_polyline(
+                sampled_points, 
+                self.polyline_color, 
+                POLYLINE_WIDTH_PIXELS
+            );
         }
-        sampled_points.push(*points.last().expect("Missing last point"));
-        self.add_polyline(
-            sampled_points,
-            self.polyline_color,
-            POLYLINE_WIDTH_PIXELS,
-        );
-        self.preview_point = None;
-        self.polyline_active = false;
-        self.holding_left = false;
         self.rebuild_vertices();
     }
     pub fn catmull_rom(

@@ -859,10 +859,19 @@ def startpolyline(event=None):
     viewport.focus_set()
 def startcurve(event=None):
     global activecommand
+    if renderer is None:
+        return
     activecommand = 'curve'
+    syncgridsnaprenderer()
+    renderer.start_curve()
     command.delete(0, 'end')
-    command.configure(placeholder_text="Start curve")
-    writehistory("> Curve\nStart curve")
+    command.configure(
+        placeholder_text='Pick curve control points'
+    )
+    writehistory(
+        "> Curve\nSelect curve points"
+    )
+    viewport.configure(cursor='crosshair')
     viewport.focus_set()
 def startjoin(event=None):
     global activecommand
@@ -961,6 +970,12 @@ def closeactivecommand(commit=False):
         renderer.cancel_circle()
     if activecommand in ('copy_base', 'copy_place') and renderer is not None:
         renderer.cancel_copy()
+    if activecommand == 'curve' and renderer is not None:
+        if commit:
+            renderer.finish_curve()
+            writehistory("Curve created")
+        else:
+            renderer.cancel_curve()
     if activecommand == "polyline" and renderer is not None:
         if commit:
             renderer.finish_polyline()
