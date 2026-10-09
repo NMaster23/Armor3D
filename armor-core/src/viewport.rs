@@ -407,6 +407,7 @@ impl Viewport {
             end_snap_enabled: false,
             near_snap_enabled: false,
             mid_snap_enabled: false,
+            int_snap_enabled: false,
             construction_snap_enabled: false,
             grid_snap_enabled: false,
             grid_spacing: 0.1,
@@ -1484,12 +1485,38 @@ impl Viewport {
         }
         self.rebuild_vertices();
     }
-    
+    fn segment_intersection_xz(
+        first_start: Vector3<f32>,
+        first_end: Vector3<f32>,
+        second_start: Vector3<f32>,
+        second_end: Vector3<f32>,
+    ) -> Option<Vector3<f32>> {
+        let rx = first_end.x - first_start.x;
+        let rz = first_end.z - first_start.z;
+        let sx = second_end.x - second_start.x;
+        let sz = second_end.z - second_start.z;
+        let denominator = rx * sz - rz * sx;
+        if denominator.abs() <= 0.000001 {
+            return None;
+        }
+        let qx = second_start.x - first_start.x;
+        let qz = second_start.z - first_start.z;
+        let t = (qx * sz - qz * sx) / denominator;
+        let u = (qx * rz - qz * rx) / denominator;
+        if !(0.0..=1.0).contains(&t) || !(0.0..=1.0).contains(&u) {
+            return None;
+        }
+        Some(Vector3::new(
+            first_start.x + rx * t,
+            first_start.y + (first_end.y - first_start.y) * t,
+            first_start.z + rz * t,
+        ))
+    }
     pub fn get_snap_pos(
         &self,
         point: Vector3<f32>,
     ) -> (Vector3<f32>, bool, Option<&'static str>) {
-        if self.end_snap_enabled {
+        if self.end_snap_enabled || self.construction_snap_enabled {
             let radius = self.world_width_for_pixels(END_SNAP_RADIUS_PIXELS);
             let mut best_end: Option<(f32, Vector3<f32>, bool)> = None;
             let mut consider_end = |candidate: Vector3<f32>, closes_active: bool| {
@@ -1508,18 +1535,88 @@ impl Viewport {
                 consider_end(self.active_polyline[0], true);
             }
             for entity in &self.entities {
-                if let Some(&first) = entity.vertices.first() {
-                    consider_end(first, false);
-                }
-                if let Some(&last) = entity.vertices.last() {
-                    consider_end(last, false);
+                for &vertex in &entity.vertices {
+                    consider_end(vertex, false);
                 }
             }
             if let Some((_, position, closes)) = best_end {
                 return (position, closes, Some("End"));
             }
         }
+        if self.mid_snap_enabled || self.construction_snap_enabled {
+            let mut best_mid: Option<(f32, Vector3<f32>)> = None;
+            if let Some(mouse_screen) = self.world_to_screen(point) {
+                let mut check_segment = |start: Vector3<f32>, end: Vector3<f32>| {
+                    let midpoint = (start + end) * 0.5;
+                    if let Some(mid_screen) = self.world_to_screen(midpoint) {
+                        let distance = (mid_screen - mouse_screen).magnitude();
+                        if distance <= END_SNAP_RADIUS_PIXELS
+                            && best_mid
+                                .as_ref()
+                                .map(|(best, _)| distance < *best)
+                                .unwrap_or(true)
+                        {
+                            best_mid = Some((distance, midpoint));
+                        }
+                    }
+                };
+                for entity in &self.entities {
+                    for segment in entity.vertices.windows(2) {
+                        check_segment(segment[0], segment[1]);
+                    }
+                }
+                for segment in self.active_polyline.windows(2) {
+                    check_segment(segment[0], segment[1]);
+                }
+            }
+            if let Some((_, midpoint)) = best_mid {
+                return (midpoint, false, Some("Mid"));
+            }
+        }
 
+        if self.int_snap_enabled || self.construction_snap_enabled {
+            let mut segments = Vec::new();
+            for entity in &self.entities {
+                for segment in entity.vertices.windows(2) {
+                    segments.push((segment[0], segment[1]));
+                }
+            }
+            let mut best_intersection: Option<(f32, Vector3<f32>)> = None;
+            if let Some(mouse_screen) = self.world_to_screen(point) {
+                for first_index in 0..segments.len() {
+                    for second_index in (first_index + 1)..segments.len() {
+                        let (a, b) = segments[first_index];
+                        let (c, d) = segments[second_index];
+                        let shares_endpoint = (a - c).magnitude2() < 0.000001
+                            || (a - d).magnitude2() < 0.000001
+                            || (b - c).magnitude2() < 0.000001
+                            || (b - d).magnitude2() < 0.000001;
+                        if shares_endpoint {
+                            continue;
+                        }
+                        let Some(intersection) = Self::segment_intersection_xz(a, b, c, d)
+                        else {
+                            continue;
+                        };
+                        let Some(screen) = self.world_to_screen(intersection) else {
+                            continue;
+                        };
+                        let distance = (screen - mouse_screen).magnitude();
+                        if distance <= END_SNAP_RADIUS_PIXELS
+                            && best_intersection
+                                .as_ref()
+                                .map(|(best, _)| distance < *best)
+                                .unwrap_or(true)
+                        {
+                            best_intersection = Some((distance, intersection));
+                        }
+                    }
+                }
+            }
+            if let Some((_, intersection)) = best_intersection {
+                return (intersection, false, Some("Int"));
+            }
+        }
         if self.near_snap_enabled {
             let mut best_near: Option<(f32, Vector3<f32>)> = None;
             if let Some(mouse_screen) = self.world_to_screen(point) {
@@ -2080,7 +2177,7 @@ mod tests {
             Vector3::new(-0.5, 0.0, 0.0),
             Vector3::new(0.5, 0.0, 0.0),
         ];
-        viewport.set_osnap_modes(false, true);
+        viewport.set_osnap_modes(false, true, false, false);
         viewport.set_grid_snap(true);
 
         let (snapped, closes_shape, snap_kind) =
@@ -2099,7 +2196,7 @@ mod tests {
             vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.0, 0.0)],
         ));
         viewport.active_polyline = vec![Vector3::new(-0.5, 0.0, -0.5)];
-        viewport.set_osnap_modes(true, false);
+        viewport.set_osnap_modes(true, false, false, false);
 
         let (snapped, finishes_polyline, snap_kind) =
             viewport.get_snap_pos(Vector3::new(0.01, 0.0, 0.01));
@@ -2107,6 +2204,64 @@ mod tests {
         assert!(snapped.magnitude() < 0.00001);
         assert!(!finishes_polyline);
         assert_eq!(snap_kind, Some("End"));
+    }
+
+    #[test]
+    fn mid_snap_finds_segment_midpoint() {
+        let mut viewport = Viewport::new(800, 600);
+        viewport.entities.push(shape(
+            1,
+            vec![Vector3::new(-0.5, 0.0, 0.0), Vector3::new(0.5, 0.0, 0.0)],
+        ));
+        viewport.set_osnap_modes(false, false, true, false);
+
+        let (snapped, closes_shape, snap_kind) =
+            viewport.get_snap_pos(Vector3::new(0.0, 0.0, 0.0));
+
+        assert!(snapped.magnitude() < 0.00001);
+        assert!(!closes_shape);
+        assert_eq!(snap_kind, Some("Mid"));
+    }
+
+    #[test]
+    fn int_snap_finds_crossing_segments() {
+        let mut viewport = Viewport::new(800, 600);
+        viewport.entities = vec![
+            shape(
+                1,
+                vec![Vector3::new(-0.5, 0.0, -0.5), Vector3::new(0.5, 0.0, 0.5)],
+            ),
+            shape(
+                2,
+                vec![Vector3::new(-0.5, 0.0, 0.5), Vector3::new(0.5, 0.0, -0.5)],
+            ),
+        ];
+        viewport.set_osnap_modes(false, false, false, true);
+
+        let (snapped, closes_shape, snap_kind) =
+            viewport.get_snap_pos(Vector3::new(0.0, 0.0, 0.0));
+
+        assert!(snapped.magnitude() < 0.00001);
+        assert!(!closes_shape);
+        assert_eq!(snap_kind, Some("Int"));
+    }
+
+    #[test]
+    fn construction_snap_does_not_change_user_osnap_modes() {
+        let mut viewport = Viewport::new(800, 600);
+        viewport.entities.push(shape(
+            1,
+            vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.5, 0.0, 0.0)],
+        ));
+        viewport.set_osnap_modes(false, false, false, false);
+        viewport.set_construction_snap(true);
+
+        let (_, _, snap_kind) = viewport.get_snap_pos(Vector3::new(0.0, 0.0, 0.0));
+
+        assert_eq!(snap_kind, Some("End"));
+        assert!(!viewport.end_snap_enabled);
+        assert!(!viewport.mid_snap_enabled);
+        assert!(!viewport.int_snap_enabled);
     }
 }
 
