@@ -1,6 +1,7 @@
 mod camera;
 mod render;
 mod viewport;
+mod reference_image;
 
 use cgmath::Vector3;
 use pyo3::exceptions::PyValueError;
@@ -127,6 +128,27 @@ impl ViewportRenderer {
     */
     fn undo(&mut self) -> bool {
         self.state.viewport.undo_scene()
+    }
+    fn import_reference_image(
+        &mut self,
+        path: &str,
+        opacity: f32
+    ) -> PyResult<()> {
+        self.state
+            .import_reference_image(path, opacity)
+            .map_err(|error| {
+                pyo3::exceptions::PyRuntimeError::new_err(error.to_string())
+            })
+    }
+    fn set_reference_image_rect(
+        &mut self,
+        first: (f32, f32),
+        second: (f32, f32),
+    ) -> bool {
+        self.state.set_reference_image_rect(first, second)
+    }
+    fn remove_reference_image(&mut self) {
+        self.state.clear_reference_image();
     }
     fn start_curve(&mut self) {
         self.state.viewport.start_curve();

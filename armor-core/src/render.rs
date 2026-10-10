@@ -2,6 +2,7 @@ use crate::camera::{Camera, CameraUniform};
 use crate::{GRAPH_INDICES, GRAPH_VERTICES, Vertex};
 use anyhow::Ok;
 use cgmath::Vector3;
+use crate::reference_image::ReferenceImageLayer;
 use glyphon::{Attrs, Buffer, Color, FontSystem, Metrics, Resolution, SwashCache, TextArea, TextAtlas, TextBounds, TextRenderer};
 use std::sync::Arc;
 use wgpu::util::DeviceExt;
@@ -75,6 +76,7 @@ pub struct State {
     pub(crate) window: Option<Arc<Window>>,
     render_pipeline: wgpu::RenderPipeline,
     graph_pipeline: wgpu::RenderPipeline,
+    reference_image: ReferenceImageLayer,
     graph_index_buffer: wgpu::Buffer,
     graph_vertex_buffer: wgpu::Buffer,
     point_buffer: wgpu::Buffer,
@@ -96,6 +98,28 @@ pub struct State {
 }
 
 impl State {
+    pub fn import_reference_image(
+        &mut self,
+        path: &str,
+        opacity: f32,
+    ) -> anyhow::Result<()> {
+        self.reference_image.load(
+            &self.device,
+            &self.queue,
+            path,
+            opacity,
+        )
+    }
+    pub fn set_reference_image_rect(
+        &mut self,
+        first: (f32, f32),
+        second: (f32, f32),
+    ) -> bool {
+        self.reference_image.set_corners(&self.queue, first, second)
+    }
+    pub fn clear_reference_image(&mut self) {
+        self.reference_image.clear();
+    }
     pub async fn new(window: Arc<Window>) -> anyhow::Result<State> {
         let size = window.inner_size();
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
@@ -207,6 +231,11 @@ impl State {
                 }],
                 label: Some("camera_bind_group_layout"),
             });
+        let reference_image = ReferenceImageLayer::new(
+            &device,
+            config.format,
+            &camera_bind_group_layout,
+        );
         let camera_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             layout: &camera_bind_group_layout,
             entries: &[wgpu::BindGroupEntry {
@@ -315,6 +344,7 @@ impl State {
             None,
         );
         Ok(Self {
+            reference_image,
             surface,
             device,
             queue,
@@ -486,6 +516,11 @@ impl State {
                 }],
                 label: Some("camera_bind_group_layout"),
             });
+        let reference_image = ReferenceImageLayer::new(
+            &device,
+            config.format,
+            &camera_bind_group_layout,
+        );
         let camera_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             layout: &camera_bind_group_layout,
             entries: &[wgpu::BindGroupEntry {
@@ -554,6 +589,7 @@ impl State {
         text_buffer.shape_until_scroll(&mut font_system, false);
         Ok(Self {
             surface,
+            reference_image,
             device,
             queue,
             config,
@@ -701,6 +737,7 @@ impl State {
                 multiview_mask: None,
             });
             render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
+            self.reference_image.draw(&mut render_pass);
             render_pass.set_pipeline(&self.graph_pipeline);
             render_pass.set_vertex_buffer(0, self.graph_vertex_buffer.slice(..));
             render_pass.set_index_buffer(self.graph_index_buffer.slice(..), wgpu::IndexFormat::Uint16);

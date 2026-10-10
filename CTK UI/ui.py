@@ -1,6 +1,6 @@
 import customtkinter as ctk
 from ctypes import windll
-from tkinter import Canvas, Frame, filedialog, Toplevel, StringVar
+from tkinter import Canvas, Frame, filedialog, Toplevel, StringVar, simpledialog
 import sys
 import re
 import ezdxf
@@ -81,6 +81,72 @@ def start_circle(event=None):
     writehistory("> Circle\nSelect center point")
     viewport.configure(cursor="crosshair")
     viewport.focus_set()
+picturefirstpoint = None
+picturefilename = None
+
+def importimagecommand(event=None):
+    global activecommand, picturefirstpoint, picturefilename
+    if renderer is None:
+        writehistory("> Import Image\nViewport is not ready")
+        return
+    path = filedialog.askopenfilename(
+        parent=app, title="Import tracing image", filetypes=[
+            ("Images", "*.png *.jpg *.jpeg *.bmp"),
+            ("PNG", "*.png"),
+            ("JPEG", "*.jpg *.jpeg"),
+            ("Bitmap", "*.bmp"),
+            ("All files", "*.*"),
+        ]
+    )
+    if not path:
+        return
+    try:
+        renderer.import_reference_image(path, 0.35)
+        picturefirstpoint = None
+        picturefilename = Path(path).name
+        activecommand = "picture_first"
+        command.delete(0, "end")
+        command.configure(placeholder_text="Picture: pick first corner")
+        writehistory("> Picture\nPick first corner")
+        viewport.configure(cursor="crosshair")
+        viewport.focus_set()
+    except Exception as error:
+        writehistory(f"> Picture\nImport failed: {error}")
+
+def updatepicturepreview():
+    if renderer is None or activecommand != "picture_second":
+        return
+    position = renderer.cursor_world_position()
+    if position is not None and picturefirstpoint is not None:
+        renderer.set_reference_image_rect(
+            picturefirstpoint,
+            (position[0], position[1]),
+        )
+
+def pickpicturecorner(event):
+    global activecommand, picturefirstpoint, picturefilename
+    renderer.mouse_move(event.x, event.y)
+    position = renderer.cursor_world_position()
+    if position is None:
+        return
+    point = (position[0], position[1])
+    if activecommand == "picture_first":
+        picturefirstpoint = point
+        activecommand = "picture_second"
+        renderer.set_reference_image_rect(point, point)
+        command.configure(placeholder_text="Picture: pick opposite corner")
+        writehistory("Pick opposite corner")
+    elif activecommand == "picture_second":
+        renderer.set_reference_image_rect(picturefirstpoint, point)
+        if picturefilename:
+            importedfiles.append(picturefilename)
+        updatewindowtitle()
+        writehistory(f"Picture placed: {picturefilename}")
+        picturefirstpoint = None
+        picturefilename = None
+        activecommand = None
+        command.configure(placeholder_text="Command:")
+        viewport.configure(cursor="arrow")
 def importdxcommand(event=None):
     global currentfilepath
     if renderer is None:
@@ -418,6 +484,7 @@ def viewport_mouse_move(event):
     if renderer is None:
         return
     snapkind = renderer.mouse_move(event.x, event.y)
+    updatepicturepreview()
     if activecommand == 'circle' and circle_center is not None:
         radius = renderer.update_circle_preview(event.x, event.y)
         if radius is not None:
@@ -500,6 +567,9 @@ def viewport_mouse_down(event):
     viewport.focus_set()
     if renderer is None:
         return
+    if activecommand in ("picture_first", "picture_second"):
+        pickpicturecorner(event)
+        return
     if activecommand in ('mirror_select', 'copy_select'):
         hide_selection_box()
         left_drag_start = (event.x, event.y)
@@ -546,6 +616,10 @@ def viewport_mouse_down(event):
             closecompletedpolyline()
 def viewport_left_drag(event):
     global left_dragged
+    if activecommand == "picture_second":
+        renderer.mouse_move(event.x, event.y)
+        updatepicturepreview()
+        return
     if moving_selection:
         if renderer is not None:
             renderer.move_selected(event.x, event.y)
@@ -567,6 +641,8 @@ def viewport_left_drag(event):
 def viewport_mouse_up(event):
     global left_drag_start, left_dragged, moving_selection
     if renderer is None:
+        return
+    if activecommand in ("picture_first", "picture_second"):
         return
     if activecommand in ("mirror_select", "copy_select"):
         additive = bool(event.state & 0x0001)
@@ -940,6 +1016,7 @@ def runnamedcommand(name):
         "copy": startcopy,
         "new": newfilecommand,
         "save": savecommand,
+        "picture": importimagecommand,
         "3dm": lambda: startplaceholdercmd("3DM", "3DM export is not implemented yet"),
         "dxf": savedxcommands,
         "file": open_file_menu,
@@ -969,7 +1046,7 @@ def repeatlastcommand():
     previous = lastcommand
     runnamedcommand(previous)
 def closeactivecommand(commit=False):
-    global activecommand, circle_center
+    global activecommand, circle_center, picturefirstpoint, picturefilename
     if activecommand is None:
         return
     if activecommand in ('mirror_first', 'mirror_second') and renderer is not None:
@@ -990,6 +1067,10 @@ def closeactivecommand(commit=False):
             renderer.finish_polyline()
         else:
             renderer.cancel_polyline()
+    if activecommand in ("picture_first", "picture_second") and renderer is not None:
+        renderer.remove_reference_image()
+        picturefirstpoint = None
+        picturefilename = None
     circle_center = None
     writehistory("Command ended")
     activecommand = None
@@ -1042,8 +1123,8 @@ def runcmd(event):
         viewport.focus_set()
     return "break"
 command.bind("<Return>", runcmd)
-commandnames = ["Polyline", "Curve", "Join", "Explode", "Rectangle", "Text", "File", "New", "Save", "Save as", '3DM', "PNG", "DXF", "Analyze", "Distance", "Angle", "Tools", "Revolve", "Extrude", "Mirror", "Copy", 
-                'Circle', "Fillet", "Trim", "Arc", "Import DXF", "Import"]
+commandnames = ["Polyline", "Curve", "Join", "Explode", "Rectangle", "Text", "File", "New", "Save", "Save as", '3DM', "PNG", "DXF", "Analyze", "Distance", "Angle", "Tools", "Revolve", "Extrude", "Mirror", "Copy",
+                'Circle', "Fillet", "Trim", "Arc", "Picture", "Import DXF", "Import"]
 
 def handlenewconfirmation(event):
     if activecommand != "confirmnew":

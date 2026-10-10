@@ -1,5 +1,6 @@
 mod camera;
 mod render;
+mod reference_image;
 mod viewport;
 
 use crate::render::State;
