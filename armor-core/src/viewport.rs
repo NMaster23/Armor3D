@@ -2073,6 +2073,80 @@ impl Viewport {
         self.camera_controller
             .handle_key(&mut self.camera, code, is_pressed);
     }
+    pub fn linear_array(&mut self, count: u32, offset: Vector3<f32>) -> usize {
+        if count == 0 {
+            return 0;
+        }
+        let Some(id) = self.selected_entity else {
+            return 0;
+        };
+        let Some(source) = self.entities.iter().find(|e| e.id == id).cloned() else {
+            return 0;
+        };
+        self.save_undo_state();
+        for copy_number in 1..=count {
+            let copy_offset = offset * copy_number as f32;
+            let id = self.next_entity;
+            self.next_entity += 1;
+            let vertices = source.vertices.iter().map(|v| *v + copy_offset).collect();
+            self.entities.push(PolyLine {
+                id,
+                vertices,
+                color: source.color,
+                thickness: source.thickness,
+                selected: false,
+                height: source.height,
+                show_markers: source.show_markers,
+            });
+        }
+        self.rebuild_vertices();
+        count as usize
+    }
+    pub fn polar_array(
+        &mut self,
+        count: u32,
+        offset: Vector3<f32>,
+        center: Vector3<f32>
+    ) -> usize {
+        if count == 0 {
+            return 0;
+        }
+        let Some(id) = self.selected_entity else {
+            return 0;
+        };
+        let Some(source) = self.entities.iter().find(|e| e.id == id).cloned() else {
+            return 0;
+        };
+        let angle_step = std::f32::consts::TAU / count as f32;
+        self.save_undo_state();
+        for copy_number in 1..=count {
+            let current_angle = angle_step * copy_number as f32;
+            let mut new_verts = Vec::new();
+            for v in &source.vertices {
+                let local_pos = v - center;
+                let rotated_pos = Vector3::new(
+                    (local_pos.x * current_angle.cos()) - (local_pos.y * current_angle.sin()),
+                    (local_pos.x * current_angle.sin()) + (local_pos.y * current_angle.cos()),
+                    local_pos.z,
+                );
+                let final_pos = rotated_pos + center + (offset * copy_number as f32);
+                new_verts.push(final_pos);
+            }
+            let id = self.next_entity;
+            self.next_entity += 1;
+            self.entities.push(PolyLine {
+                id,
+                vertices: new_verts,
+                color: source.color,
+                thickness: source.thickness,
+                selected: false,
+                height: source.height,
+                show_markers: source.show_markers,
+            });
+        }
+        self.rebuild_vertices();
+        count as usize
+    }
 }
 
 #[cfg(test)]
