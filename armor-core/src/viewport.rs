@@ -2105,7 +2105,6 @@ impl Viewport {
     pub fn polar_array(
         &mut self,
         count: u32,
-        offset: Vector3<f32>,
         center: Vector3<f32>
     ) -> usize {
         if count == 0 {
@@ -2125,11 +2124,11 @@ impl Viewport {
             for v in &source.vertices {
                 let local_pos = v - center;
                 let rotated_pos = Vector3::new(
-                    (local_pos.x * current_angle.cos()) - (local_pos.y * current_angle.sin()),
-                    (local_pos.x * current_angle.sin()) + (local_pos.y * current_angle.cos()),
+                    (local_pos.x * current_angle.cos()) - (local_pos.z * current_angle.sin()),
+                    (local_pos.x * current_angle.sin()) + (local_pos.z * current_angle.cos()),
                     local_pos.z,
                 );
-                let final_pos = rotated_pos + center + (offset * copy_number as f32);
+                let final_pos = rotated_pos + center;
                 new_verts.push(final_pos);
             }
             let id = self.next_entity;

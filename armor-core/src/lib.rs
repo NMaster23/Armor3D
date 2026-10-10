@@ -261,7 +261,18 @@ impl ViewportRenderer {
     fn mouse_button(&mut self, pressed: bool) -> bool {
         self.state.viewport.mouse_button(pressed)
     }
-
+    fn linear_array(&mut self, count: u32, offset: (f32, f32, f32)) -> usize {
+        self.state.viewport.linear_array(
+            count,
+            Vector3::new(offset.0, offset.1, offset.2)
+        )
+    }
+    fn polar_array(&mut self, count: u32, center: (f32, f32, f32)) -> usize {
+        self.state.viewport.polar_array(
+            count,
+            Vector3::new(center.0, center.1, center.2)
+        )
+    }
     #[pyo3(signature = (x, y, additive=false))]
     fn select_at(
         &mut self,
