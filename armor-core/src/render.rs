@@ -1063,7 +1063,7 @@ impl Renderer {
         self.shapes.push(ShapeRenderer {
             vertex_buffer,
             index_buffer,
-            index_count,
+            index_count: index_count?,
             material,
         });
         Ok(())
@@ -1076,7 +1076,7 @@ impl Renderer {
     ) {
         let uniform = CameraLightUniform {
             view_proj: camera.build_view_projection_matrix().into(),
-            light_pos: [light_pos.x, light_pos.yy, light_pos.z, 1.0],
+            light_pos: [light_pos.x, light_pos.y, light_pos.z, 1.0],
         };
         queue.write_buffer(
             &self.camera_light_buffer,
