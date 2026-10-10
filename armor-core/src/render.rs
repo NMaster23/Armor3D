@@ -120,6 +120,61 @@ impl State {
     pub fn clear_reference_image(&mut self) {
         self.reference_image.clear();
     }
+    pub fn select_reference_at(&mut self, x: f32, y: f32, additive: bool) -> bool {
+        let Some(point) = self.viewport.fetch_point(
+            winit::dpi::PhysicalPosition::new(x as f64, y as f64)
+        ) else {
+            return false;
+        };
+        self.reference_image
+            .select_at(&self.queue, (point.x, point.z), additive)
+    }
+    pub fn select_reference_box(&mut self, x1: f32, y1: f32, x2: f32, y2: f32, additive: bool) -> bool {
+        let Some(first) = self.viewport.fetch_point(
+            winit::dpi::PhysicalPosition::new(x1 as f64, y1 as f64)
+        ) else {
+            return false;
+        };
+        let Some(second) = self.viewport.fetch_point(
+            winit::dpi::PhysicalPosition::new(x2 as f64, y2 as f64)
+        ) else {
+            return false;
+        };
+        self.reference_image.select_box(
+            &self.queue,
+            (first.x, first.z),
+            (second.x, second.z),
+            additive,
+        )
+    }
+    pub fn clear_reference_selection(&mut self) {
+        self.reference_image.clear_selection(&self.queue);
+    }
+    pub fn delete_selected_objects(&mut self) -> usize {
+        let mut deleted = self.viewport.delete_selected();
+        if self.reference_image.delete_selected(deleted > 0) {
+            deleted += 1;
+        }
+        deleted
+    }
+    pub fn undo_scene(&mut self) -> bool {
+        if let Some(deleted_with_shapes) = self.reference_image.undo_delete() {
+            if deleted_with_shapes {
+                self.viewport.undo_scene();
+            }
+            return true;
+        }
+        self.viewport.undo_scene()
+    }
+    pub fn redo_scene(&mut self) -> bool {
+        if let Some(deleted_with_shapes) = self.reference_image.redo_delete() {
+            if deleted_with_shapes {
+                self.viewport.redo_scene();
+            }
+            return true;
+        }
+        self.viewport.redo_scene()
+    }
     pub async fn new(window: Arc<Window>) -> anyhow::Result<State> {
         let size = window.inner_size();
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {

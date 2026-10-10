@@ -13,33 +13,62 @@ struct Input {
 struct Output {
     @builtin(position) position: vec4<f32>,
     @location(0) uv: vec2<f32>,
-    @location(1) opacity: f32,
+    @location(1) color: vec4<f32>,
 };
 @vertex fn vs_main(input: Input) -> Output {
     var output: Output;
     output.position = camera.view_proj * vec4<f32>(input.position, 1.0);
     output.uv = input.uv.xy;
-    output.opacity = input.color.a;
+    output.color = input.color;
     return output;
 }
 @fragment fn fs_main(input: Output) -> @location(0) vec4<f32> {
     let pixel = textureSample(picture, picture_sampler, input.uv);
-    return vec4<f32>(pixel.rgb, pixel.a * input.opacity);
+    return vec4<f32>(pixel.rgb * input.color.rgb, pixel.a * input.color.a);
 }
 "#;
 struct Picture {
     bind_group: wgpu::BindGroup,
     vertices: wgpu::Buffer,
     count: u32,
+    opacity: f32,
     corners: Option<((f32, f32), (f32, f32))>,
-    selected: bool
+    selected: bool,
 }
 pub struct ReferenceImageLayer {
     pipeline: wgpu::RenderPipeline,
     texture_layout: wgpu::BindGroupLayout,
     picture: Option<Picture>,
+    deleted_picture: Option<Picture>,
+    deleted_with_shapes: bool,
+    redo_delete_available: bool,
 }
 impl ReferenceImageLayer {
+    fn write_picture_vertices(queue: &wgpu::Queue, picture: &Picture) -> bool {
+        let Some((first, second)) = picture.corners else {
+            return false;
+        };
+        let (x1, z1) = first;
+        let (x2, z2) = second;
+        let tint = if picture.selected {
+            [1.0, 0.72, 0.35]
+        } else {
+            [1.0, 1.0, 1.0]
+        };
+        let v = |x, z, u, v| Vertex {
+            position: [x, -0.002, z],
+            coords: [u, v, 0.0],
+            color: [tint[0], tint[1], tint[2], picture.opacity],
+        };
+        let data = [
+            v(x1, z1, 0.0, 0.0), v(x2, z1, 1.0, 0.0),
+            v(x1, z2, 0.0, 1.0), v(x1, z2, 0.0, 1.0),
+            v(x2, z1, 1.0, 0.0), v(x2, z2, 1.0, 1.0),
+        ];
+        queue.write_buffer(&picture.vertices, 0, bytemuck::cast_slice(&data));
+        true
+    }
+
     pub fn new(
         device: &wgpu::Device,
         format: wgpu::TextureFormat,
@@ -103,14 +132,19 @@ impl ReferenceImageLayer {
             multiview_mask: None,
             cache: None,
         });
-        Self { pipeline, texture_layout, picture: None }
+        Self {
+            pipeline,
+            texture_layout,
+            picture: None,
+            deleted_picture: None,
+            deleted_with_shapes: false,
+            redo_delete_available: false,
+        }
     }
     pub fn load(
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-        corners: None:
-        selected: false,
         path: &str,
         opacity: f32,
     ) -> anyhow::Result<()> {
@@ -171,7 +205,12 @@ impl ReferenceImageLayer {
             vertices,
             count: data.len() as u32,
             opacity: opacity.clamp(0.0, 1.0),
+            corners: None,
+            selected: false,
         });
+        self.deleted_picture = None;
+        self.deleted_with_shapes = false;
+        self.redo_delete_available = false;
         Ok(())
     }
     pub fn set_corners(
@@ -183,33 +222,22 @@ impl ReferenceImageLayer {
         let Some(picture) = &mut self.picture else {
             return false;
         };
-        let (x1, z1) = first;
-        let (x2, z2) = second;
-        let alpha = picture.opacity;
-        let v = |x, z, u, v| Vertex {
-            position: [x, -0.002, z],
-            coords: [u, v, 0.0],
-            color: [1.0, 1.0, 1.0, alpha],
-        };
-        let data = [
-            v(x1, z1, 0.0, 0.0), v(x2, z1, 1.0, 0.0),
-            v(x1, z2, 0.0, 1.0), v(x1, z2, 0.0, 1.0),
-            v(x2, z1, 1.0, 0.0), v(x2, z2, 1.0, 1.0),
-        ];
-        queue.write_buffer(&picture.vertices, 0, bytemuck::cast_slice(&data));
-        picture.corners = Some((first, second))
-        true
+        picture.corners = Some((first, second));
+        Self::write_picture_vertices(queue, picture)
     }
-    pub fn clear_selection(&mut self) {
+    pub fn clear_selection(&mut self, queue: &wgpu::Queue) {
         if let Some(picture) = &mut self.picture {
-            picture.selected = false;
+            if picture.selected {
+                picture.selected = false;
+                Self::write_picture_vertices(queue, picture);
+            }
         }
     }
-    pub fn select_at(&mut self, point: (f32, f32), additive: bool) -> bool {
+    pub fn select_at(&mut self, queue: &wgpu::Queue, point: (f32, f32), additive: bool) -> bool {
         let Some(picture) = &mut self.picture else {
             return false;
         };
-        let some((first, second)) = picture.corners else {
+        let Some((first, second)) = picture.corners else {
             return false;
         };
         let min_x = first.0.min(second.0);
@@ -219,16 +247,21 @@ impl ReferenceImageLayer {
         let hit = point.0 >= min_x
             && point.0 <= max_x
             && point.1 >= min_z
-            &&point.1 <= max_z;
-        picture.selected = if additive {
+            && point.1 <= max_z;
+        let selected = if additive {
             picture.selected || hit
         } else {
             hit
         };
+        if selected != picture.selected {
+            picture.selected = selected;
+            Self::write_picture_vertices(queue, picture);
+        }
         hit
     }
     pub fn select_box(
         &mut self,
+        queue: &wgpu::Queue,
         first: (f32, f32),
         second: (f32, f32),
         additive: bool,
@@ -248,28 +281,63 @@ impl ReferenceImageLayer {
         let image_min_z = image_first.1.min(image_second.1);
         let image_max_z = image_first.1.max(image_second.1);
         let hit = image_max_x >= box_min_x
-            && image_min <= box_max_x
-            && image_ma_z = box_min_z
+            && image_min_x <= box_max_x
+            && image_max_z >= box_min_z
             && image_min_z <= box_max_z;
-        picture.selected = if additive {
+        let selected = if additive {
             picture.selected || hit
         } else {
             hit
         };
+        if selected != picture.selected {
+            picture.selected = selected;
+            Self::write_picture_vertices(queue, picture);
+        }
         hit
     }
-    pub fn delete_second(&mut self) -> bool {
+    pub fn delete_selected(&mut self, deleted_with_shapes: bool) -> bool {
         let selected = self
             .picture
             .as_ref()
             .map(|picture| picture.selected)
             .unwrap_or(false);
         if selected {
-            self.picture = None;
+            self.deleted_picture = self.picture.take();
+            self.deleted_with_shapes = deleted_with_shapes;
+            self.redo_delete_available = false;
+        } else if deleted_with_shapes {
+            self.deleted_picture = None;
+            self.deleted_with_shapes = false;
+            self.redo_delete_available = false;
         }
         selected
     }
-    pub fn clear(&mut self) { self.picture = None; }
+    pub fn undo_delete(&mut self) -> Option<bool> {
+        if self.picture.is_some() {
+            return None;
+        }
+        let picture = self.deleted_picture.take()?;
+        let deleted_with_shapes = self.deleted_with_shapes;
+        self.picture = Some(picture);
+        self.redo_delete_available = true;
+        Some(deleted_with_shapes)
+    }
+    pub fn redo_delete(&mut self) -> Option<bool> {
+        if !self.redo_delete_available {
+            return None;
+        }
+        let picture = self.picture.take()?;
+        let deleted_with_shapes = self.deleted_with_shapes;
+        self.deleted_picture = Some(picture);
+        self.redo_delete_available = false;
+        Some(deleted_with_shapes)
+    }
+    pub fn clear(&mut self) {
+        self.picture = None;
+        self.deleted_picture = None;
+        self.deleted_with_shapes = false;
+        self.redo_delete_available = false;
+    }
     pub fn draw<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>) {
         if let Some(picture) = &self.picture {
             pass.set_pipeline(&self.pipeline);

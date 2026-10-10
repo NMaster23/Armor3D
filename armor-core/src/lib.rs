@@ -127,7 +127,7 @@ impl ViewportRenderer {
     }
     */
     fn undo(&mut self) -> bool {
-        self.state.viewport.undo_scene()
+        self.state.undo_scene()
     }
     fn import_reference_image(
         &mut self,
@@ -160,7 +160,7 @@ impl ViewportRenderer {
         self.state.viewport.cancel_curve();
     }
     fn redo(&mut self) -> bool {
-        self.state.viewport.redo_scene()
+        self.state.redo_scene()
     }
     fn begin_circle(&mut self, x: f32, y: f32) ->bool {
         self.state.viewport.begin_circle(x, y)
@@ -296,6 +296,23 @@ impl ViewportRenderer {
         )
     }
     #[pyo3(signature = (x, y, additive=false))]
+    fn select_picture_at(&mut self, x: f32, y: f32, additive: bool) -> bool {
+        self.state.select_reference_at(x, y, additive)
+    }
+    fn select_picture_box(
+        &mut self,
+        x1: f32,
+        y1: f32,
+        x2: f32,
+        y2: f32,
+        additive: bool,
+    ) -> bool {
+        self.state
+            .select_reference_box(x1, y1, x2, y2, additive)
+    }
+    fn clear_picture_selection(&mut self) {
+        self.state.clear_reference_selection();
+    }
     fn select_at(
         &mut self,
         x: f32,
@@ -333,7 +350,7 @@ impl ViewportRenderer {
     }
 
     fn delete_selected(&mut self) -> usize {
-        self.state.viewport.delete_selected()
+        self.state.delete_selected_objects()
     }
 
     fn begin_move_selected(&mut self, x: f32, y: f32) -> bool {

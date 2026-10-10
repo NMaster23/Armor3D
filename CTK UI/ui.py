@@ -681,15 +681,35 @@ def viewport_mouse_up(event):
         return
     if activecommand is not None:
         renderer.mouse_button(False)
-    elif left_drag_start is not None:
-        if left_dragged:
-            renderer.select_box(left_drag_start[0], left_drag_start[1], event.x, event.y)
-        else:
-            renderer.select_at(event.x, event.y)
+        return
+    if left_drag_start is None:
+        return
+    additive = bool(event.state & 0x0001)
+    if left_dragged:
+        renderer.select_box(
+            left_drag_start[0],
+            left_drag_start[1],
+            event.x,
+            event.y,
+            additive)
+        renderer.select_picture_box(
+            left_drag_start[0],
+            left_drag_start[1],
+            event.x,
+            event.y,
+            additive)
+    else:
+        selected_shape = renderer.select_at(
+            event.x,
+            event.y,
+            additive)
+        if selected_shape is None:
+            renderer.select_picture_at(event.x, event.y, additive)
+        elif not additive:
+            renderer.clear_picture_selection()
     hide_selection_box()
     left_drag_start = None
     left_dragged = False
-last_right_drag = None
 def viewport_right_down(event):
     global last_right_drag, rightpresspos, rightpresstime, rightdragged
     viewport.focus_set()
