@@ -1,6 +1,6 @@
-use crate::camera::{Camera, CameraController, CameraUniform};
+use crate::camera::{Camera, CameraUniform};
 use crate::{GRAPH_INDICES, GRAPH_VERTICES, Vertex};
-use cgmath::{Vector2, Vector3};
+use cgmath::Vector3;
 use glyphon::{Attrs, Buffer, Color, FontSystem, Metrics, Resolution, SwashCache, TextArea, TextAtlas, TextBounds, TextRenderer};
 use std::sync::Arc;
 use wgpu::util::DeviceExt;
@@ -9,6 +9,55 @@ use winit::window::Window;
 use crate::viewport::{PolyLine, Viewport};
 
 const INITIAL_POINT_SIZE: usize = 16;
+
+const MESH_SHADER: &str = r#"
+struct CameraLightUniform {
+    view_proj: mat4x4<f32>,
+    light_pos: vec4<f32>,
+};
+
+@group(0) @binding(0)
+var<uniform> camera_light: CameraLightUniform;
+
+@group(1) @binding(0)
+var material_texture: texture_2d<f32>;
+
+@group(1) @binding(1)
+var material_sampler: sampler;
+
+struct VertexInput {
+    @location(0) position: vec3<f32>,
+    @location(1) normal: vec3<f32>,
+    @location(2) texture_coordinates: vec2<f32>,
+    @location(3) color: vec4<f32>,
+};
+
+struct VertexOutput {
+    @builtin(position) clip_position: vec4<f32>,
+    @location(0) texture_coordinates: vec2<f32>,
+    @location(1) color: vec4<f32>,
+};
+
+@vertex
+fn vs_main(input: VertexInput) -> VertexOutput {
+    var output: VertexOutput;
+    output.clip_position =
+        camera_light.view_proj * vec4<f32>(input.position, 1.0);
+    output.texture_coordinates = input.texture_coordinates;
+    output.color = input.color;
+    return output;
+}
+
+@fragment
+fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
+    let texel = textureSample(
+        material_texture,
+        material_sampler,
+        input.texture_coordinates
+    );
+    return texel * input.color;
+}
+"#;
 
 pub struct State {
     surface: wgpu::Surface<'static>,
@@ -731,7 +780,7 @@ impl VertexRenderer {
             },
             wgpu::VertexAttribute {
                 offset: 12,
-                shader_location: 0,
+                shader_location: 1,
                 format: wgpu::VertexFormat::Float32x3,
             },
             wgpu::VertexAttribute {
@@ -828,7 +877,7 @@ impl Renderer {
         });
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Mesh Shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
+            source: wgpu::ShaderSource::Wgsl(MESH_SHADER.into()),
         });
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Mesh Pipeline Layout"),
@@ -857,8 +906,8 @@ impl Renderer {
             primitive: wgpu::PrimitiveState::default(),
             depth_stencil: Some(wgpu::DepthStencilState {
                 format: wgpu::TextureFormat::Depth32Float,
-                depth_write_enabled: true,
-                depth_compare: wgpu::CompareFunction::Less,
+                depth_write_enabled: Some(true),
+                depth_compare: Some(wgpu::CompareFunction::Less),
                 stencil: wgpu::StencilState::default(),
                 bias: wgpu::DepthBiasState::default(),
             }),
@@ -866,5 +915,50 @@ impl Renderer {
             multiview_mask: None,
             cache: None,
         });
+
+        let target_size = wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        };
+        let color_texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("Renderer Color Target"),
+            size: target_size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: output_format,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                | wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        });
+        let color_view = color_texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+        let depth_texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("Renderer Depth Target"),
+            size: target_size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Depth32Float,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            view_formats: &[],
+        });
+        let depth_view = depth_texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+        Ok(Self {
+            pipeline,
+            camera_light,
+            material,
+            camera_light_buffer,
+            camera_light_bind,
+            shapes: Vec::new(),
+            color_texture,
+            color_view,
+            depth_texture,
+            depth_view,
+            output_size: (width, height),
+            output_format,
+        })
     }
 }
