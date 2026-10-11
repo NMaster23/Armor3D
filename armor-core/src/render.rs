@@ -97,6 +97,7 @@ pub struct State {
     text_pos: Vector3<f32>,
     pub (crate) egui_winit: Option<egui_winit::State>,
     egui_ctx: egui::Context,
+    egui_renderer: egui_wgpu::Renderer,
 }
 
 impl State {
@@ -401,6 +402,8 @@ impl State {
             None,
         );
         let egui_ctx = egui::Context::default();
+        let output_color_format = config.format;
+        let options = egui_wgpu::RendererOptions::default();
         let egui_winit = egui_winit::State::new(
             egui_ctx.clone(),
             egui::ViewportId::ROOT,
@@ -409,6 +412,7 @@ impl State {
             window.theme(),
             Some(device.limits().max_texture_dimension_2d as usize),
         );
+        let egui_renderer = egui_wgpu::Renderer::new(&device, output_color_format, options);
         Ok(Self {
             reference_image,
             surface,
@@ -445,6 +449,7 @@ impl State {
             text_pos: Vector3::new(0.0, 0.0, 0.0),
             egui_winit: Some(egui_winit),
             egui_ctx: egui_ctx,
+            egui_renderer,
         })
     }
     pub fn draw_text(&mut self, text: &str, pos: Vector3<f32>) {
@@ -655,6 +660,11 @@ impl State {
         //     None,
         // );
         text_buffer.shape_until_scroll(&mut font_system, false);
+        let egui_renderer = egui_wgpu::Renderer::new(
+            &device,
+            config.format,
+            egui_wgpu::RendererOptions::default(),
+        );
         Ok(Self {
             surface,
             reference_image,
@@ -691,6 +701,7 @@ impl State {
             text_pos: Vector3::new(0.0, 0.0, 0.0),
             egui_winit: None,
             egui_ctx: egui::Context::default(),
+            egui_renderer,
         })
     }
     pub fn resize(&mut self, width: u32, height: u32) {
@@ -707,7 +718,11 @@ impl State {
         }
     }
 
-    pub fn render(&mut self) -> anyhow::Result<()> {
+    pub fn render(
+        &mut self,
+        show_extrude_popup: &mut bool,
+        extrude_input: &mut f32,
+    ) -> anyhow::Result<()> {
         if self.viewport.redraw {
             let vertices = &self.viewport.point_vertices;
             if vertices.len() > self.point_buffer_capacity {

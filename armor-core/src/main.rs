@@ -123,15 +123,20 @@ pub enum PopupContent {
 impl App {
     pub fn popup_window(
         &mut self,
+        case: i32
     ) {
-        if self.show_extrude_popup {
-            return;
-        } else {
-            self.show_extrude_popup = true;
+        if case == 1 {
+            if self.show_extrude_popup {
+                return;
+            } else {
+                self.show_extrude_popup = true;
+            }
         }
     }
-    pub fn close_popup(&mut self) {
-        self.show_extrude_popup = false;
+    pub fn close_popup(&mut self, case: i32) {
+        if case == 1 {
+            self.show_extrude_popup = false;
+        }
     }
     pub fn new() -> Self {
         Self {
@@ -194,7 +199,7 @@ impl ApplicationHandler<State> for App {
     fn window_event(
         &mut self,
         event_loop: &ActiveEventLoop,
-        window_id: winit::window::WindowId,
+        _window_id: winit::window::WindowId,
         event: WindowEvent,
     ) {
         let egui_consumed = if let Some(state) = self.state.as_mut() {
@@ -215,23 +220,25 @@ impl ApplicationHandler<State> for App {
         }
         if let WindowEvent::KeyboardInput {
             event: KeyEvent {
-                physical_key: PhysicalKey::Code(code),
+                physical_key: PhysicalKey::Code(KeyCode::KeyE),
                 state: key_state,
                 ..
             },
             ..
         } = &event {
-            if *code == winit::keyboard::KeyCode::Escape && key_state.is_pressed() {
-                let cancelled = self.state.as_mut().is_some_and(|state| state.viewport.cancel_active_command(*code, true));
-                if cancelled {
-                    if let Some(window) = self.state.as_ref().and_then(|state| state.window.as_ref()) {
-                        window.request_redraw();
-                    }
-                } else {
-                    event_loop.exit();
+            if key_state.is_pressed() {
+                if let Some(height) = self.state.as_ref().and_then(|s| {
+                    let id = s.viewport.selected_entity?;
+                    s.viewport.entities.iter().find(|e| e.id == id).map(|e| e.height)
+                }) {
+                    self.extrude_input = height;
                 }
-                return;
+                self.popup_window(1);
+                if let Some(window) = self.state.as_ref().and_then(|s| s.window.as_ref()) {
+                    window.request_redraw();
+                }
             }
+            return;
         }
         if let WindowEvent::ModifiersChanged(modifiers) = &event {
             self.modifiers = modifiers.state();
@@ -245,7 +252,7 @@ impl ApplicationHandler<State> for App {
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::Resized(size) => state.resize(size.width, size.height),
-            WindowEvent::RedrawRequested => match state.render() {
+            WindowEvent::RedrawRequested => match state.render(&mut self.show_extrude_popup, &mut self.extrude_input) {
                 Ok(_) => {}
                 Err(e) => {
                     log::error!("{:?}", e);
@@ -347,7 +354,7 @@ impl ApplicationHandler<State> for App {
 }
 
 impl eframe::App for App {
-    fn ui(&mut self, ctx: &mut egui::Ui, frame: &mut eframe::Frame) {
+    fn ui(&mut self, ctx: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let state: &mut render::State = self.state.as_mut().expect("Error unwrapping state eframe");
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.heading("Extrude Input");
