@@ -1537,6 +1537,7 @@ file_hover_job = None
 def open_file_menu():
     global file_hover_job
     file_hover_job = None
+    slidemenu(importmenu, 48, 72, False)
     slidemenu(analyze_menu, 100, 72, False)
     slidemenu(toolsmenu, 150, 136, False)
     showfilepage("main")
@@ -1602,11 +1603,88 @@ def updatecoords():
     x, y, z = position
     canvas.itemconfig(coords_text, text=f"X: {x:.3f}   Y: {y:.3f}   Z: {z:.3f}")
 
+importz = canvas.create_text(68, 8, text='Import', font=("Lexend", 8), fill="#F3E6C5")
+importmenu = Canvas(app, width=160, height=72, bg="#342719", highlightthickness=1, highlightbackground="#A77A2f")
+importrows = []
+for index, name in enumerate(("DXF", "Picture")):
+    y = 4 + index * 32
+    box = importmenu.create_rectangle(4, y, 155, y+30, fill='', outline='')
+    label = importmenu.create_text(12, y+15, text=name, anchor='w', fill='#F3E6C5', font=("Iceland", 13))
+    importrows.append((box, label))
+def importmenumotion(event):
+    hovered = (event.y - 4) // 32
+    for index, (box, label) in enumerate(importrows):
+        active = index == hovered and 4 <= event.x <= 155
+        importmenu.itemconfig( box, fill=HOVER_BG if active else "" )
+        importmenu.itemconfig( label, fill=HOVER_TEXT if active else "#F3E6C5" )
+def importmenuclick(event):
+    if not 4<= event.x <= 155:
+        return
+    row = (event.y-4) // 32
+    commands = ("Import DXF", "Picture")
+    if 0 <= row < len(commands):
+        closeimportmenu()
+        runnamedcommand(commands[row])
+def openimportmenu():
+    global importhoverjob
+    importhoverjob = None
+    slidemenu(filemenu, 8, 104, False)
+    slidemenu(analyze_menu, 100, 72, False)
+    slidemenu(toolsmenu, 150, 136, False)
+    slidemenu(importmenu, 48, 72, True)
+def closeimportmenu():
+    global importclosejob
+    importclosejob = None
+    slidemenu(importmenu, 48, 72, False)
+importhoverjob = None
+importclosejob = None
+def importenter(event):
+    global importhoverjob
+    canvas.itemconfig(importz, fill="#F4C95d")
+    if importhoverjob is not None:
+        app.after_cancel(importhoverjob)
+    importhoverjob = app.after(500, openimportmenu)
+def importleave(event):
+    global importhoverjob
+    canvas.itemconfig(importz, fill="#F3E6C5")
+    if importhoverjob is not None:
+        app.after_cancel(importhoverjob)
+        importhoverjob= None
+def importclick(event):
+    importleave(event)
+    if importmenu.winfo_manager():
+        closeimportmenu()
+    else:
+        openimportmenu()
+def pointeronimportmenu(event):
+    x = event.x_root - app.winfo_rootx()
+    y = event.y_root - app.winfo_rooty()
+    return (45 <= x <= 92 and 0 <= y <= 20) or (
+        48 <= x <= 208 and 20 <= y <=94
+    )
+def importpointermotion(event):
+    global importclosejob
+    if importmenu in menusliding:
+        return
+    if not importmenu.winfo_manager():
+        return
+    if pointeronimportmenu(event):
+        if importclosejob is not None:
+            app.after_cancel(importclosejob)
+            importclosejob = None
+    elif importclosejob is None:
+        importclosejob = app.after(180, closeimportmenu)
+def importoutsideclick(event):
+    if (importmenu.winfo_manager() and not pointeronimportmenu(event)):
+        closeimportmenu()
+importmenu.bind("<Motion>", importmenumotion)
+importmenu.bind("<Button-1>", importmenuclick)
+canvas.tag_bind(importz, "<Enter>", importenter)
+canvas.tag_bind(importz, "<Leave>", importleave)
+canvas.tag_bind(importz, "<Button-1>", importclick)
+app.bind_all("<Motion>", importpointermotion, add="+")
+app.bind_all("<Button-1>", importoutsideclick, add="+")
 
-importz = canvas.create_text(68, 8, text='Import', font=("Lexend", 8), fill='#F3E6C5')
-canvas.tag_bind(importz, "<Enter>", lambda event: canvas.itemconfig(importz, fill='#F4C95D'))
-canvas.tag_bind(importz, "<Leave>", lambda event: canvas.itemconfig(importz, fill='#F3E6C5'))
-canvas.tag_bind(importz, "<Button-1>", importdxcommand)
 
 analyze = canvas.create_text(120, 8, text='Analyze', font=("Lexend", 8), fill='#F3E6C5')
 analyze_menu = Canvas(app, width=160, height=72, bg="#3B332A", highlightthickness=1, highlightbackground="#A77A2F")
@@ -1637,6 +1715,7 @@ analyzeclosejob = None
 def openanalyzemenu():
     global analyzehoverjob
     analyzehoverjob = None
+    slidemenu(importmenu, 48, 72, False)
     slidemenu(filemenu, 8, 104, False)
     slidemenu(toolsmenu, 150, 136, False)
     slidemenu(analyze_menu, 100, 72, True)
@@ -1714,6 +1793,7 @@ toolsclosejob = None
 def opentoolsmenu():
     global toolshoverjob
     toolshoverjob = None
+    slidemenu(importmenu, 48, 72, False)
     slidemenu(filemenu, 8, 104, False)
     slidemenu(analyze_menu, 100, 72, False)
     slidemenu(toolsmenu, 150, 136, True)
