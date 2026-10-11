@@ -262,7 +262,7 @@ impl Viewport {
                 selected: false,
                 height: source.height,
                 show_markers: source.show_markers,
-                hatched: false
+                hatched: source.hatched,
             });
         }
 
@@ -307,8 +307,6 @@ impl Viewport {
         self.rebuild_vertices();
     }
     pub fn undo_scene(&mut self) -> bool {
-        // During Polyline, undo only the latest completed segment instead of
-        // cancelling the command or removing an already-finished object.
         if self.polyline_active {
             if self.active_polyline.len() <= 1 {
                 return false;
@@ -405,7 +403,7 @@ impl Viewport {
                 selected: true,
                 height: source.height,
                 show_markers: source.show_markers,
-                hatched: false
+                hatched: source.hatched,
             });
         }
 
@@ -1136,13 +1134,25 @@ impl Viewport {
                 let preview_vertices: Vec<Vector3<f32>> = source
                     .vertices
                     .iter()
-                    .map(|point| *point + offset)
+                    .map(|point| *point+offset)
                     .collect();
+                if source.hatched && Self::is_closed_shape(&preview_vertices) {
+                    let preview_fill = [
+                        source.color[0],
+                        source.color[1],
+                        source.color[2],
+                        0.35,
+                    ];
+                    new_vertices.extend(Self::tessellate_fill(
+                        &preview_vertices,
+                        preview_fill,
+                    ));
+                }
                 new_vertices.extend(self.tessellate_polyline(
                     &preview_vertices,
                     source.thickness,
                     preview_color,
-                ));
+                ))
             }
 
             if offset.magnitude2() > f32::EPSILON {
@@ -2419,7 +2429,7 @@ impl Viewport {
                 selected: false,
                 height: source.height,
                 show_markers: source.show_markers,
-                hatched: false,
+                hatched: source.hatched,
             });
         }
         self.rebuild_vertices();
