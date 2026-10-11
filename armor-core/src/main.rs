@@ -218,28 +218,6 @@ impl ApplicationHandler<State> for App {
         {
             return;
         }
-        if let WindowEvent::KeyboardInput {
-            event: KeyEvent {
-                physical_key: PhysicalKey::Code(KeyCode::KeyE),
-                state: key_state,
-                ..
-            },
-            ..
-        } = &event {
-            if key_state.is_pressed() {
-                if let Some(height) = self.state.as_ref().and_then(|s| {
-                    let id = s.viewport.selected_entity?;
-                    s.viewport.entities.iter().find(|e| e.id == id).map(|e| e.height)
-                }) {
-                    self.extrude_input = height;
-                }
-                self.popup_window(1);
-                if let Some(window) = self.state.as_ref().and_then(|s| s.window.as_ref()) {
-                    window.request_redraw();
-                }
-            }
-            return;
-        }
         if let WindowEvent::ModifiersChanged(modifiers) = &event {
             self.modifiers = modifiers.state();
             return;

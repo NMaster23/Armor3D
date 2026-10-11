@@ -650,10 +650,22 @@ def viewport_mouse_down(event):
         return
     if activecommand is None:
         hide_selection_box()
-        moving_selection = renderer is not None and renderer.begin_move_selected(event.x, event.y)
+        additive = bool(event.state & 0x0001)
+        moving_selection = renderer.begin_move_selected( 
+            event.x,
+            event.y
+        )
+        if not moving_selection and not additive:
+            selected_shape = renderer.select_at(
+                event.x, event.y, False
+            )
+            if selected_shape is not None:
+                renderer.clear_picture_selection()
+                moving_selection = renderer.begin_move_selected(event.x, event.y)
         if moving_selection:
             left_drag_start = None
-            viewport.configure(cursor="fleur")
+            left_dragged = False
+            viewport.configure(cursor='fleur')
         else:
             left_drag_start = (event.x, event.y)
             left_dragged = False
@@ -1182,12 +1194,31 @@ def startplaceholdercmd(name, message):
     command.configure(placeholder_text=message)
     writehistory(F"> {name}\n{message}")
     viewport.focus_set()
+def starthatch(event=None):
+    global activecommand
+    command.delete(0, 'end')
+    if renderer is None:
+        return
+    count = renderer.hatch_selected()
+    if count: 
+        writehistory(
+            f"> Hatch\nHatched {count} closed object"
+            f"{'s' if count != 1 else ''}"
+        )
+    else:
+        writehistory(
+            "> Hatch\nSelect a fully closed object first"
+        )
+    activecommand = None
+    command.configure(placeholder_text='Command: ')
+    viewport.focus_set()
 def runnamedcommand(name):
     global lastcommand
     normalized = name.lower().replace(" ", "")
     actions = {
         "polyline": startpolyline,
         'pline': startpolyline,
+        "hatch": starthatch,
         'curve': startcurve,
         'crv': startcurve,
         "circle": start_circle,
@@ -1388,7 +1419,8 @@ def runcmd(event):
     return "break"
 command.bind("<Return>", runcmd)
 commandnames = ["Polyline", "Curve", "Join", "Explode", "Rectangle", "Text", "File", "New", "Save", "Save as", '3DM', "PNG", "DXF", "Analyze", "Distance", "Angle", "Tools", "Revolve", "Extrude", "Mirror", "Copy",
-                'Circle', "Fillet", "Trim", "Arc", "Picture", "Import DXF", "Import"]
+                'Circle', "Fillet", "Trim", "Arc", "Picture", "Import DXF", "Import", "hatch"]
+
 
 def handlenewconfirmation(event):
     if activecommand != "confirmnew":

@@ -291,6 +291,9 @@ impl ViewportRenderer {
 
         true
     }
+    fn hatch_selected(&mut self) -> usize {
+        self.state.viewport.hatch_selected()
+    }
     fn extrude(&mut self, height: f32) {
         self.state.viewport.extrude_selected(height);
     }
@@ -518,7 +521,6 @@ impl ViewportRenderer {
             "s" | "S" => KeyCode::KeyS,
             "d" | "D" => KeyCode::KeyD,
             "c" | "C" => KeyCode::KeyC,
-            "e" | "E" => KeyCode::KeyE,
             "g" | "G" => KeyCode::KeyG,
             "Tab" | "tab" => KeyCode::Tab,
             "Up" => KeyCode::ArrowUp,

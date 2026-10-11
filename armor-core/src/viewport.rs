@@ -28,6 +28,7 @@ pub struct PolyLineVertex {
 
 #[derive(Clone, Debug)]
 pub struct PolyLine {
+    pub hatched: bool,
     pub id: usize,
     pub vertices: Vec<Vector3<f32>>,
     pub color: [f32; 4],
@@ -158,6 +159,7 @@ impl Viewport {
                 selected: true,
                 height: source.height,
                 show_markers: source.show_markers,
+                hatched: source.hatched
             });
         }
 
@@ -169,7 +171,30 @@ impl Viewport {
             .filter(|entity| entity.selected)
             .count()
     }
-
+    fn is_closed_shape(vertices: &[Vector3<f32>]) -> bool {
+        vertices.len() >= 4
+            && (vertices[0]-vertices[vertices.len()-1]).magnitude2() < 0.0001
+    }
+    pub fn hatch_selected(&mut self) -> usize {
+        let hatchable_ids: Vec<usize> = self.entities
+            .iter()
+            .filter(|entity| {
+                entity.selected && Self::is_closed_shape(&entity.vertices)
+            })
+            .map(|entity| entity.id)
+            .collect();
+        if hatchable_ids.is_empty() {
+            return 0;
+        }
+        self.save_undo_state();
+        for entity in &mut self.entities {
+            if hatchable_ids.contains(&entity.id) {
+                entity.hatched =true;
+            }
+        }
+        self.rebuild_vertices();
+        hatchable_ids.len()
+    }
     pub fn begin_copy(&mut self) -> usize {
         self.copy_sources = self
             .entities
@@ -237,6 +262,7 @@ impl Viewport {
                 selected: false,
                 height: source.height,
                 show_markers: source.show_markers,
+                hatched: false
             });
         }
 
@@ -379,6 +405,7 @@ impl Viewport {
                 selected: true,
                 height: source.height,
                 show_markers: source.show_markers,
+                hatched: false
             });
         }
 
@@ -472,6 +499,7 @@ impl Viewport {
             selected: false,
             height: 0.0,
             show_markers: true,
+            hatched: false,
         };
         self.next_entity += 1;
         self.hist_entities.current.push(shape);
@@ -651,7 +679,14 @@ impl Viewport {
                 .iter()
                 .filter_map(|point| self.world_to_screen(*point))
                 .collect();
-
+            if entity.hatched
+                && Self::is_closed_shape(&entity.vertices)
+                && Self::point_in_polygon(mouse_px, &screen_vertices)
+                {
+                    closest = Some(entity.id);
+                    min_dist_sq = 0.0;
+                    continue;
+                }
             for segment in screen_vertices.windows(2) {
                 let distance = Self::dist_to_segment(
                     mouse_px,
@@ -694,6 +729,29 @@ impl Viewport {
 
     fn point_in_rect(point: cgmath::Vector2<f32>, min: cgmath::Vector2<f32>, max: cgmath::Vector2<f32>) -> bool {
         point.x >= min.x && point.x <= max.x && point.y >= min.y && point.y <= max.y
+    }
+    fn point_in_polygon(
+        point: cgmath::Vector2<f32>,
+        vertices: &[cgmath::Vector2<f32>]
+    ) -> bool {
+        if vertices.len() <3 {
+            return false;
+        }
+        let mut inside = false;
+        let mut previous = vertices.len() - 1;
+        for current in 0..vertices.len() {
+            let a = vertices[current];
+            let b  = vertices[previous];
+            let crosses  = (a.y > point.y) != (b.y > point.y);
+            if crosses {
+                let intersection_x = (b.x - a.x) * (point.y - a.y) / (b.y - a.y) + a.x;
+                if  point.x < intersection_x { 
+                    inside = !inside;
+                }
+            }
+            previous =current;
+        }
+        inside
     }
 
     fn segment_intersects_rect(
@@ -846,6 +904,12 @@ impl Viewport {
                 let segment_hit = screen_vertices.windows(2).any(|segment| {
                     Self::dist_to_segment(mouse, segment[0], segment[1]) <= threshold_sq
                 });
+                let interior_hit  = entity.hatched
+                    && Self::is_closed_shape(&entity.vertices)
+                    && Self::point_in_polygon(mouse, &screen_vertices);
+                if interior_hit {
+                    return true;
+                }
                 if segment_hit {
                     return true;
                 }
@@ -980,38 +1044,49 @@ impl Viewport {
             } else {
                 entity.color
             };
-
-            if entity.vertices.len() >= 3 && entity.height > 0.0 {
-                let fill_color = [draw_color[0], draw_color[1], draw_color[2], draw_color[3]];
-                let mesh_vertices = Self::extrude(&entity.vertices, fill_color, entity.height);
-                new_vertices.extend_from_slice(&mesh_vertices);
+            let closed = Self::is_closed_shape(&entity.vertices);
+            if entity.hatched && closed {
+                let fill_color = [
+                    draw_color[0],
+                    draw_color[1],
+                    draw_color[2],
+                    0.45,
+                ];
+                new_vertices.extend(Self::tessellate_fill(
+                    &entity.vertices,
+                    fill_color,
+                ));
             }
-
-            let entity_vertices =
-                self.tessellate_polyline(&entity.vertices, entity.thickness, draw_color);
+            if closed && entity.height > 0.0 {
+                new_vertices.extend(Self::extrude(
+                    &entity.vertices,
+                    draw_color,
+                    entity.height,
+                ));
+            }
+            let entity_vertices = self.tessellate_polyline(
+                &entity.vertices,
+                entity.thickness,
+                draw_color,
+            );
             new_vertices.extend_from_slice(&entity_vertices);
-
-            if entity.show_markers && Self::circle_control_points(&entity.vertices).is_none() {
-                let closed = entity.vertices.len() > 2
-                    && (entity.vertices[0]
-                        - entity.vertices[entity.vertices.len() - 1])
-                        .magnitude2()
-                        < 0.0001;
+            if entity.show_markers
+                && Self::circle_control_points(&entity.vertices).is_none()
+        {
                 let marker_count = if closed {
                     entity.vertices.len() - 1
                 } else {
                     entity.vertices.len()
                 };
-
-                for point in entity.vertices.iter().take(marker_count) {
-                    new_vertices.extend(Self::tessellate_vertex_circle(
-                        *point,
-                        marker_radius,
-                        marker_color,
-                    ));
-                }
-            }
+        for point in entity.vertices.iter().take(marker_count) {
+            new_vertices.extend(Self::tessellate_vertex_circle(
+                *point,
+                marker_radius,
+                marker_color,
+            ));
         }
+    }
+}
         if let (Some(first), Some(second)) = (
             self.rectangle_first,
             self.rectangle_second
@@ -1307,6 +1382,7 @@ impl Viewport {
             selected: false,
             height: 0.0,
             show_markers: true,
+            hatched: false,
         })
     }
     pub fn graph_handle_key(&mut self, code: KeyCode, is_pressed: bool) -> bool {
@@ -2298,6 +2374,7 @@ impl Viewport {
                 selected: false,
                 height: source.height,
                 show_markers: source.show_markers,
+                hatched: source.hatched
             });
         }
         self.rebuild_vertices();
@@ -2342,6 +2419,7 @@ impl Viewport {
                 selected: false,
                 height: source.height,
                 show_markers: source.show_markers,
+                hatched: false,
             });
         }
         self.rebuild_vertices();
