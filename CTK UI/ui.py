@@ -504,7 +504,7 @@ def viewport_mouse_move(event):
     if snapposition and (
         activecommand in (
             'polyline', 'curve', 'copy_place', 'circle',
-            'mirror_first', 'mirror_second'
+            'mirror_first', 'mirror_second', "distance"
         ) or gridsnapon
     ):
         snap_x, snap_y = map(round, snapposition)
@@ -584,6 +584,9 @@ def viewport_mouse_down(event):
     if activecommand in ('copy_base', 'copy_place'):
         renderer.mouse_move(event.x, event.y)
         pickcopypoint(event.x, event.y)
+        return
+    if activecommand == 'distance':
+        pickdistancepoint(event)
         return
     if activecommand == "circle":
         if circle_center is None:
@@ -960,6 +963,42 @@ def writehistory(text):
     history.insert('end', text+ '\n')
     history.see("end")
     history.configure(state='disabled')
+def startdistance(event=None):
+    global activecommand
+    if renderer is None:
+        return
+    activecommand = 'distance'
+    renderer.start_polyline()
+    command.delete(0, 'end')
+    command.configure(placeholder_text=("Distance - pick first point"))
+    writehistory("> Distance\nPick first point")
+    viewport.configure(cursor='crosshair')
+    viewport.focus_set()
+def pickdistancepoint(event):
+    global activecommand
+    if renderer is None:
+        return
+    renderer.mouse_move(event.x, event.y)
+    renderer.mouse_button(True)
+    renderer.mouse_button(False)
+    points = renderer.active_polyline_data()
+    if len(points) < 2:
+        command.configure(placeholder_text="Distance: pick second point")
+        writehistory("Pick second point")
+        return
+    first = points[-2]
+    second = points[-1]
+    dx = second[0] - first[0]
+    dy = second[1] - first[1]
+    dz = second[2] - first[2]
+    distance = math.sqrt(dx * dx + dy * dy + dz * dz)
+    renderer.cancel_polyline()
+    activecommand = None
+    command.delete(0, 'end')
+    command.configure(placeholder_text=f"Distance: {distance:.3f}")
+    writehistory(f"Distance = {distance:.3f}")
+    viewport.configure(cursor='arrow')
+    viewport.focus_set()
 def startpolyline(event=None):
     global activecommand
     activecommand = 'polyline'
@@ -1037,7 +1076,7 @@ def runnamedcommand(name):
         "rect": startrectangle,
         'text': starttext,
         'txt': starttext,
-        'distance':lambda: startplaceholdercmd("Distance", "Select first point"),
+        'distance': startdistance,
         "angle": lambda: startplaceholdercmd("Angle", "Select first point"),
         "revolve": lambda: startplaceholdercmd("Revolve", "Select objects to revolve"),
         "extrude": lambda: startplaceholdercmd("Extrude", "Select objects to extrude"),
@@ -1078,6 +1117,8 @@ def closeactivecommand(commit=False):
     global activecommand, circle_center, picturefirstpoint, picturefilename
     if activecommand is None:
         return
+    if activecommand == 'distance' and renderer is not None:
+        renderer.cancel_polyline()
     if activecommand in ('mirror_first', 'mirror_second') and renderer is not None:
         renderer.cancel_polyline()
         renderer.set_construction_snap(False)
