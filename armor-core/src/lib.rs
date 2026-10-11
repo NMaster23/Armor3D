@@ -240,12 +240,13 @@ impl ViewportRenderer {
         self.state.viewport.cancel_copy();
     }
     
-    fn render(&mut self) -> PyResult<()> {
+    pub fn render(&mut self) -> PyResult<()> {
+        let mut show_popup = false;
+        let mut extrude_input = 0.0;
         self.state
-            .render()
+            .render(&mut show_popup, &mut extrude_input)
             .map_err(|error| pyo3::exceptions::PyRuntimeError::new_err(error.to_string()))
     }
-
     fn add_point(&mut self, x: f32, y: f32, z: f32) {
         self.state.viewport.add_point(cgmath::Vector3::new(x, y, z));
     }

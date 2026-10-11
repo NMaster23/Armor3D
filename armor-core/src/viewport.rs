@@ -1319,10 +1319,6 @@ impl Viewport {
                 self.redraw = true;
                 true
             }
-            KeyCode::KeyE => {
-                self.extrude_step(0.5);
-                true
-            }
             _ => false,
         }
     }
