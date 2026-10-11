@@ -74,7 +74,6 @@ impl<T: Clone> ShapeUndoStore<T> {
         }
     }
 }
-
 pub struct Viewport {
     pub hist_entities: ShapeUndoStore<PolyLine>,
     pub entities: Vec<PolyLine>,
@@ -89,6 +88,7 @@ pub struct Viewport {
     pub construction_snap_enabled: bool,
     pub grid_snap_enabled: bool,
     pub grid_spacing: f32,
+    pub ortho_enabled: bool,
     pub cursor_pos: PhysicalPosition<f64>,
     pub holding_left: bool,
     pub polyline_active: bool,
@@ -411,6 +411,7 @@ impl Viewport {
             construction_snap_enabled: false,
             grid_snap_enabled: false,
             grid_spacing: 0.1,
+            ortho_enabled: false,
             cursor_pos: PhysicalPosition::new(0.0, 0.0),
             holding_left: false,
             polyline_active: false,
@@ -1405,7 +1406,25 @@ impl Viewport {
             self.grid_spacing = spacing;
         }
     }
-
+    pub fn set_ortho(&mut self, enabled: bool) {
+        self.ortho_enabled = enabled;
+        if self.polyline_active {
+            self.preview_point = None;
+            self.redraw = true;
+        }
+    }
+    fn ortho_snap_point(&self, point: Vector3<f32>) -> Option<Vector3<f32>> {
+        if !self.ortho_enabled {
+            return None;
+        }
+        let anchor= *self.active_polyline.last()?;
+        let difference = point - anchor;
+        if difference.x.abs() >= difference.z.abs() {
+            Some(Vector3::new(point.x, point.y, anchor.z))
+        } else {
+            Some(Vector3::new(anchor.x, point.y, point.z))
+        }
+    }
     fn grid_snap_point(&self, point: Vector3<f32>) -> Vector3<f32> {
         if !self.grid_snap_enabled {
             return point;
@@ -1661,11 +1680,13 @@ impl Viewport {
             }
         }
 
-        if self.grid_snap_enabled {
-            let snapped = self.grid_snap_point(point);
-            return (snapped, false, Some("Grid"));
+        let grid_point = self.grid_snap_point(point);
+        if let Some(ortho_point) = self.ortho_snap_point(grid_point) {
+            return (ortho_point, false, Some("Ortho"));
         }
-
+        if self.grid_snap_enabled {
+            return (grid_point, false, Some("Grid"));
+        }
         (point, false, None)
     }
     pub fn fetch_point(&mut self, mouse_pos: PhysicalPosition<f64>) -> Option<Vector3<f32>> {

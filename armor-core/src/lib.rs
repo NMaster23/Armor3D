@@ -403,7 +403,9 @@ impl ViewportRenderer {
     fn set_grid_spacing(&mut self, spacing: f32) {
         self.state.viewport.set_grid_spacing(spacing);
     }
-
+    fn set_ortho(&mut self, enabled: bool) {
+        self.state.viewport.set_ortho(enabled);
+    }
     fn snap_cursor_position(&mut self) -> Option<(f32, f32)> {
         self.state.viewport.snap_cursor_position()
     }

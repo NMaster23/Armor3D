@@ -472,6 +472,8 @@ def initialize_renderer():
         syncgridsnaprenderer()
     if "synclayerrenderer" in globals():
         synclayerrenderer()
+    if "syncorthorenderer" in globals():
+        syncorthorenderer()
     render_frame()
 def render_frame():
     if renderer is not None:
@@ -2186,6 +2188,7 @@ def orthoclick(event):
     global orthoon
     if 8 <= event.x <= 92 and 337 <= event.y <= 373:
         orthoon = not orthoon
+        syncorthorenderer()
         showortho(True)
         saveuisettings()
 canvas.bind("<Motion>", orthomotion, add="+")
@@ -2293,6 +2296,9 @@ def togglesnap(name):
         snapenabled[name] = not snapenabled[name]
     refreshosnap()
     saveuisettings()
+def syncorthorenderer():
+    if renderer is not None:
+        renderer.set_ortho(orthoon)
 def syncgridsnaprenderer():
     if renderer is not None:
         renderer.set_grid_snap(gridsnapon)
