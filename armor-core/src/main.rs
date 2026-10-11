@@ -199,7 +199,7 @@ impl ApplicationHandler<State> for App {
     fn window_event(
         &mut self,
         event_loop: &ActiveEventLoop,
-        window_id: winit::window::WindowId,
+        _window_id: winit::window::WindowId,
         event: WindowEvent,
     ) {
         let egui_consumed = if let Some(state) = self.state.as_mut() {
@@ -354,7 +354,7 @@ impl ApplicationHandler<State> for App {
 }
 
 impl eframe::App for App {
-    fn ui(&mut self, ctx: &mut egui::Ui, frame: &mut eframe::Frame) {
+    fn ui(&mut self, ctx: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let state: &mut render::State = self.state.as_mut().expect("Error unwrapping state eframe");
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.heading("Extrude Input");
