@@ -1911,7 +1911,31 @@ impl Viewport {
         self.rebuild_vertices();
         Some(radius)
     }
-
+    pub fn set_circle_radius(&mut self, radius: f32) -> bool {
+        if !radius.is_finite() || radius <= 0.0 {
+            return false;
+        }
+        let Some(center) = self.circle_center else {
+            return false;
+        };
+        let current_target= self
+            .circle_target
+            .unwrap_or(center+Vector3::new(1.0, 0.0, 0.0));
+        let offset = current_target - center;
+        let planar_length = (offset.x * offset.x + offset.z * offset.z).sqrt();
+        let direction = if planar_length > 0.0001 {
+            Vector3::new(
+                offset.x / planar_length,
+                0.0,
+                offset.z / planar_length,
+            )
+        } else {
+            Vector3::new(1.0, 0.0, 0.0)
+        };
+        self.circle_target = Some(center + direction * radius);
+        self.rebuild_vertices();
+        true
+    }
     pub fn commit_circle(&mut self, subdivisions: usize) -> bool {
         let (Some(center), Some(target)) = (self.circle_center, self.circle_target) else {
             return false;

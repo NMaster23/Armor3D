@@ -172,6 +172,9 @@ impl ViewportRenderer {
     fn commit_circle(&mut self, subdivisions: usize) -> bool {
         self.state.viewport.commit_circle(subdivisions)
     }
+    fn set_circle_radius(&mut self, radius: f32) -> bool {
+        self.state.viewport.set_circle_radius(radius)
+    }
     fn cancel_circle(&mut self) {
         self.state.viewport.cancel_circle();
     }

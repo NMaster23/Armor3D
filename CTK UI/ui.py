@@ -23,6 +23,7 @@ HOVER_TEXT = "#EBA119"
 currentfilepath = None
 importedfiles = []
 circle_center = None
+circle_measure_mode = None
 def updatewindowtitle():
     if currentfilepath:
         title = f"Armor 3D - {Path(currentfilepath).name}"
@@ -69,18 +70,20 @@ def createnewfile():
     writehistory("Created a new file")
     viewport.focus_set()
 def start_circle(event=None):
-    global activecommand, circle_center
+    global activecommand, circle_center, circle_measure_mode
     if renderer is None:
         return
     syncgridsnaprenderer()
     renderer.cancel_circle()
     circle_center = None
-    activecommand = "circle"
-    command.delete(0, "end")
+    circle_measure_mode = None
+    activecommand = 'circle'
+    command.delete(0, 'end')
     command.configure(placeholder_text="Circle: select center point")
     writehistory("> Circle\nSelect center point")
     viewport.configure(cursor="crosshair")
     viewport.focus_set()
+    
 picturefirstpoint = None
 picturefilename = None
 
@@ -487,12 +490,17 @@ def viewport_mouse_move(event):
         return
     snapkind = renderer.mouse_move(event.x, event.y)
     updatepicturepreview()
-    if activecommand == 'circle' and circle_center is not None:
+    if activecommand == "circle" and circle_center is not None:
         radius = renderer.update_circle_preview(event.x, event.y)
-        if radius is not None:
+        if radius is not None and not command.get().strip():
+            if circle_measure_mode == "diameter":
+                circle_value = radius * 2.0
+                circle_label = "Diameter"
+            else:
+                circle_value = radius
+                circle_label = "Radius"
             command.configure(
-                placeholder_text=f"Radius: {radius:.3f}"
-            )
+                placeholder_text=f"{circle_label}: {circle_value:.3f}")
     if activecommand == "copy_place":
         distance = renderer.update_copy_preview(event.x, event.y)
         if distance is not None:
@@ -564,7 +572,7 @@ def show_selection_box(start_x, start_y, end_x, end_y):
         line.lift()
 def viewport_mouse_down(event):
     global left_drag_start, left_dragged, moving_selection
-    global circle_center, activecommand
+    global circle_center, circle_measure_mode, activecommand
     hidesnapindicator()
     viewport.focus_set()
     if renderer is None:
@@ -595,16 +603,19 @@ def viewport_mouse_down(event):
         if circle_center is None:
             if renderer.begin_circle(event.x, event.y):
                 circle_center = True
-                command.configure(
-                    placeholder_text="Pick radius point"
-                )
-                writehistory("Pick radius point")
+                circle_measure_mode = None
+                command.delete(0, 'end')
+                command.configure(placeholder_text="Choose Radius or Diameter")
+                writehistory("Choose Radius or Diameter")
+                viewport.focus_set()
         else:
             renderer.update_circle_preview(event.x, event.y)
             if renderer.commit_circle(64):
                 circle_center = None
+                circle_measure_mode = None
                 activecommand = None
-                command.configure(placeholder_text="Command:")
+                command.delete(0, 'end')
+                command.configure(placeholder_text='Command:')
                 writehistory("Circle created")
                 viewport.configure(cursor='arrow')
         return
@@ -1189,10 +1200,9 @@ def repeatlastcommand():
     previous = lastcommand
     runnamedcommand(previous)
 def closeactivecommand(commit=False):
-    global activecommand, circle_center
-    global picturefirstpoint,picturefilename
+    global activecommand, circle_center, circle_measure_mode
+    global picturefirstpoint, picturefilename
     global anglefirstline
-    global activecommand, circle_center, picturefirstpoint, picturefilename
     if activecommand is None:
         return
     if activecommand == 'angle' and renderer is not None:
@@ -1223,6 +1233,8 @@ def closeactivecommand(commit=False):
         picturefirstpoint = None
         picturefilename = None
     circle_center = None
+    circle_measure_mode = None
+    circle_measure_mode = None
     writehistory("Command ended")
     activecommand = None
     command.delete(0, 'end')
@@ -1254,12 +1266,54 @@ command.bind("<Escape>", cancelactivecommand)
 viewport.bind("<Escape>", cancelactivecommand)
 def runcmd(event):
     global history_index, activecommand
+    global circle_center, circle_measure_mode
     if activecommand == "mirror_select":
         confirmmirrorselection()
         return "break"
     if activecommand == "copy_select":
         confirmcopyselection()
         return "break"
+    if activecommand == 'circle':
+        typed= command.get().strip()
+        normalized = typed.lower()
+        if circle_center is None:
+            writehistory("Select the circle center first")
+            return 'break'
+        if normalized in ("radius", "r"):
+            circle_measure_mode = 'radius'
+            command.delete(0, 'end')
+            command.configure(placeholder_text="Enter radius")
+            writehistory("Enter radius")
+            app.after_idle(viewport.focus_set)
+            return 'break'
+        if normalized in ('diameter', 'd'):
+            circle_measure_mode = 'diameter'
+            command.delete(0, 'end')
+            command.configure(placeholder_text="Enter diameter")
+            writehistory("Enter diameter")
+            app.after_idle(viewport.focus_set)
+            return 'break'
+        try:
+            value = float(typed)
+        except ValueError:
+            writehistory("Enter Radius, Diamter, or a numeric value")
+            return 'break'
+        if value <= 0:
+            writehistory("Circle size must be greater than zero")
+            return 'break'
+        radius = (value/2.0 if circle_measure_mode=='diameter' else value)
+        if renderer.set_circle_radius(radius):
+            if renderer.commit_circle(64):
+                shown_mode = circle_measure_mode or 'radius'
+                writehistory(f"Circle created - {shown_mode.title()}: {value:g}")
+                circle_center = None
+                circle_measure_mode = None
+                activecommand = None
+                command.delete(0, 'end')
+                command.configure(placeholder_text="Command:")
+                viewport.configure(cursor='arrow')
+                viewport.focus_set()
+        return 'break'
     if activecommand == 'polyline':
         typed = command.get().strip()
         try: 
@@ -1325,7 +1379,42 @@ def updatepolylinedistance(event=None):
     renderer.set_polyline_distance(
         distance if distance >0 else None
     )
+def updatecircleoptionsuggestion(event=None):
+    if event is not None and event.keysym in (
+        "BackSpace",
+        'Delete',
+        'Return',
+        'Escape',
+    ):
+        return
+    if activecommand != 'circle' or circle_center is None:
+        return
+    if circle_measure_mode is not None:
+        return
+    value = command.get()
+    try: 
+        if command._entry.selection_present():
+            selection_start = int(command._entry.index("sel.first"))
+            typed= value[:selection_start]
+        else:
+            typed=value
+    except Exception:
+        typed = value
+    typed = typed.strip()
+    if not typed or not typed.isalpha():
+        return
+    match = next((option for option in ("Radius", "Diameter")   if option.lower().startswith(typed.lower()) ), None)
+    if match is None:
+        return
+    typed_length = len(typed)
+    command.delete(0, 'end')
+    command.insert(0, match)
+    command._entry.selection_range(typed_length, "end")
+    command._entry.icursor(typed_length)
 def updatecommandsuggestion(event=None):
+    if activecommand == 'circle' and circle_center is not None:
+        updatecircleoptionsuggestion(event)
+        return
     if activecommand is not None:
         return
     if event is not None and event.keysym in (
@@ -1380,22 +1469,10 @@ def updatecommandsuggestion(event=None):
     command.insert(0, match)
     command._entry.selection_range(typedlength, "end")
     command._entry.icursor(typedlength)
-
 def commandbackspace(event):
-    if activecommand == 'confirmnew':
-        return 'break'
-    try:
-        selectionstart = int(command._entry.index("sel.first"))
-    except Exception:
-        return
-    typedpart = command.get()[:selectionstart]
-    if typedpart:
-        typedpart = typedpart[:-1]
-    command.delete(0, 'end')
-    command.insert(0, typedpart)
-    command._entry.icursor('end')
-    app.after_idle(updatecommandsuggestion)
-    return 'break'
+    if activecommand == "confirmnew":
+        return "break"
+    return None
 command._entry.bind("<KeyRelease>", updatecommandsuggestion, add='+')
 command._entry.bind("<KeyPress-BackSpace>", commandbackspace, add="+")
 command._entry.bind("<KeyPress>", handlenewconfirmation, add='+')
@@ -1413,6 +1490,16 @@ def typecmduni(event):
         return
     focused = app.focus_get()
     if focused is command._entry:
+        if (
+            activecommand == "circle"
+            and circle_center is not None
+            and command._placeholder_text_active
+            and event.char
+            and (event.char.isalpha() or event.char in "0123456789.")
+        ):
+            command.insert(0, event.char)
+            app.after_idle(updatecommandsuggestion)
+            return "break"
         return
     if focused is not None:
         widget_class = focused.winfo_class()
@@ -1428,6 +1515,16 @@ def typecmduni(event):
             command.insert("end", event.char)
             app.after_idle(updatepolylinedistance)
             return 'break'
+        return
+    if activecommand == "circle" and circle_center is not None:
+        if event.char and (
+            event.char.isalpha()
+            or event.char in "0123456789."):
+            command._entry.focus_set()
+            command.insert(0, event.char)
+            command._entry.icursor("end")
+            app.after_idle(updatecommandsuggestion)
+            return "break"
         return
     if activecommand is not None:
         return
