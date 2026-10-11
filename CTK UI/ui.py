@@ -504,7 +504,7 @@ def viewport_mouse_move(event):
     if snapposition and (
         activecommand in (
             'polyline', 'curve', 'copy_place', 'circle',
-            'mirror_first', 'mirror_second', "distance"
+            'mirror_first', 'mirror_second', "distance", "mirror_second", "mirror_first"
         ) or gridsnapon
     ):
         snap_x, snap_y = map(round, snapposition)
@@ -584,6 +584,9 @@ def viewport_mouse_down(event):
     if activecommand in ('copy_base', 'copy_place'):
         renderer.mouse_move(event.x, event.y)
         pickcopypoint(event.x, event.y)
+        return
+    if activecommand == 'angle':
+        pickanglepoint(event)
         return
     if activecommand == 'distance':
         pickdistancepoint(event)
@@ -963,6 +966,78 @@ def writehistory(text):
     history.insert('end', text+ '\n')
     history.see("end")
     history.configure(state='disabled')
+anglefirstline = None
+def startangle(event=None):
+    global activecommand, anglefirstline
+    if renderer is None:
+        return
+    anglefirstline = None
+    activecommand = 'angle'
+    renderer.start_polyline()
+    command.delete(0, 'end')
+    command.configure(placeholder_text="Angle: pick first line start")
+    writehistory("> Angle\nPick first line start")
+    viewport.configure(cursor = 'crosshair')
+    viewport.focus_set()
+def pickanglepoint(event):
+    global activecommand, anglefirstline
+    if renderer is None:
+        return
+    renderer.mouse_move(event.x, event.y)
+    renderer.mouse_button(True)
+    renderer.mouse_button(False)
+    points = renderer.active_polyline_data()
+    if len(points) < 2:
+        if anglefirstline is None:
+            message = 'Angle: pick first line end'
+        else:
+            message = "Angle: pick second line end"
+        command.configure(placeholder_text=message)
+        return
+    current_line = (points[-2], points[-1])
+    renderer.cancel_polyline()
+    if anglefirstline is None:
+        anglefirstline = current_line
+        renderer.start_polyline()
+        command.configure(placeholder_text="Angle: pick second line start")
+        writehistory("Pick second line")
+        viewport.focus_set()
+        return
+    first_start, first_end = anglefirstline
+    second_start, second_end = current_line
+    first_vector = (
+        first_end[0] - first_start[0],
+        first_end[1] - first_start[1],
+        first_end[2] - first_start[2]
+    )
+    second_vector= (
+        second_end[0] - second_start[0],
+        second_end[1] - second_start[1],
+        second_end[2] - second_start[2]
+    )
+    first_length = math.sqrt(sum(value* value for value in second_vector))
+    second_length = math.sqrt(sum(value * value for value in second_vector))
+    if first_length <= 0.000001 or second_length <= 0.000001:
+        writehistory("Angle failed: a line has zero length")
+        anglefirstline = None
+        activecommand = None
+        command.configure(placeholder_text='Command:')
+        viewport.configure(cursor="arrow")
+        return
+    dotproduct = sum(
+        first*second
+        for first, second in zip(first_vector, second_vector)
+        )
+    cosine = dotproduct / (first_length * second_length)
+    cosine = max(-1.0, min(1.0, cosine))
+    angle = math.degrees(math.acos(cosine))
+    anglefirstline= None
+    activecommand = None
+    command.delete(0, 'end')
+    command.configure(placeholder_text=f'Angle: {angle:.2f} degrees')
+    writehistory(f"Angle = {angle:.2f} degrees")
+    viewport.configure(cursor='arrow')
+    viewport.focus_set()
 def startdistance(event=None):
     global activecommand
     if renderer is None:
@@ -1077,7 +1152,7 @@ def runnamedcommand(name):
         'text': starttext,
         'txt': starttext,
         'distance': startdistance,
-        "angle": lambda: startplaceholdercmd("Angle", "Select first point"),
+        "angle": startangle,
         "revolve": lambda: startplaceholdercmd("Revolve", "Select objects to revolve"),
         "extrude": lambda: startplaceholdercmd("Extrude", "Select objects to extrude"),
         "mirror": startmirror,
@@ -1114,9 +1189,15 @@ def repeatlastcommand():
     previous = lastcommand
     runnamedcommand(previous)
 def closeactivecommand(commit=False):
+    global activecommand, circle_center
+    global picturefirstpoint,picturefilename
+    global anglefirstline
     global activecommand, circle_center, picturefirstpoint, picturefilename
     if activecommand is None:
         return
+    if activecommand == 'angle' and renderer is not None:
+        renderer.cancel_polyline()
+        anglefirstline = None
     if activecommand == 'distance' and renderer is not None:
         renderer.cancel_polyline()
     if activecommand in ('mirror_first', 'mirror_second') and renderer is not None:
