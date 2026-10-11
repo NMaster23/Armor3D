@@ -616,6 +616,13 @@ def viewport_mouse_down(event):
         closed_polyline = renderer.mouse_button(True)
         if closed_polyline:
             closecompletedpolyline()
+        elif activecommand == 'polyline':
+            command.delete(0, 'end')
+            command.configure(
+                placeholder_text="Pick next point or type distance"
+            )
+            renderer.set_polyline_distance(None)
+            viewport.focus_set()
 def viewport_left_drag(event):
     global left_dragged
     if activecommand == "picture_second":
@@ -1131,6 +1138,26 @@ def runcmd(event):
     if activecommand == "copy_select":
         confirmcopyselection()
         return "break"
+    if activecommand == 'polyline':
+        typed = command.get().strip()
+        try: 
+            distance = float(typed)
+        except ValueError:
+            writehistory(f"Invalid distance: {typed}")
+            return 'break'
+        if distance <= 0:
+            writehistory("Distance must be greater than zero")
+            return 'break'
+        if renderer.commit_polyline_distance(distance):
+            command.delete(0, 'end')
+            command.configure(
+                placeholder_text = f"Polyline: {distance:g} units placed"
+            )
+            writehistory(f"Distance: {distance:g}")
+            viewport.focus_set()
+        else:
+            writehistory("Pick the first polyline point before entering a value")
+        return 'break'
     typed = command.get().strip()
     if not typed:
         return "break"
@@ -1160,8 +1187,22 @@ def handlenewconfirmation(event):
         cancelnewfile()
     return 'break'
 command.bind("<KeyPress>", handlenewconfirmation, add="+")
-
 command._entry.configure(selectbackground="#666666", selectforeground="#F3E6C5")
+def updatepolylinedistance(event=None):
+    if activecommand != 'polyline' or renderer is None:
+        return
+    typed= command.get().strip()
+    if not typed:
+        renderer.set_polyline_distance(None)
+        return
+    try:
+        distance=  float(typed)
+    except ValueError:
+        renderer.set_polyline_distance(None)
+        return
+    renderer.set_polyline_distance(
+        distance if distance >0 else None
+    )
 def updatecommandsuggestion(event=None):
     if activecommand is not None:
         return
@@ -1236,7 +1277,7 @@ def commandbackspace(event):
 command._entry.bind("<KeyRelease>", updatecommandsuggestion, add='+')
 command._entry.bind("<KeyPress-BackSpace>", commandbackspace, add="+")
 command._entry.bind("<KeyPress>", handlenewconfirmation, add='+')
-
+command._entry.bind("<KeyRelease>", updatepolylinedistance, add='+')
 def toggle2dshort(event=None):
     if renderer is not None:
         renderer.key_event("2", True)
@@ -1259,6 +1300,13 @@ def typecmduni(event):
             "Text"
         ):
             return
+    if activecommand == 'polyline':
+        if event.char and event.char in "0123456789.":
+            command._entry.focus_set()
+            command.insert("end", event.char)
+            app.after_idle(updatepolylinedistance)
+            return 'break'
+        return
     if activecommand is not None:
         return
     if event.char and event.char.isprintable():

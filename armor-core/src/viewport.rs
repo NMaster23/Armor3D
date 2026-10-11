@@ -95,6 +95,7 @@ pub struct Viewport {
     pub polyline_color: [f32; 4],
     pub curve_subdivisions: u32,
     pub curve_active: bool,
+    polyline_distance: Option<f32>,
     move_anchor: Option<Vector3<f32>>,
     move_snapshots: Vec<(usize, Vec<Vector3<f32>>)>,
     pub point_vertices: Vec<Vertex>,
@@ -416,6 +417,7 @@ impl Viewport {
             holding_left: false,
             polyline_active: false,
             polyline_color: DEFAULT_POLYLINE_COLOR,
+            polyline_distance: None,
             curve_subdivisions: 16,
             curve_active: false,
             move_anchor: None,
@@ -1064,7 +1066,10 @@ impl Viewport {
         }
 
     let mut preview_controls = self.active_polyline.clone();
-    if let Some(preview_point) = self.preview_point {
+    let raw_preview = self.preview_point;
+    let distance_target = self.polyline_distance_target();
+    let displayed_preview = distance_target.or(raw_preview);
+    if let Some(preview_point) = displayed_preview {
         let should_append = preview_controls
             .last()
             .map(|last|{
@@ -1073,6 +1078,15 @@ impl Viewport {
             .unwrap_or(false);
         if should_append {
             preview_controls.push(preview_point);
+        }
+    }
+    if let (Some(target), Some(cursor)) = (distance_target, raw_preview) {
+        if (target- cursor).magnitude2() > f32::EPSILON {
+            let guide = [
+                target + Vector3::new(0.0, POLYLINE_HEIGHT * 3.0, 0.0),
+                cursor + Vector3::new(0.0, POLYLINE_HEIGHT * 3.0, 0.0),
+            ];
+            new_vertices.extend(self.tessellate_polyline(&guide, 1.0, [1.0, 1.0, 1.0, 0.75]));
         }
     }
     let renderer_preview = if self.curve_active {
@@ -1330,8 +1344,48 @@ impl Viewport {
         self.copy_target = None;
         self.rebuild_vertices();
     }
-
+    fn polyline_distance_target(&self) -> Option<Vector3<f32>> {
+        let distance = self.polyline_distance?;
+        let start = *self.active_polyline.last()?;
+        let cursor = self.preview_point?;
+        let direction = cursor- start;
+        let horizontal_length = (direction.x * direction.x + direction.z *  direction.z).sqrt();
+        if horizontal_length <= f32::EPSILON {
+            return None;
+        }
+        Some(Vector3::new(
+            start.x + direction.x / horizontal_length * distance,
+            start.y,
+            start.z + direction.z / horizontal_length * distance,
+        ))
+    }
+    pub fn set_polyline_distance(&mut self, distance: Option<f32>) {
+        self.polyline_distance = distance.filter(|value| {
+            value.is_finite() && *value > 0.0
+        });
+        self.rebuild_vertices();
+    }
+    pub fn commit_polyline_distance(&mut self, distance: f32) -> bool {
+        if !self.polyline_active
+            || self.active_polyline.is_empty()
+            || !distance.is_finite()
+            || distance <= 0.0
+        {
+            return false;
+        }
+        self.polyline_distance = Some(distance);
+        let Some(target) = self.polyline_distance_target() else {
+            self.polyline_distance = None;
+            return false;
+        };
+        self.active_polyline.push(target);
+        self.preview_point = None;
+        self.polyline_distance = None;
+        self.rebuild_vertices();
+        true
+    }
     pub fn start_polyline(&mut self) {
+        self.polyline_distance=  None;
         self.active_polyline.clear();
         self.preview_point = None;
         self.curve_active = false;
@@ -1340,6 +1394,7 @@ impl Viewport {
         self.rebuild_vertices();
     }
     pub fn finish_polyline(&mut self) {
+        self.polyline_distance = None;
         self.holding_left = false;
         self.polyline_active = false;
         self.preview_point = None;
@@ -1352,6 +1407,7 @@ impl Viewport {
         self.rebuild_vertices();
     }
     pub fn cancel_polyline(&mut self) {
+        self.polyline_distance = None;
         self.holding_left = false;
         self.polyline_active = false;
         self.active_polyline.clear();
@@ -1778,16 +1834,22 @@ impl Viewport {
         }
         self.vertice_append(&flat_vertices);
     }
-    pub fn polyline(&mut self, mouse_pos: PhysicalPosition<f64>) -> bool {
+    pub fn polyline(&mut self, mouse_pos: PhysicalPosition<f64>)-> bool {
         let hit_pos = match self.fetch_point(mouse_pos) {
             Some(hit_pos) => hit_pos,
             None => return false,
         };
-        let (snap_pos, shape_close, _) = self.get_snap_pos(hit_pos);
-        if shape_close && !self.curve_active {
+        let (normal_snap, shape_close, _) = self.get_snap_pos(hit_pos);
+        let distance_target = self.polyline_distance_target();
+        let snap_pos = distance_target.unwrap_or(normal_snap);
+        let should_close = distance_target.is_none() && shape_close;
+        self.polyline_distance = None;
+        if should_close && !self.curve_active {
             self.active_polyline.push(snap_pos);
             let points = self.active_polyline.clone();
-            self.add_polyline(points, self.polyline_color, POLYLINE_WIDTH_PIXELS);
+            self.add_polyline(
+                points, self.polyline_color, POLYLINE_WIDTH_PIXELS
+            );
             self.active_polyline.clear();
             self.preview_point = None;
             self.polyline_active = false;

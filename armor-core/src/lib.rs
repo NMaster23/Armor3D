@@ -368,7 +368,12 @@ impl ViewportRenderer {
     fn start_polyline(&mut self) {
         self.state.viewport.start_polyline();
     }
-
+    fn set_polyline_distance(&mut self, distance: Option<f32>) {
+        self.state.viewport.set_polyline_distance(distance);
+    }
+    fn commit_polyline_distance(&mut self, distance: f32) -> bool {
+        self.state.viewport.commit_polyline_distance(distance)
+    }
     fn finish_polyline(&mut self) {
         self.state.viewport.finish_polyline();
     }
