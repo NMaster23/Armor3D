@@ -2496,25 +2496,3 @@ mod tests {
         assert!(!viewport.int_snap_enabled);
     }
 }
-
-pub fn egui_extrude_input(ctx: &egui::Context, viewport: &mut Viewport) {
-    egui::Window::new("Extrude Selected")
-        .resizable(false)
-        .collapsible(false)
-        .show(ctx, |ui| {
-            let Some(sel_id) = viewport.selected_entity else {
-                ui.label("Select a shape to extrude");
-                return;
-            };
-            let Some(mut height) = viewport.entities.iter().find(|e| e.id == sel_id).map(|e| e.height) else {
-                ui.label("Selected shape not found.");
-                return;
-            };
-            ui.horizontal(|ui| {
-                ui.label("Height: ");
-                if ui.add(egui::DragValue::new(&mut height).speed(0.1)).changed() {
-                    viewport.extrude_selected(height);
-                }
-            });
-        });
-}

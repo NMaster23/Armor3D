@@ -108,9 +108,8 @@ pub struct App {
     cursor_pos: PhysicalPosition<f64>,
     holding_left: bool,
     holding_right: bool,
-    popup_window: Option<Arc<Window>>,
-    popup_state: Option<State>,
-    popup_content: Option<PopupContent>,
+    show_extrude_popup: bool,
+    extrude_input: f32,
     modifiers: ModifiersState,
 }
 
@@ -124,42 +123,15 @@ pub enum PopupContent {
 impl App {
     pub fn popup_window(
         &mut self,
-        event_loop: &ActiveEventLoop,
-        title: &str,
-        case: i32,
-        ctx: &egui::Context,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        if self.popup_window.is_some() {
-            return Ok(());
+    ) {
+        if self.show_extrude_popup {
+            return;
+        } else {
+            self.show_extrude_popup = true;
         }
-        self.popup_window = Some(Arc::new(event_loop.create_window(Window::default_attributes())?));
-        let Some(state) = self.state.as_mut() else {
-            return Ok(());
-        };
-        let viewport_local = &mut state.viewport;
-        if case == 1 {
-            egui::Window::new(title)
-                .resizable(false)
-                .collapsible(false)
-                .show(ctx, |ui| {
-                    ui.horizontal(|ui| {
-                        ui.label("Height:");
-                        let mut height = viewport_local
-                            .selected_entity
-                            .and_then(|id| viewport_local.entities.iter().find(|e| e.id == id))
-                            .map(|e| e.height)
-                            .unwrap_or(0.0);
-                        if ui.add(egui::DragValue::new(&mut height).speed(0.1)).changed() {
-                            viewport_local.extrude_selected(height);
-                        }
-                    });
-                });
-        }
-        Ok(())
     }
     pub fn close_popup(&mut self) {
-        self.popup_window = None;
-        self.popup_state = None;
+        self.show_extrude_popup = false;
     }
     pub fn new() -> Self {
         Self {
@@ -167,9 +139,8 @@ impl App {
             cursor_pos: PhysicalPosition::new(0.0, 0.0),
             holding_left: false,
             holding_right: false,
-            popup_window: None,
-            popup_state: None,
-            popup_content: None,
+            show_extrude_popup: false,
+            extrude_input: 0.0,
             modifiers: ModifiersState::default(),
         }
     }
@@ -226,10 +197,20 @@ impl ApplicationHandler<State> for App {
         window_id: winit::window::WindowId,
         event: WindowEvent,
     ) {
-        if self.popup_window.as_ref().is_some_and(|window| window.id() == window_id) {
-            if matches!(&event, WindowEvent::CloseRequested) {
-                self.close_popup();
+        let egui_consumed = if let Some(state) = self.state.as_mut() {
+            if let Some(window) = state.window.as_ref() {
+                state.egui_winit.as_mut().map(|e_w| e_w.on_window_event(window, &event).consumed).unwrap_or(false)
+            } else {
+                false
             }
+        } else {
+            false
+        };
+        if egui_consumed && matches!(
+            event,
+            WindowEvent::KeyboardInput { .. } | WindowEvent::MouseInput { .. } | WindowEvent::CursorMoved { .. } | WindowEvent::MouseWheel { .. }
+        )
+        {
             return;
         }
         if let WindowEvent::KeyboardInput {
@@ -244,16 +225,10 @@ impl ApplicationHandler<State> for App {
                 let cancelled = self.state.as_mut().is_some_and(|state| state.viewport.cancel_active_command(*code, true));
                 if cancelled {
                     if let Some(window) = self.state.as_ref().and_then(|state| state.window.as_ref()) {
-                        window.request_redraw();;
+                        window.request_redraw();
                     }
                 } else {
                     event_loop.exit();
-                }
-                return;
-            }
-            if *code == winit::keyboard::KeyCode::KeyP && key_state.is_pressed() {
-                if let Err(e) = self.popup_window(event_loop, "Popup Window", 1, &egui::Context::default()) {
-                    log::error!("Failed to create popup window: {:?}", e);
                 }
                 return;
             }
@@ -371,6 +346,37 @@ impl ApplicationHandler<State> for App {
     }
 }
 
+impl eframe::App for App {
+    fn ui(&mut self, ctx: &mut egui::Ui, frame: &mut eframe::Frame) {
+        let state: &mut render::State = self.state.as_mut().expect("Error unwrapping state eframe");
+        egui::CentralPanel::default().show(ctx, |ui| {
+            ui.heading("Extrude Input");
+            ui.label(format!("Saved value: {}", self.extrude_input))
+        });
+        if self.show_extrude_popup {        
+            egui::Window::new("Extrude Selected")
+                .resizable(false)
+                .collapsible(false)
+                .show(ctx, |ui| {
+                    let Some(sel_id) = state.viewport.selected_entity else {
+                        ui.label("Select a shape to extrude");
+                        return;
+                    };
+                    let height_opt = state.entities.iter().find(|e| e.id == sel_id).map(|e| e.height);
+                    let Some(mut height) = height_opt else {
+                        ui.label("Selected shape not found.");
+                        return;
+                    };
+                    ui.horizontal(|ui| {
+                        ui.label("Height: ");
+                        if ui.add(egui::DragValue::new(&mut height).speed(0.1)).changed() {
+                            state.viewport.extrude_selected(height);
+                        }
+                    });
+                });
+        }
+    }
+}
 
 pub fn handle_shortcut(
     state: &mut State,

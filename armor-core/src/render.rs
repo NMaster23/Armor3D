@@ -95,6 +95,8 @@ pub struct State {
     next_entity: usize,
     pub viewport: Viewport,
     text_pos: Vector3<f32>,
+    pub (crate) egui_winit: Option<egui_winit::State>,
+    egui_ctx: egui::Context,
 }
 
 impl State {
@@ -398,6 +400,15 @@ impl State {
             glyphon::Shaping::Advanced,
             None,
         );
+        let egui_ctx = egui::Context::default();
+        let egui_winit = egui_winit::State::new(
+            egui_ctx.clone(),
+            egui::ViewportId::ROOT,
+            window.as_ref(),
+            Some(window.scale_factor() as f32),
+            window.theme(),
+            Some(device.limits().max_texture_dimension_2d as usize),
+        );
         Ok(Self {
             reference_image,
             surface,
@@ -432,6 +443,8 @@ impl State {
             next_entity: 0,
             viewport,
             text_pos: Vector3::new(0.0, 0.0, 0.0),
+            egui_winit: Some(egui_winit),
+            egui_ctx: egui_ctx,
         })
     }
     pub fn draw_text(&mut self, text: &str, pos: Vector3<f32>) {
@@ -676,6 +689,8 @@ impl State {
             next_entity: 0,
             viewport,
             text_pos: Vector3::new(0.0, 0.0, 0.0),
+            egui_winit: None,
+            egui_ctx: egui::Context::default(),
         })
     }
     pub fn resize(&mut self, width: u32, height: u32) {

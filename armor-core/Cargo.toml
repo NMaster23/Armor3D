@@ -25,6 +25,9 @@ lyon = "1.0.19"
 egui = "0.36.2"
 glyphon = "0.12.0"
 image = "0.25.10"
+egui-winit = "0.36.2"
+egui-wgpu = "0.36.2"
+eframe = "0.36.2"
 
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
