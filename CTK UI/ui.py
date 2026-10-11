@@ -24,6 +24,7 @@ currentfilepath = None
 importedfiles = []
 circle_center = None
 circle_measure_mode = None
+rectanglefirstpoint = False
 def updatewindowtitle():
     if currentfilepath:
         title = f"Armor 3D - {Path(currentfilepath).name}"
@@ -490,6 +491,14 @@ def viewport_mouse_move(event):
         return
     snapkind = renderer.mouse_move(event.x, event.y)
     updatepicturepreview()
+    if activecommand == 'rectangle' and rectanglefirstpoint:
+        dimensions = renderer.update_rectangle_preview(
+            event.x, event.y
+        )
+        if dimensions is not None:
+            width, height = dimensions
+            if not command.get().strip():
+                command.configure(placeholder_text=(f"Rectangle: {width:.3f} x {height:.3f}"))
     if activecommand == "circle" and circle_center is not None:
         radius = renderer.update_circle_preview(event.x, event.y)
         if radius is not None and not command.get().strip():
@@ -512,7 +521,7 @@ def viewport_mouse_move(event):
     if snapposition and (
         activecommand in (
             'polyline', 'curve', 'copy_place', 'circle',
-            'mirror_first', 'mirror_second', "distance", "mirror_second", "mirror_first"
+            'mirror_first', 'mirror_second', "distance", "mirror_second", "mirror_first", "rectangle",
         ) or gridsnapon
     ):
         snap_x, snap_y = map(round, snapposition)
@@ -571,6 +580,7 @@ def show_selection_box(start_x, start_y, end_x, end_y):
         line.place(x=x, y=y, width=line_width, height=line_height)
         line.lift()
 def viewport_mouse_down(event):
+    global rectanglefirstpoint
     global left_drag_start, left_dragged, moving_selection
     global circle_center, circle_measure_mode, activecommand
     hidesnapindicator()
@@ -598,6 +608,25 @@ def viewport_mouse_down(event):
         return
     if activecommand == 'distance':
         pickdistancepoint(event)
+        return
+    if activecommand == 'rectangle':
+        renderer.mouse_move(event.x, event.y)
+        if not rectanglefirstpoint:
+            if renderer.begin_rectangle(event.x, event.y):
+                rectanglefirstpoint = True
+                command.delete(0, 'end')
+                command.configure(placeholder_text="Rectangle: select opposite corner")
+                writehistory("Select opposite corner")
+        else:
+            renderer.update_rectangle_preview(event.x, event.y)
+            if renderer.commit_rectangle():
+                rectanglefirstpoint = False
+                activecommand = None
+                command.delete(0, 'end')
+                command.configure(placeholder_text="Command:")
+                writehistory("Rectangle created")
+                viewport.configure(cursor='arrow')
+                viewport.focus_set()
         return
     if activecommand == "circle":
         if circle_center is None:
@@ -1126,11 +1155,18 @@ def startexplode(event=None):
     writehistory("> Explode\nSelect objects to explode")
     viewport.focus_set()
 def startrectangle(event=None):
-    global activecommand
+    global activecommand, rectanglefirstpoint
+    if renderer is None:
+        return
+    syncgridsnaprenderer()
+    renderer.cancel_rectangle()
+    renderer.start_rectangle()
+    rectanglefirstpoint = False
     activecommand = 'rectangle'
     command.delete(0, 'end')
-    command.configure(placeholder_text = "Start rectangle")
-    writehistory("> Rectangle\nStart rectangle")
+    command.configure(placeholder_text="Rectangle: select first corner")
+    writehistory("> Rectangle\nSelect first corner")
+    viewport.configure(cursor='crosshair')
     viewport.focus_set()
 def starttext(event=None):
     global activecommand
@@ -1200,6 +1236,7 @@ def repeatlastcommand():
     previous = lastcommand
     runnamedcommand(previous)
 def closeactivecommand(commit=False):
+    global rectanglefirstpoint
     global activecommand, circle_center, circle_measure_mode
     global picturefirstpoint, picturefilename
     global anglefirstline
@@ -1213,6 +1250,9 @@ def closeactivecommand(commit=False):
     if activecommand in ('mirror_first', 'mirror_second') and renderer is not None:
         renderer.cancel_polyline()
         renderer.set_construction_snap(False)
+    if activecommand == 'rectangle' and renderer is not None:
+        renderer.cancel_rectangle()
+        rectanglefirstpoint = False
     if activecommand == 'circle' and renderer is not None:
         renderer.cancel_circle()
     if activecommand in ('copy_base', 'copy_place') and renderer is not None:
@@ -1233,7 +1273,6 @@ def closeactivecommand(commit=False):
         picturefirstpoint = None
         picturefilename = None
     circle_center = None
-    circle_measure_mode = None
     circle_measure_mode = None
     writehistory("Command ended")
     activecommand = None

@@ -147,6 +147,21 @@ impl ViewportRenderer {
     ) -> bool {
         self.state.set_reference_image_rect(first, second)
     }
+    fn start_rectangle(&mut self) {
+        self.state.viewport.start_rectangle();
+    }
+    fn begin_rectangle(&mut self, x: f32, y: f32) -> bool {
+        self.state.viewport.begin_rectangle(x, y)
+    }
+    fn update_rectangle_preview(&mut self, x:f32, y: f32) -> Option<(f32, f32)> {
+        self.state.viewport.update_rectangle_preview(x, y)
+    }
+    fn commit_rectangle(&mut self) -> bool {
+        self.state.viewport.commit_rectangle()
+    }
+    fn cancel_rectangle(&mut self) {
+        self.state.viewport.cancel_rectangle();
+    }
     fn remove_reference_image(&mut self) {
         self.state.clear_reference_image();
     }

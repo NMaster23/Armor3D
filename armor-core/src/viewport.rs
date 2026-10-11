@@ -110,6 +110,8 @@ pub struct Viewport {
     grab_snapshot: Vec<Vector3<f32>>,
     circle_center: Option<Vector3<f32>>,
     circle_target: Option<Vector3<f32>>,
+    rectangle_first: Option<Vector3<f32>>,
+    rectangle_second: Option<Vector3<f32>>,
     copy_sources: Vec<PolyLine>,
     copy_base: Option<Vector3<f32>>,
     copy_target: Option<Vector3<f32>>,
@@ -271,6 +273,8 @@ impl Viewport {
         self.polyline_active = false;
         self.circle_center = None;
         self.circle_target = None;
+        self.rectangle_first = None;
+        self.rectangle_second = None;
         self.copy_sources.clear();
         self.copy_base = None;
         self.copy_target = None;
@@ -434,6 +438,8 @@ impl Viewport {
             grab_snapshot: Vec::new(),
             circle_center: None,
             circle_target: None,
+            rectangle_first: None,
+            rectangle_second: None,
             copy_sources: Vec::new(),
             copy_base: None,
             copy_target: None,
@@ -1006,7 +1012,19 @@ impl Viewport {
                 }
             }
         }
-
+        if let (Some(first), Some(second)) = (
+            self.rectangle_first,
+            self.rectangle_second
+        ) {
+            let rectangle = Self::rectangle_points(first, second);
+            new_vertices.extend(self.tessellate_polyline(
+                &rectangle,
+                POLYLINE_WIDTH_PIXELS, self.polyline_color
+            ));
+            for point in rectangle.iter().take(4) {
+                new_vertices.extend(Self::tessellate_vertex_circle(*point, marker_radius, marker_color));
+            }
+        }
         if let (Some(center), Some(target)) = (self.circle_center, self.circle_target) {
             let preview_points = Self::circle_points_from_target(center, target, 64);
             if preview_points.len() >= 2 {
@@ -1339,6 +1357,8 @@ impl Viewport {
         self.curve_active = false;
         self.circle_center = None;
         self.circle_target = None;
+        self.rectangle_first = None;
+        self.rectangle_second = None;
         self.copy_sources.clear();
         self.copy_base = None;
         self.copy_target = None;
@@ -1886,6 +1906,84 @@ impl Viewport {
             ));
         }
         points
+    }
+
+    fn rectangle_points(first: Vector3<f32>, second: Vector3<f32>) -> Vec<Vector3<f32>> {
+        vec![
+            first,
+            Vector3::new(second.x, first.y, first.z),
+            Vector3::new(second.x, first.y, second.z),
+            Vector3::new(first.x, first.y, second.z),
+            first,
+        ]
+    }
+    pub fn start_rectangle(&mut self) {
+        self.rectangle_first = None;
+        self.rectangle_second = None;
+        self.active_polyline.clear();
+        self.preview_point = None;
+        self.polyline_distance = None;
+        self.curve_active = false;
+        self.holding_left = false;
+        self.polyline_active = true;
+        self.rebuild_vertices();
+    }
+    pub fn begin_rectangle(&mut self, x: f32, y: f32) -> bool {
+        self.cursor_pos = PhysicalPosition::new(x as f64, y as f64);
+        let Some(raw_point) = self.fetch_point(self.cursor_pos) else {
+            return false;
+        };
+        let first = self.get_snap_pos(raw_point).0;
+        self.rectangle_first = Some(first);
+        self.rectangle_second = Some(first);
+        self.rebuild_vertices();
+        true
+    }
+    pub fn update_rectangle_preview(
+        &mut self,
+        x: f32,
+        y: f32,
+    ) -> Option<(f32, f32)> {
+        let first = self.rectangle_first?;
+        self.cursor_pos =
+            PhysicalPosition::new(x as f64, y as f64);
+        let raw_point = self.fetch_point(self.cursor_pos)?;
+        let second = self.get_snap_pos(raw_point).0;
+        self.rectangle_second = Some(second);
+        self.rebuild_vertices();
+        Some((
+            (second.x - first.x).abs(),
+            (second.z - first.z).abs(),
+        ))
+    }
+    pub fn commit_rectangle(&mut self) -> bool {
+        let (Some(first), Some(second)) = (
+            self.rectangle_first,
+            self.rectangle_second,
+        ) else {
+            return false;
+        };
+        let width = (second.x - first.x).abs();
+        let height = (second.z - first.z).abs();
+        if width <= f32::EPSILON || height <= f32::EPSILON {
+            return false;
+        }
+        let points = Self::rectangle_points(first, second);
+        self.rectangle_first = None;
+        self.rectangle_second = None;
+        self.polyline_active = false;
+        self.active_polyline.clear();
+        self.preview_point = None;
+        self.add_polyline(points, self.polyline_color, POLYLINE_WIDTH_PIXELS);
+        true
+    }
+    pub fn cancel_rectangle(&mut self) {
+        self.rectangle_first = None;
+        self.rectangle_second = None;
+        self.polyline_active = false;
+        self.active_polyline.clear();
+        self.preview_point = None;
+        self.rebuild_vertices();
     }
 
     pub fn begin_circle(&mut self, x: f32, y: f32) -> bool {
