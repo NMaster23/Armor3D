@@ -295,7 +295,7 @@ impl ApplicationHandler<State> for App {
                 phase: _phase,
             } => {
                 let _ = &mut state.viewport.camera_controller
-                    .handle_scroll(&mut state.viewport.camera, &delta);
+                    .handle_scroll(&delta);
                 if let Some(window) = &state.window {
                     window.request_redraw();
                 }

@@ -138,16 +138,13 @@ impl CameraController {
             is_rotate_right_pressed: false,
         }
     }
-    pub(crate) fn handle_scroll(&mut self, camera: &mut Camera, delta: &MouseScrollDelta) {
+    pub(crate) fn handle_scroll(&mut self, delta: &MouseScrollDelta) {
+        let mut pending_scroll = 0.0;
         let delta_y = match delta {
             MouseScrollDelta::LineDelta(_, y) => *y * 0.5,
             MouseScrollDelta::PixelDelta(pos) => pos.y as f32 * 0.01,
         };
-        if self.is_locked {
-            camera.eye.y = (camera.eye.y - delta_y * self.speed).clamp(2.0, 100.0);
-        } else {
-            self.scroll = delta_y * 0.5;
-        }
+        pending_scroll += delta_y;
     }
     pub fn handle_key(
         &mut self,
@@ -242,10 +239,9 @@ impl CameraController {
             if self.is_rotate_left_pressed || self.is_move_left_pressed {
                 movement -= right;
             }
-            if movement.magnitude2() > 0.0 {
-                let step = movement.normalize() * (self.speed * 0.5);
-                camera.eye += step;
-                camera.target += step;
+            if self.scroll != 0.0 {
+                camera.zoom(self.scroll);
+                self.scroll = 0.0;
             }
             return;
         }
