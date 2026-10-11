@@ -2253,6 +2253,58 @@ impl Viewport {
         self.rebuild_vertices();
         count as usize
     }
+    pub fn cancel_active_command(
+        &mut self,
+        code: KeyCode,
+        is_pressed: bool,
+    ) -> bool {
+        let circle_active = self.circle_center.is_some();
+        let copy_active = !self.copy_sources.is_empty();
+        let move_active = self.move_anchor.is_some();
+        let grab_active = self.grab_mode;
+        let curve_active = self.curve_active;
+        let polyline_active = self.polyline_active && !self.curve_active;
+        if code != KeyCode::Escape || !is_pressed {
+            return false;
+        }
+        if circle_active {
+            self.cancel_circle();
+            return true;
+        } else if copy_active {
+            self.cancel_copy();
+            return true;
+        } else if move_active {
+            for (id, vertices) in &self.move_snapshots {
+                if let Some(entity) = self.entities.iter_mut().find(|e| e.id == *id) {
+                    entity.vertices = vertices.clone();
+                }
+            }
+            self.move_anchor = None;
+            self.move_snapshots.clear();
+            self.rebuild_vertices();
+            return true;
+        } else if grab_active {
+            if let Some(id) = self.selected_entity {
+                if let Some(entity) = self.entities.iter_mut().find(|e| e.id == id) {
+                    entity.vertices.clone_from(&self.grab_snapshot);
+                }
+            }
+            self.grab_mode = false;
+            self.grab_origin = None;
+            self.grab_snapshot.clear();
+            self.holding_left = false;
+            self.rebuild_vertices();
+            return true;
+        } else if curve_active {
+            self.cancel_curve();
+            return true;
+        } else if polyline_active {
+            self.cancel_polyline();
+            return true;
+        } else {
+            return false;
+        }
+    }
 }
 
 #[cfg(test)]
@@ -2450,13 +2502,16 @@ pub fn egui_extrude_input(ctx: &egui::Context, viewport: &mut Viewport) {
         .resizable(false)
         .collapsible(false)
         .show(ctx, |ui| {
+            let Some(sel_id) = viewport.selected_entity else {
+                ui.label("Select a shape to extrude");
+                return;
+            };
+            let Some(mut height) = viewport.entities.iter().find(|e| e.id == sel_id).map(|e| e.height) else {
+                ui.label("Selected shape not found.");
+                return;
+            };
             ui.horizontal(|ui| {
-                ui.label("Height:");
-                let mut height = viewport
-                    .selected_entity
-                    .and_then(|id| viewport.entities.iter().find(|e| e.id == id))
-                    .map(|e| e.height)
-                    .unwrap_or(0.0);
+                ui.label("Height: ");
                 if ui.add(egui::DragValue::new(&mut height).speed(0.1)).changed() {
                     viewport.extrude_selected(height);
                 }

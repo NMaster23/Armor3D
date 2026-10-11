@@ -10,7 +10,7 @@ use winit::application::ApplicationHandler;
 use winit::dpi::PhysicalPosition;
 use winit::event::{ElementState, KeyEvent, MouseButton, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, EventLoop};
-use winit::keyboard::{PhysicalKey};
+use winit::keyboard::{KeyCode, ModifiersState, PhysicalKey};
 use winit::window::Window;
 use cgmath::InnerSpace;
 
@@ -111,6 +111,7 @@ pub struct App {
     popup_window: Option<Arc<Window>>,
     popup_state: Option<State>,
     popup_content: Option<PopupContent>,
+    modifiers: ModifiersState,
 }
 
 #[derive(PartialEq)]
@@ -169,6 +170,7 @@ impl App {
             popup_window: None,
             popup_state: None,
             popup_content: None,
+            modifiers: ModifiersState::default(),
         }
     }
 }
@@ -239,7 +241,14 @@ impl ApplicationHandler<State> for App {
             ..
         } = &event {
             if *code == winit::keyboard::KeyCode::Escape && key_state.is_pressed() {
-                event_loop.exit();
+                let cancelled = self.state.as_mut().is_some_and(|state| state.viewport.cancel_active_command(*code, true));
+                if cancelled {
+                    if let Some(window) = self.state.as_ref().and_then(|state| state.window.as_ref()) {
+                        window.request_redraw();;
+                    }
+                } else {
+                    event_loop.exit();
+                }
                 return;
             }
             if *code == winit::keyboard::KeyCode::KeyP && key_state.is_pressed() {
@@ -249,6 +258,11 @@ impl ApplicationHandler<State> for App {
                 return;
             }
         }
+        if let WindowEvent::ModifiersChanged(modifiers) = &event {
+            self.modifiers = modifiers.state();
+            return;
+        }
+        let modifiers = self.modifiers;
         let state = match self.state.as_mut() {
             Some(state) => state,
             None => return,
@@ -274,6 +288,11 @@ impl ApplicationHandler<State> for App {
                 ..
             } => {
                 if state.viewport.graph_handle_key(code, key_state.is_pressed()) {
+                    if let Some(window) = &state.window {
+                        window.request_redraw();
+                    }
+                }
+                if handle_shortcut(state, code, key_state.is_pressed(), modifiers) {
                     if let Some(window) = &state.window {
                         window.request_redraw();
                     }
@@ -349,5 +368,23 @@ impl ApplicationHandler<State> for App {
             }
             _ => {}
         }
+    }
+}
+
+
+pub fn handle_shortcut(
+    state: &mut State,
+    keycode: KeyCode,
+    is_pressed: bool,
+    modifiers: ModifiersState,
+) -> bool {
+    if !is_pressed {
+        return false;
+    }
+    match keycode {
+        KeyCode::KeyZ if modifiers.shift_key() => state.redo_scene(),
+        KeyCode::KeyZ => state.undo_scene(),
+        KeyCode::KeyY => state.redo_scene(),
+        _ => false,
     }
 }
