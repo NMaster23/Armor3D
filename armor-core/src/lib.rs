@@ -1,14 +1,14 @@
 mod camera;
+mod reference_image;
 mod render;
 mod viewport;
-mod reference_image;
 
 use cgmath::Vector3;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
+use render::State;
 use winit::dpi::PhysicalPosition;
 use winit::event::MouseButton;
-use render::State;
 use winit::keyboard::KeyCode;
 
 #[repr(C)]
@@ -97,11 +97,7 @@ pub struct ViewportRenderer {
 
 #[pyfunction]
 #[pyo3(name = "handle_input")]
-pub fn handle_input(
-    pos: (f64, f64),
-    button: &str,
-    vec: (f32, f32, f32),
-) -> PyResult<()> {
+pub fn handle_input(pos: (f64, f64), button: &str, vec: (f32, f32, f32)) -> PyResult<()> {
     let _pos = PhysicalPosition::new(pos.0, pos.1);
     let _mouse_button = match button {
         "left" => MouseButton::Left,
@@ -129,22 +125,12 @@ impl ViewportRenderer {
     fn undo(&mut self) -> bool {
         self.state.undo_scene()
     }
-    fn import_reference_image(
-        &mut self,
-        path: &str,
-        opacity: f32
-    ) -> PyResult<()> {
+    fn import_reference_image(&mut self, path: &str, opacity: f32) -> PyResult<()> {
         self.state
             .import_reference_image(path, opacity)
-            .map_err(|error| {
-                pyo3::exceptions::PyRuntimeError::new_err(error.to_string())
-            })
+            .map_err(|error| pyo3::exceptions::PyRuntimeError::new_err(error.to_string()))
     }
-    fn set_reference_image_rect(
-        &mut self,
-        first: (f32, f32),
-        second: (f32, f32),
-    ) -> bool {
+    fn set_reference_image_rect(&mut self, first: (f32, f32), second: (f32, f32)) -> bool {
         self.state.set_reference_image_rect(first, second)
     }
     fn start_rectangle(&mut self) {
@@ -153,7 +139,7 @@ impl ViewportRenderer {
     fn begin_rectangle(&mut self, x: f32, y: f32) -> bool {
         self.state.viewport.begin_rectangle(x, y)
     }
-    fn update_rectangle_preview(&mut self, x:f32, y: f32) -> Option<(f32, f32)> {
+    fn update_rectangle_preview(&mut self, x: f32, y: f32) -> Option<(f32, f32)> {
         self.state.viewport.update_rectangle_preview(x, y)
     }
     fn commit_rectangle(&mut self) -> bool {
@@ -177,11 +163,10 @@ impl ViewportRenderer {
     fn redo(&mut self) -> bool {
         self.state.redo_scene()
     }
-    fn begin_circle(&mut self, x: f32, y: f32) ->bool {
+    fn begin_circle(&mut self, x: f32, y: f32) -> bool {
         self.state.viewport.begin_circle(x, y)
     }
-    fn update_circle_preview(&mut self, x: f32, y:f32,
-    ) -> Option<f32> {
+    fn update_circle_preview(&mut self, x: f32, y: f32) -> Option<f32> {
         self.state.viewport.update_circle_preview(x, y)
     }
     fn commit_circle(&mut self, subdivisions: usize) -> bool {
@@ -193,11 +178,7 @@ impl ViewportRenderer {
     fn cancel_circle(&mut self) {
         self.state.viewport.cancel_circle();
     }
-    fn mirror_selected(
-        &mut self,
-        start: (f32, f32),
-        end: (f32, f32),
-    ) -> usize {
+    fn mirror_selected(&mut self, start: (f32, f32), end: (f32, f32)) -> usize {
         self.state.viewport.mirror_selected(
             cgmath::Vector2::new(start.0, start.1),
             cgmath::Vector2::new(end.0, end.1),
@@ -211,7 +192,12 @@ impl ViewportRenderer {
         self.state.resize(width, height);
     }
 
-    fn draw_circle_mouse(&mut self, subdivisions: usize, mouse_pos: (f64, f64), mouse_button: &str) {
+    fn draw_circle_mouse(
+        &mut self,
+        subdivisions: usize,
+        mouse_pos: (f64, f64),
+        mouse_button: &str,
+    ) {
         let pos = PhysicalPosition::new(mouse_pos.0, mouse_pos.1);
         let button = match mouse_button {
             "left" => MouseButton::Left,
@@ -219,12 +205,21 @@ impl ViewportRenderer {
             "right" => MouseButton::Right,
             _ => return,
         };
-        self.state.viewport.draw_circle_mouse(subdivisions, pos, button);
+        self.state
+            .viewport
+            .draw_circle_mouse(subdivisions, pos, button);
     }
 
-    fn draw_circle_command(&mut self, subdivisions: usize, radius: f32, circle_pos: (f32, f32, f32)) {
+    fn draw_circle_command(
+        &mut self,
+        subdivisions: usize,
+        radius: f32,
+        circle_pos: (f32, f32, f32),
+    ) {
         let pos = Vector3::new(circle_pos.0, circle_pos.1, circle_pos.2);
-        self.state.viewport.draw_circle_command(subdivisions, radius, pos);
+        self.state
+            .viewport
+            .draw_circle_command(subdivisions, radius, pos);
     }
 
     fn draw_curve(&mut self, subdivisions: usize) {
@@ -232,7 +227,9 @@ impl ViewportRenderer {
     }
 
     fn duplicate_selected(&mut self, x: f32, y: f32, z: f32) -> usize {
-        self.state.viewport.duplicate_selected(cgmath::Vector3::new(x, y, z))
+        self.state
+            .viewport
+            .duplicate_selected(cgmath::Vector3::new(x, y, z))
     }
 
     fn begin_copy(&mut self) -> usize {
@@ -254,7 +251,7 @@ impl ViewportRenderer {
     fn cancel_copy(&mut self) {
         self.state.viewport.cancel_copy();
     }
-    
+
     pub fn render(&mut self) -> PyResult<()> {
         let mut show_popup = false;
         let mut extrude_input = 0.0;
@@ -283,11 +280,9 @@ impl ViewportRenderer {
         if closed && vertices.first() != vertices.last() {
             points.push(points[0]);
         }
-        self.state.viewport.add_polyline(
-            points,
-            [color.0, color.1, color.2, color.3],
-            2.5,
-        );
+        self.state
+            .viewport
+            .add_polyline(points, [color.0, color.1, color.2, color.3], 2.5);
 
         true
     }
@@ -306,46 +301,29 @@ impl ViewportRenderer {
         self.state.viewport.mouse_button(pressed)
     }
     fn linear_array(&mut self, count: u32, offset: (f32, f32, f32)) -> usize {
-        self.state.viewport.linear_array(
-            count,
-            Vector3::new(offset.0, offset.1, offset.2)
-        )
+        self.state
+            .viewport
+            .linear_array(count, Vector3::new(offset.0, offset.1, offset.2))
     }
     fn polar_array(&mut self, count: u32, center: (f32, f32, f32)) -> usize {
-        self.state.viewport.polar_array(
-            count,
-            Vector3::new(center.0, center.1, center.2)
-        )
+        self.state
+            .viewport
+            .polar_array(count, Vector3::new(center.0, center.1, center.2))
     }
     #[pyo3(signature = (x, y, additive=false))]
     fn select_picture_at(&mut self, x: f32, y: f32, additive: bool) -> bool {
         self.state.select_reference_at(x, y, additive)
     }
-    fn select_picture_box(
-        &mut self,
-        x1: f32,
-        y1: f32,
-        x2: f32,
-        y2: f32,
-        additive: bool,
-    ) -> bool {
-        self.state
-            .select_reference_box(x1, y1, x2, y2, additive)
+    fn select_picture_box(&mut self, x1: f32, y1: f32, x2: f32, y2: f32, additive: bool) -> bool {
+        self.state.select_reference_box(x1, y1, x2, y2, additive)
     }
     fn clear_picture_selection(&mut self) {
         self.state.clear_reference_selection();
     }
-    fn select_at(
-        &mut self,
-        x: f32,
-        y: f32,
-        additive: bool,
-    ) -> Option<usize> {
-        self.state.viewport.select_shape(
-            cgmath::Vector2::new(x, y),
-            8.0,
-            additive,
-        )
+    fn select_at(&mut self, x: f32, y: f32, additive: bool) -> Option<usize> {
+        self.state
+            .viewport
+            .select_shape(cgmath::Vector2::new(x, y), 8.0, additive)
     }
     #[pyo3(signature = (
         start_x,
@@ -362,13 +340,9 @@ impl ViewportRenderer {
         end_y: f32,
         additive: bool,
     ) -> usize {
-        self.state.viewport.select_box(
-            start_x,
-            start_y,
-            end_x,
-            end_y,
-            additive,
-        )
+        self.state
+            .viewport
+            .select_box(start_x, start_y, end_x, end_y, additive)
     }
 
     fn delete_selected(&mut self) -> usize {
@@ -411,12 +385,9 @@ impl ViewportRenderer {
         mid_enabled: bool,
         int_enabled: bool,
     ) {
-        self.state.viewport.set_osnap_modes(
-            end_enabled,
-            near_enabled,
-            mid_enabled,
-            int_enabled,
-        );
+        self.state
+            .viewport
+            .set_osnap_modes(end_enabled, near_enabled, mid_enabled, int_enabled);
     }
 
     fn set_construction_snap(&mut self, enabled: bool) {
@@ -436,18 +407,10 @@ impl ViewportRenderer {
     fn snap_cursor_position(&mut self) -> Option<(f32, f32)> {
         self.state.viewport.snap_cursor_position()
     }
-    fn cursor_world_position(&mut self) -> Option<(f32, f32, f32) > {
+    fn cursor_world_position(&mut self) -> Option<(f32, f32, f32)> {
         self.state.viewport.cursor_world_position()
     }
-    fn scene_data(
-        &self,
-    ) -> Vec<(
-        usize,
-        Vec<(f32, f32, f32)>,
-        (f32, f32, f32, f32),
-        f32,
-        bool,
-    )> {
+    fn scene_data(&self) -> Vec<(usize, Vec<(f32, f32, f32)>, (f32, f32, f32, f32), f32, bool)> {
         self.state
             .viewport
             .entities
@@ -533,9 +496,11 @@ impl ViewportRenderer {
         if self.state.viewport.graph_handle_key(code, pressed) {
             return true;
         }
-        let handled = self.state.viewport
-            .camera_controller
-            .handle_key(&mut self.state.viewport.camera, code, pressed);
+        let handled = self.state.viewport.camera_controller.handle_key(
+            &mut self.state.viewport.camera,
+            code,
+            pressed,
+        );
         if handled {
             self.state.viewport.rebuild_vertices();
         }

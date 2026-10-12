@@ -61,9 +61,12 @@ impl ReferenceImageLayer {
             color: [tint[0], tint[1], tint[2], picture.opacity],
         };
         let data = [
-            v(x1, z1, 0.0, 0.0), v(x2, z1, 1.0, 0.0),
-            v(x1, z2, 0.0, 1.0), v(x1, z2, 0.0, 1.0),
-            v(x2, z1, 1.0, 0.0), v(x2, z2, 1.0, 1.0),
+            v(x1, z1, 0.0, 0.0),
+            v(x2, z1, 1.0, 0.0),
+            v(x1, z2, 0.0, 1.0),
+            v(x1, z2, 0.0, 1.0),
+            v(x2, z1, 1.0, 0.0),
+            v(x2, z2, 1.0, 1.0),
         ];
         queue.write_buffer(&picture.vertices, 0, bytemuck::cast_slice(&data));
         true
@@ -153,7 +156,11 @@ impl ReferenceImageLayer {
         anyhow::ensure!(width > 0 && height > 0, "Image is empty");
         let texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("Picture texture"),
-            size: wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
+            size: wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
@@ -174,7 +181,11 @@ impl ReferenceImageLayer {
                 bytes_per_row: Some(width * 4),
                 rows_per_image: Some(height),
             },
-            wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
+            wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
         );
         let view = texture.create_view(&Default::default());
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
@@ -186,8 +197,14 @@ impl ReferenceImageLayer {
             label: Some("Picture bind group"),
             layout: &self.texture_layout,
             entries: &[
-                wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&view) },
-                wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(&sampler) },
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&sampler),
+                },
             ],
         });
         let data = [Vertex {
@@ -244,10 +261,7 @@ impl ReferenceImageLayer {
         let max_x = first.0.max(second.0);
         let min_z = first.1.min(second.1);
         let max_z = first.1.max(second.1);
-        let hit = point.0 >= min_x
-            && point.0 <= max_x
-            && point.1 >= min_z
-            && point.1 <= max_z;
+        let hit = point.0 >= min_x && point.0 <= max_x && point.1 >= min_z && point.1 <= max_z;
         let selected = if additive {
             picture.selected || hit
         } else {
@@ -273,7 +287,7 @@ impl ReferenceImageLayer {
             return false;
         };
         let box_min_x = first.0.min(second.0);
-        let box_max_x  = first.0.max(second.0);
+        let box_max_x = first.0.max(second.0);
         let box_min_z = first.1.min(second.1);
         let box_max_z = first.1.max(second.1);
         let image_min_x = image_first.0.min(image_second.0);

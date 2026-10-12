@@ -1,14 +1,17 @@
 use crate::camera::{Camera, CameraUniform};
+use crate::reference_image::ReferenceImageLayer;
+use crate::viewport::{PolyLine, Viewport};
 use crate::{GRAPH_INDICES, GRAPH_VERTICES, Vertex};
 use anyhow::Ok;
 use cgmath::Vector3;
-use crate::reference_image::ReferenceImageLayer;
-use glyphon::{Attrs, Buffer, Color, FontSystem, Metrics, Resolution, SwashCache, TextArea, TextAtlas, TextBounds, TextRenderer};
+use glyphon::{
+    Attrs, Buffer, Color, FontSystem, Metrics, Resolution, SwashCache, TextArea, TextAtlas,
+    TextBounds, TextRenderer,
+};
 use std::sync::Arc;
 use wgpu::util::DeviceExt;
 use winit::dpi::PhysicalPosition;
 use winit::window::Window;
-use crate::viewport::{PolyLine, Viewport};
 
 const INITIAL_POINT_SIZE: usize = 16;
 
@@ -95,52 +98,50 @@ pub struct State {
     next_entity: usize,
     pub viewport: Viewport,
     text_pos: Vector3<f32>,
-    pub (crate) egui_winit: Option<egui_winit::State>,
+    pub(crate) egui_winit: Option<egui_winit::State>,
     egui_ctx: egui::Context,
     egui_renderer: egui_wgpu::Renderer,
 }
 
 impl State {
-    pub fn import_reference_image(
-        &mut self,
-        path: &str,
-        opacity: f32,
-    ) -> anyhow::Result<()> {
-        self.reference_image.load(
-            &self.device,
-            &self.queue,
-            path,
-            opacity,
-        )
+    pub fn import_reference_image(&mut self, path: &str, opacity: f32) -> anyhow::Result<()> {
+        self.reference_image
+            .load(&self.device, &self.queue, path, opacity)
     }
-    pub fn set_reference_image_rect(
-        &mut self,
-        first: (f32, f32),
-        second: (f32, f32),
-    ) -> bool {
+    pub fn set_reference_image_rect(&mut self, first: (f32, f32), second: (f32, f32)) -> bool {
         self.reference_image.set_corners(&self.queue, first, second)
     }
     pub fn clear_reference_image(&mut self) {
         self.reference_image.clear();
     }
     pub fn select_reference_at(&mut self, x: f32, y: f32, additive: bool) -> bool {
-        let Some(point) = self.viewport.fetch_point(
-            winit::dpi::PhysicalPosition::new(x as f64, y as f64)
-        ) else {
+        let Some(point) = self
+            .viewport
+            .fetch_point(winit::dpi::PhysicalPosition::new(x as f64, y as f64))
+        else {
             return false;
         };
         self.reference_image
             .select_at(&self.queue, (point.x, point.z), additive)
     }
-    pub fn select_reference_box(&mut self, x1: f32, y1: f32, x2: f32, y2: f32, additive: bool) -> bool {
-        let Some(first) = self.viewport.fetch_point(
-            winit::dpi::PhysicalPosition::new(x1 as f64, y1 as f64)
-        ) else {
+    pub fn select_reference_box(
+        &mut self,
+        x1: f32,
+        y1: f32,
+        x2: f32,
+        y2: f32,
+        additive: bool,
+    ) -> bool {
+        let Some(first) = self
+            .viewport
+            .fetch_point(winit::dpi::PhysicalPosition::new(x1 as f64, y1 as f64))
+        else {
             return false;
         };
-        let Some(second) = self.viewport.fetch_point(
-            winit::dpi::PhysicalPosition::new(x2 as f64, y2 as f64)
-        ) else {
+        let Some(second) = self
+            .viewport
+            .fetch_point(winit::dpi::PhysicalPosition::new(x2 as f64, y2 as f64))
+        else {
             return false;
         };
         self.reference_image.select_box(
@@ -289,11 +290,8 @@ impl State {
                 }],
                 label: Some("camera_bind_group_layout"),
             });
-        let reference_image = ReferenceImageLayer::new(
-            &device,
-            config.format,
-            &camera_bind_group_layout,
-        );
+        let reference_image =
+            ReferenceImageLayer::new(&device, config.format, &camera_bind_group_layout);
         let camera_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             layout: &camera_bind_group_layout,
             entries: &[wgpu::BindGroupEntry {
@@ -382,10 +380,7 @@ impl State {
             multiview_mask: None,
             cache: None,
         });
-        let viewport = Viewport::new(
-            size.width,
-            size.height,
-        );
+        let viewport = Viewport::new(size.width, size.height);
         let mut font_system = FontSystem::new();
         let cache = glyphon::Cache::new(&device);
         let text_viewport = glyphon::Viewport::new(&device, &cache);
@@ -457,16 +452,13 @@ impl State {
             text,
             &Attrs::new().family(glyphon::Family::SansSerif),
             glyphon::Shaping::Advanced,
-            None
+            None,
         );
-        self.text_buffer.shape_until_scroll(&mut self.font_system, false);
+        self.text_buffer
+            .shape_until_scroll(&mut self.font_system, false);
         self.text_pos = pos;
     }
-    pub async fn new_embedded(
-        hwnd: isize,
-        width: u32,
-        height: u32,
-    ) -> anyhow::Result<State> {
+    pub async fn new_embedded(hwnd: isize, width: u32, height: u32) -> anyhow::Result<State> {
         use raw_window_handle::{
             RawDisplayHandle, RawWindowHandle, Win32WindowHandle, WindowsDisplayHandle,
         };
@@ -589,11 +581,8 @@ impl State {
                 }],
                 label: Some("camera_bind_group_layout"),
             });
-        let reference_image = ReferenceImageLayer::new(
-            &device,
-            config.format,
-            &camera_bind_group_layout,
-        );
+        let reference_image =
+            ReferenceImageLayer::new(&device, config.format, &camera_bind_group_layout);
         let camera_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             layout: &camera_bind_group_layout,
             entries: &[wgpu::BindGroupEntry {
@@ -638,10 +627,7 @@ impl State {
 
         let render_pipeline = create_pipeline(&shader, Some(wgpu::BlendState::REPLACE));
         let graph_pipeline = create_pipeline(&graph_shader, Some(wgpu::BlendState::ALPHA_BLENDING));
-        let viewport = Viewport::new(
-            width,
-            height
-        );
+        let viewport = Viewport::new(width, height);
         let mut font_system = FontSystem::new();
         let cache = glyphon::Cache::new(&device);
         let _text_viewport = glyphon::Viewport::new(&device, &cache);
@@ -649,7 +635,12 @@ impl State {
         let swash_cache = SwashCache::new();
         let _cache_state = wgpu::MultisampleState::default();
         let mut text_atlas = TextAtlas::new(&device, &queue, &cache, config.format);
-        let text_renderer = TextRenderer::new(&mut text_atlas, &device, wgpu::MultisampleState::default(), None);
+        let text_renderer = TextRenderer::new(
+            &mut text_atlas,
+            &device,
+            wgpu::MultisampleState::default(),
+            None,
+        );
         let mut text_buffer = Buffer::new(&mut font_system, Metrics::new(16.0, 20.0));
         text_buffer.set_size(Some(width as f32), Some(height as f32));
         // Temporary viewport text disabled while the text tool is being built.
@@ -714,7 +705,8 @@ impl State {
             self.viewport.rebuild_vertices();
             self.surface.configure(&self.device, &self.config);
             self.is_surface_configured = true;
-            self.text_buffer.set_size(Some(width as f32), Some(height as f32));
+            self.text_buffer
+                .set_size(Some(width as f32), Some(height as f32));
         }
     }
 
@@ -735,11 +727,14 @@ impl State {
                 });
             }
             if !vertices.is_empty() {
-                self.queue.write_buffer(&self.point_buffer, 0, bytemuck::cast_slice(vertices));
+                self.queue
+                    .write_buffer(&self.point_buffer, 0, bytemuck::cast_slice(vertices));
             }
             self.viewport.redraw = false;
         }
-        self.viewport.camera_controller.update_camera(&mut self.viewport.camera);
+        self.viewport
+            .camera_controller
+            .update_camera(&mut self.viewport.camera);
         self.camera_uniform.update_view_proj(&self.viewport.camera);
         self.queue.write_buffer(
             &self.camera_buffer,
@@ -749,7 +744,13 @@ impl State {
         if let Some(window) = &self.window {
             window.request_redraw();
         }
-        self.text_viewport.update(&self.queue, Resolution { width: self.config.width, height: self.config.height });
+        self.text_viewport.update(
+            &self.queue,
+            Resolution {
+                width: self.config.width,
+                height: self.config.height,
+            },
+        );
         let text_areas = match self.viewport.world_to_screen(self.text_pos) {
             Some(screen_pos) => vec![TextArea {
                 buffer: &self.text_buffer,
@@ -758,7 +759,7 @@ impl State {
                 scale: 1.0,
                 bounds: TextBounds::default(),
                 default_color: Color::rgb(255, 255, 255),
-                custom_glyphs: &[]
+                custom_glyphs: &[],
             }],
             None => Vec::new(),
         };
@@ -771,7 +772,8 @@ impl State {
                 &self.text_viewport,
                 text_areas,
                 &mut self.swash_cache,
-            ).map_err(|e| anyhow::anyhow!("Preparing text failed with error: {e}"))?;
+            )
+            .map_err(|e| anyhow::anyhow!("Preparing text failed with error: {e}"))?;
         if !self.is_surface_configured {
             return Ok(());
         }
@@ -825,7 +827,8 @@ impl State {
             self.reference_image.draw(&mut render_pass);
             render_pass.set_pipeline(&self.graph_pipeline);
             render_pass.set_vertex_buffer(0, self.graph_vertex_buffer.slice(..));
-            render_pass.set_index_buffer(self.graph_index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+            render_pass
+                .set_index_buffer(self.graph_index_buffer.slice(..), wgpu::IndexFormat::Uint16);
             render_pass.draw_indexed(0..self.num_indices, 0, 0..1);
             if !self.viewport.point_vertices.is_empty() {
                 render_pass.set_pipeline(&self.render_pipeline);
@@ -833,13 +836,8 @@ impl State {
                 render_pass.draw(0..self.viewport.point_vertices.len() as u32, 0..1);
             }
             self.text_renderer
-                .render(
-                    &mut self.text_atlas,
-                    &self.text_viewport,
-                    &mut render_pass,
-                )
+                .render(&mut self.text_atlas, &self.text_viewport, &mut render_pass)
                 .map_err(|error| anyhow::anyhow!("Rendering text failed: {error} "))?;
-
         }
         self.queue.submit(std::iter::once(encoder.finish()));
         self.queue.present(output);
@@ -886,7 +884,10 @@ impl Material {
     ) -> anyhow::Result<Self> {
         let rgba = image.to_rgba8();
         let (width, height) = rgba.dimensions();
-        anyhow::ensure!(width > 0 && height > 0, "Texture Dimensions Must Be Nonzero");
+        anyhow::ensure!(
+            width > 0 && height > 0,
+            "Texture Dimensions Must Be Nonzero"
+        );
         let texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("Material Texture"),
             size: wgpu::Extent3d {
@@ -899,7 +900,7 @@ impl Material {
             dimension: wgpu::TextureDimension::D2,
             format: wgpu::TextureFormat::Rgba8UnormSrgb,
             usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-            view_formats: &[]
+            view_formats: &[],
         });
         queue.write_texture(
             wgpu::TexelCopyTextureInfoBase {
@@ -917,7 +918,7 @@ impl Material {
             wgpu::Extent3d {
                 width,
                 height,
-                depth_or_array_layers: 1
+                depth_or_array_layers: 1,
             },
         );
         let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
@@ -942,7 +943,7 @@ impl Material {
                 },
             ],
         });
-        Ok (Self {
+        Ok(Self {
             texture,
             texture_view,
             sampler,
@@ -1006,49 +1007,44 @@ impl Renderer {
         height: u32,
         output_format: wgpu::TextureFormat,
     ) -> anyhow::Result<Self> {
-        anyhow::ensure!(width > 0 && height > 0, "Renderer Dimensions Must Be NonZero");
-        let camera_light = device.create_bind_group_layout(
-            &wgpu::BindGroupLayoutDescriptor {
-                label: Some("Camera and Light Layout"),
-                entries: &[wgpu::BindGroupLayoutEntry {
+        anyhow::ensure!(
+            width > 0 && height > 0,
+            "Renderer Dimensions Must Be NonZero"
+        );
+        let camera_light = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Camera and Light Layout"),
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            }],
+        });
+        let material = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Material Layout"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
                     binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
                     },
                     count: None,
-                }],
-            },
-        );
-        let material = device.create_bind_group_layout(
-            &wgpu::BindGroupLayoutDescriptor {
-                label: Some("Material Layout"),
-                entries: &[
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Texture {
-                            sample_type: wgpu::TextureSampleType::Float {
-                                filterable: true,
-                            },
-                            view_dimension: wgpu::TextureViewDimension::D2,
-                            multisampled: false,
-                        },
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 1,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Sampler(
-                            wgpu::SamplerBindingType::Filtering,
-                        ),
-                        count: None,
-                    },
-                ],
-            },
-        );
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+            ],
+        });
         let uniform = CameraLightUniform {
             view_proj: [
                 [1.0, 0.0, 0.0, 0.0],
@@ -1058,12 +1054,11 @@ impl Renderer {
             ],
             light_pos: [0.0, 5.0, 0.0, 1.0],
         };
-        let camera_light_buffer =
-            device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("Camera and Light Buffer"),
-                contents: bytemuck::bytes_of(&uniform),
-                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            });
+        let camera_light_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Camera and Light Buffer"),
+            contents: bytemuck::bytes_of(&uniform),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
         let camera_light_bind = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Camera and Light Bind Group"),
             layout: &camera_light,
@@ -1125,8 +1120,7 @@ impl Renderer {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: output_format,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
-                | wgpu::TextureUsages::TEXTURE_BINDING,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
             view_formats: &[],
         });
         let color_view = color_texture.create_view(&wgpu::TextureViewDescriptor::default());
@@ -1138,7 +1132,9 @@ impl Renderer {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: wgpu::TextureFormat::Depth32Float,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_SRC,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                | wgpu::TextureUsages::TEXTURE_BINDING
+                | wgpu::TextureUsages::COPY_SRC,
             view_formats: &[],
         });
         let depth_view = depth_texture.create_view(&wgpu::TextureViewDescriptor::default());
@@ -1168,7 +1164,9 @@ impl Renderer {
         anyhow::ensure!(!vertices.is_empty(), "Shape must have vertices");
         anyhow::ensure!(!indices.is_empty(), "Shape must have indices");
         anyhow::ensure!(
-            indices.iter().all(|&index| (index as usize) < vertices.len()),
+            indices
+                .iter()
+                .all(|&index| (index as usize) < vertices.len()),
             "Shape index is outside the vertex array"
         );
         let index_count = u32::try_from(indices.len());
@@ -1200,17 +1198,9 @@ impl Renderer {
             view_proj: camera.build_view_projection_matrix().into(),
             light_pos: [light_pos.x, light_pos.y, light_pos.z, 1.0],
         };
-        queue.write_buffer(
-            &self.camera_light_buffer,
-            0,
-            bytemuck::bytes_of(&uniform)
-        );
+        queue.write_buffer(&self.camera_light_buffer, 0, bytemuck::bytes_of(&uniform));
     }
-    pub fn render(
-        &self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue
-    ) {
+    pub fn render(&self, device: &wgpu::Device, queue: &wgpu::Queue) {
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("Offscreen Render Encoder"),
         });
@@ -1249,13 +1239,11 @@ impl Renderer {
         }
         queue.submit(std::iter::once(encoder.finish()));
     }
-    pub fn resize(
-        &mut self,
-        device: &wgpu::Device,
-        width: u32,
-        height: u32,
-    ) -> anyhow::Result<()> {
-        anyhow::ensure!(width > 0 && height > 0, "Render Dimensions must be greater than 0");
+    pub fn resize(&mut self, device: &wgpu::Device, width: u32, height: u32) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            width > 0 && height > 0,
+            "Render Dimensions must be greater than 0"
+        );
         let size = wgpu::Extent3d {
             width,
             height,
@@ -1268,10 +1256,14 @@ impl Renderer {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: self.output_format,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_SRC,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                | wgpu::TextureUsages::TEXTURE_BINDING
+                | wgpu::TextureUsages::COPY_SRC,
             view_formats: &[],
         });
-        self.color_view = self.color_texture.create_view(&wgpu::TextureViewDescriptor::default());
+        self.color_view = self
+            .color_texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
         self.depth_texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("Renderer Depth Target"),
             size,
@@ -1282,7 +1274,9 @@ impl Renderer {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             view_formats: &[],
         });
-        self.depth_view = self.depth_texture.create_view(&wgpu::TextureViewDescriptor::default());
+        self.depth_view = self
+            .depth_texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
         self.output_size = (width, height);
         Ok(())
     }

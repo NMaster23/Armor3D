@@ -17,12 +17,24 @@ impl Camera {
     pub fn build_view_projection_matrix(&self) -> cgmath::Matrix4<f32> {
         let view = cgmath::Matrix4::look_at_rh(self.eye, self.target, self.up);
         let proj = if self.orthographic {
-            let half_height = (self.eye - self.target).magnitude()
-                * (self.fov_y.to_radians() * 0.5).tan();
+            let half_height =
+                (self.eye - self.target).magnitude() * (self.fov_y.to_radians() * 0.5).tan();
             let half_width = half_height * self.aspect;
-            cgmath::ortho(-half_width, half_width, -half_height, half_height, self.z_near, self.z_far)
+            cgmath::ortho(
+                -half_width,
+                half_width,
+                -half_height,
+                half_height,
+                self.z_near,
+                self.z_far,
+            )
         } else {
-            cgmath::perspective(cgmath::Deg(self.fov_y), self.aspect, self.z_near, self.z_far)
+            cgmath::perspective(
+                cgmath::Deg(self.fov_y),
+                self.aspect,
+                self.z_near,
+                self.z_far,
+            )
         };
         return OPENGL_TO_WGPU_MATRIX * proj * view;
     }
@@ -99,7 +111,11 @@ pub struct CameraController {
     speed: f32,
     scroll: f32,
     pub is_locked: bool,
-    saved_3d_view: Option<(cgmath::Point3<f32>, cgmath::Point3<f32>, cgmath::Vector3<f32>)>,
+    saved_3d_view: Option<(
+        cgmath::Point3<f32>,
+        cgmath::Point3<f32>,
+        cgmath::Vector3<f32>,
+    )>,
     two_pressed: bool,
     is_move_forward_pressed: bool,
     is_move_backward_pressed: bool,
@@ -146,15 +162,13 @@ impl CameraController {
         };
         pending_scroll += delta_y;
     }
-    pub fn handle_key(
-        &mut self,
-        camera: &mut Camera,
-        code: KeyCode,
-        is_pressed: bool,
-    ) -> bool {
+    pub fn handle_key(&mut self, camera: &mut Camera, code: KeyCode, is_pressed: bool) -> bool {
         if is_pressed && self.is_locked {
             match code {
-                KeyCode::ArrowUp | KeyCode::ArrowDown | KeyCode::ArrowLeft | KeyCode::ArrowRight => {
+                KeyCode::ArrowUp
+                | KeyCode::ArrowDown
+                | KeyCode::ArrowLeft
+                | KeyCode::ArrowRight => {
                     self.unlock_to_3d(camera);
                 }
                 _ => {}

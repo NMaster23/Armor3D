@@ -681,6 +681,10 @@ def viewport_mouse_down(event):
             )
             renderer.set_polyline_distance(None)
             viewport.focus_set()
+        elif activecommand == 'curve':
+            command.delete(0, 'end')
+            command.configure(placeholder_text="Pick next fit point, right click to finihs")
+            viewport.focus_set()
 def viewport_left_drag(event):
     global left_dragged
     if activecommand == "picture_second":

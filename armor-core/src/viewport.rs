@@ -1,8 +1,6 @@
 use crate::Vertex;
 use crate::camera::{Camera, CameraController};
-use cgmath::{
-    InnerSpace, SquareMatrix, Vector3, Vector4, Zero,
-};
+use cgmath::{InnerSpace, SquareMatrix, Vector3, Vector4, Zero};
 use lyon::lyon_tessellation::{
     BuffersBuilder, FillOptions, FillTessellator, FillVertex, VertexBuffers,
 };
@@ -159,7 +157,7 @@ impl Viewport {
                 selected: true,
                 height: source.height,
                 show_markers: source.show_markers,
-                hatched: source.hatched
+                hatched: source.hatched,
             });
         }
 
@@ -172,15 +170,13 @@ impl Viewport {
             .count()
     }
     fn is_closed_shape(vertices: &[Vector3<f32>]) -> bool {
-        vertices.len() >= 4
-            && (vertices[0]-vertices[vertices.len()-1]).magnitude2() < 0.0001
+        vertices.len() >= 4 && (vertices[0] - vertices[vertices.len() - 1]).magnitude2() < 0.0001
     }
     pub fn hatch_selected(&mut self) -> usize {
-        let hatchable_ids: Vec<usize> = self.entities
+        let hatchable_ids: Vec<usize> = self
+            .entities
             .iter()
-            .filter(|entity| {
-                entity.selected && Self::is_closed_shape(&entity.vertices)
-            })
+            .filter(|entity| entity.selected && Self::is_closed_shape(&entity.vertices))
             .map(|entity| entity.id)
             .collect();
         if hatchable_ids.is_empty() {
@@ -189,7 +185,7 @@ impl Viewport {
         self.save_undo_state();
         for entity in &mut self.entities {
             if hatchable_ids.contains(&entity.id) {
-                entity.hatched =true;
+                entity.hatched = true;
             }
         }
         self.rebuild_vertices();
@@ -343,8 +339,7 @@ impl Viewport {
         end: cgmath::Vector2<f32>,
     ) -> usize {
         let direction = end - start;
-        let length_squared = direction.x * direction.x
-            + direction.y * direction.y;
+        let length_squared = direction.x * direction.x + direction.y * direction.y;
         if length_squared <= f32::EPSILON {
             return 0;
         }
@@ -372,10 +367,8 @@ impl Viewport {
                     let relative_x = point.x - start.x;
                     let relative_z = point.z - start.y;
 
-                    let projection = (
-                        relative_x * direction.x
-                        + relative_z * direction.y
-                    ) / length_squared;
+                    let projection =
+                        (relative_x * direction.x + relative_z * direction.y) / length_squared;
 
                     let projected_x = start.x + projection * direction.x;
                     let projected_z = start.y + projection * direction.y;
@@ -447,7 +440,7 @@ impl Viewport {
             polyline_active: false,
             polyline_color: DEFAULT_POLYLINE_COLOR,
             polyline_distance: None,
-            curve_subdivisions: 16,
+            curve_subdivisions: 24,
             curve_active: false,
             move_anchor: None,
             move_snapshots: Vec::new(),
@@ -519,7 +512,12 @@ impl Viewport {
             vertex.position[1] += height;
         }
         vertices.extend(top_vertices);
-        let side_color = [color[0] * 0.75, color[1] * 0.75, color[2] * 0.75, color[3] * 0.75];
+        let side_color = [
+            color[0] * 0.75,
+            color[1] * 0.75,
+            color[2] * 0.75,
+            color[3] * 0.75,
+        ];
         for window in points.windows(2) {
             let point0 = window[0];
             let point1 = window[1];
@@ -609,17 +607,16 @@ impl Viewport {
         let projection = a + ab * t;
         (p - projection).magnitude2()
     }
-    pub fn move_shape(
-        &mut self,
-        original_points: &[Vector3<f32>],
-        move_pos: &[Vector3<f32>],
-    ) {
+    pub fn move_shape(&mut self, original_points: &[Vector3<f32>], move_pos: &[Vector3<f32>]) {
         let temp_points: Vec<Vector3<f32>> = original_points
             .iter()
             .zip(move_pos.iter())
             .map(|(point, delta)| *point + *delta)
             .collect();
-        let points = temp_points.iter().map(|p| self.grid_snap_point(*p)).collect::<Vec<_>>();
+        let points = temp_points
+            .iter()
+            .map(|p| self.grid_snap_point(*p))
+            .collect::<Vec<_>>();
         let vertices: Vec<Vertex> = points
             .into_iter()
             .map(|position| Vertex {
@@ -631,11 +628,7 @@ impl Viewport {
         self.vertice_append(&vertices);
         self.rebuild_vertices();
     }
-    pub fn move_shape_key(
-        &mut self,
-        code: KeyCode,
-        step_size: f32,
-    ) -> bool {
+    pub fn move_shape_key(&mut self, code: KeyCode, step_size: f32) -> bool {
         let mut move_pos = Vector3::zero();
         match code {
             KeyCode::ArrowLeft => move_pos.x -= step_size,
@@ -680,17 +673,13 @@ impl Viewport {
             if entity.hatched
                 && Self::is_closed_shape(&entity.vertices)
                 && Self::point_in_polygon(mouse_px, &screen_vertices)
-                {
-                    closest = Some(entity.id);
-                    min_dist_sq = 0.0;
-                    continue;
-                }
+            {
+                closest = Some(entity.id);
+                min_dist_sq = 0.0;
+                continue;
+            }
             for segment in screen_vertices.windows(2) {
-                let distance = Self::dist_to_segment(
-                    mouse_px,
-                    segment[0],
-                    segment[1],
-                );
+                let distance = Self::dist_to_segment(mouse_px, segment[0], segment[1]);
 
                 if distance < min_dist_sq {
                     min_dist_sq = distance;
@@ -701,11 +690,7 @@ impl Viewport {
 
         if additive {
             if let Some(id) = closest {
-                if let Some(entity) = self
-                    .entities
-                    .iter_mut()
-                    .find(|entity| entity.id == id)
-                {
+                if let Some(entity) = self.entities.iter_mut().find(|entity| entity.id == id) {
                     entity.selected = true;
                 }
             }
@@ -725,29 +710,30 @@ impl Viewport {
         closest
     }
 
-    fn point_in_rect(point: cgmath::Vector2<f32>, min: cgmath::Vector2<f32>, max: cgmath::Vector2<f32>) -> bool {
+    fn point_in_rect(
+        point: cgmath::Vector2<f32>,
+        min: cgmath::Vector2<f32>,
+        max: cgmath::Vector2<f32>,
+    ) -> bool {
         point.x >= min.x && point.x <= max.x && point.y >= min.y && point.y <= max.y
     }
-    fn point_in_polygon(
-        point: cgmath::Vector2<f32>,
-        vertices: &[cgmath::Vector2<f32>]
-    ) -> bool {
-        if vertices.len() <3 {
+    fn point_in_polygon(point: cgmath::Vector2<f32>, vertices: &[cgmath::Vector2<f32>]) -> bool {
+        if vertices.len() < 3 {
             return false;
         }
         let mut inside = false;
         let mut previous = vertices.len() - 1;
         for current in 0..vertices.len() {
             let a = vertices[current];
-            let b  = vertices[previous];
-            let crosses  = (a.y > point.y) != (b.y > point.y);
+            let b = vertices[previous];
+            let crosses = (a.y > point.y) != (b.y > point.y);
             if crosses {
                 let intersection_x = (b.x - a.x) * (point.y - a.y) / (b.y - a.y) + a.x;
-                if  point.x < intersection_x { 
+                if point.x < intersection_x {
                     inside = !inside;
                 }
             }
-            previous =current;
+            previous = current;
         }
         inside
     }
@@ -799,15 +785,9 @@ impl Viewport {
         end_y: f32,
         additive: bool,
     ) -> usize {
-        let min = cgmath::Vector2::new(
-            start_x.min(end_x),
-            start_y.min(end_y),
-        );
+        let min = cgmath::Vector2::new(start_x.min(end_x), start_y.min(end_y));
 
-        let max = cgmath::Vector2::new(
-            start_x.max(end_x),
-            start_y.max(end_y),
-        );
+        let max = cgmath::Vector2::new(start_x.max(end_x), start_y.max(end_y));
 
         let window_selection = end_x >= start_x;
         let mut selected_ids = Vec::new();
@@ -824,18 +804,13 @@ impl Viewport {
             }
 
             let selected = if window_selection {
-                screen_vertices.iter().all(|point| {
-                    Self::point_in_rect(*point, min, max)
-                })
+                screen_vertices
+                    .iter()
+                    .all(|point| Self::point_in_rect(*point, min, max))
             } else {
-                screen_vertices.windows(2).any(|segment| {
-                    Self::segment_intersects_rect(
-                        segment[0],
-                        segment[1],
-                        min,
-                        max,
-                    )
-                })
+                screen_vertices
+                    .windows(2)
+                    .any(|segment| Self::segment_intersects_rect(segment[0], segment[1], min, max))
             };
 
             if selected {
@@ -849,8 +824,7 @@ impl Viewport {
                     entity.selected = true;
                 }
             } else {
-                entity.selected =
-                    selected_ids.contains(&entity.id);
+                entity.selected = selected_ids.contains(&entity.id);
             }
         }
 
@@ -902,7 +876,7 @@ impl Viewport {
                 let segment_hit = screen_vertices.windows(2).any(|segment| {
                     Self::dist_to_segment(mouse, segment[0], segment[1]) <= threshold_sq
                 });
-                let interior_hit  = entity.hatched
+                let interior_hit = entity.hatched
                     && Self::is_closed_shape(&entity.vertices)
                     && Self::point_in_polygon(mouse, &screen_vertices);
                 if interior_hit {
@@ -911,9 +885,7 @@ impl Viewport {
                 if segment_hit {
                     return true;
                 }
-                if let Some((center, endpoint)) =
-                    Self::circle_control_points(&entity.vertices)
-                {
+                if let Some((center, endpoint)) = Self::circle_control_points(&entity.vertices) {
                     return [center, endpoint]
                         .into_iter()
                         .filter_map(|point| self.world_to_screen(point))
@@ -949,7 +921,11 @@ impl Viewport {
         };
         let offset = self.grid_snap_offset(current - anchor);
         for (entity_id, original_vertices) in &self.move_snapshots {
-            if let Some(entity) = self.entities.iter_mut().find(|entity| entity.id == *entity_id) {
+            if let Some(entity) = self
+                .entities
+                .iter_mut()
+                .find(|entity| entity.id == *entity_id)
+            {
                 entity.vertices = original_vertices
                     .iter()
                     .map(|vertex| *vertex + offset)
@@ -964,13 +940,9 @@ impl Viewport {
         self.move_anchor = None;
         self.move_snapshots.clear();
     }
-    pub fn world_to_screen(
-        &self,
-        world_pos: cgmath::Vector3<f32>,
-    ) -> Option<cgmath::Vector2<f32>> {
+    pub fn world_to_screen(&self, world_pos: cgmath::Vector3<f32>) -> Option<cgmath::Vector2<f32>> {
         let view_proj = self.camera.build_view_projection_matrix();
-        let clip_pos =
-            view_proj * cgmath::Vector4::new(world_pos.x, world_pos.y, world_pos.z, 1.0);
+        let clip_pos = view_proj * cgmath::Vector4::new(world_pos.x, world_pos.y, world_pos.z, 1.0);
         if clip_pos.w <= 0.0 {
             return None;
         }
@@ -989,9 +961,7 @@ impl Viewport {
         self.select_shape(mouse_px, hit_threshold, false);
     }
 
-    fn circle_control_points(
-        points: &[Vector3<f32>],
-    ) -> Option<(Vector3<f32>, Vector3<f32>)> {
+    fn circle_control_points(points: &[Vector3<f32>]) -> Option<(Vector3<f32>, Vector3<f32>)> {
         if points.len() < 33 {
             return None;
         }
@@ -1044,58 +1014,43 @@ impl Viewport {
             };
             let closed = Self::is_closed_shape(&entity.vertices);
             if entity.hatched && closed {
-                let fill_color = [
-                    draw_color[0],
-                    draw_color[1],
-                    draw_color[2],
-                    0.45,
-                ];
-                new_vertices.extend(Self::tessellate_fill(
-                    &entity.vertices,
-                    fill_color,
-                ));
+                let fill_color = [draw_color[0], draw_color[1], draw_color[2], 0.45];
+                new_vertices.extend(Self::tessellate_fill(&entity.vertices, fill_color));
             }
             if closed && entity.height > 0.0 {
-                new_vertices.extend(Self::extrude(
-                    &entity.vertices,
-                    draw_color,
-                    entity.height,
-                ));
+                new_vertices.extend(Self::extrude(&entity.vertices, draw_color, entity.height));
             }
-            let entity_vertices = self.tessellate_polyline(
-                &entity.vertices,
-                entity.thickness,
-                draw_color,
-            );
+            let entity_vertices =
+                self.tessellate_polyline(&entity.vertices, entity.thickness, draw_color);
             new_vertices.extend_from_slice(&entity_vertices);
-            if entity.show_markers
-                && Self::circle_control_points(&entity.vertices).is_none()
-        {
+            if entity.show_markers && Self::circle_control_points(&entity.vertices).is_none() {
                 let marker_count = if closed {
                     entity.vertices.len() - 1
                 } else {
                     entity.vertices.len()
                 };
-        for point in entity.vertices.iter().take(marker_count) {
-            new_vertices.extend(Self::tessellate_vertex_circle(
-                *point,
-                marker_radius,
-                marker_color,
-            ));
+                for point in entity.vertices.iter().take(marker_count) {
+                    new_vertices.extend(Self::tessellate_vertex_circle(
+                        *point,
+                        marker_radius,
+                        marker_color,
+                    ));
+                }
+            }
         }
-    }
-}
-        if let (Some(first), Some(second)) = (
-            self.rectangle_first,
-            self.rectangle_second
-        ) {
+        if let (Some(first), Some(second)) = (self.rectangle_first, self.rectangle_second) {
             let rectangle = Self::rectangle_points(first, second);
             new_vertices.extend(self.tessellate_polyline(
                 &rectangle,
-                POLYLINE_WIDTH_PIXELS, self.polyline_color
+                POLYLINE_WIDTH_PIXELS,
+                self.polyline_color,
             ));
             for point in rectangle.iter().take(4) {
-                new_vertices.extend(Self::tessellate_vertex_circle(*point, marker_radius, marker_color));
+                new_vertices.extend(Self::tessellate_vertex_circle(
+                    *point,
+                    marker_radius,
+                    marker_color,
+                ));
             }
         }
         if let (Some(center), Some(target)) = (self.circle_center, self.circle_target) {
@@ -1134,19 +1089,11 @@ impl Viewport {
                 let preview_vertices: Vec<Vector3<f32>> = source
                     .vertices
                     .iter()
-                    .map(|point| *point+offset)
+                    .map(|point| *point + offset)
                     .collect();
                 if source.hatched && Self::is_closed_shape(&preview_vertices) {
-                    let preview_fill = [
-                        source.color[0],
-                        source.color[1],
-                        source.color[2],
-                        0.35,
-                    ];
-                    new_vertices.extend(Self::tessellate_fill(
-                        &preview_vertices,
-                        preview_fill,
-                    ));
+                    let preview_fill = [source.color[0], source.color[1], source.color[2], 0.35];
+                    new_vertices.extend(Self::tessellate_fill(&preview_vertices, preview_fill));
                 }
                 new_vertices.extend(self.tessellate_polyline(
                     &preview_vertices,
@@ -1160,66 +1107,71 @@ impl Viewport {
                     base + Vector3::new(0.0, POLYLINE_HEIGHT * 3.0, 0.0),
                     target + Vector3::new(0.0, POLYLINE_HEIGHT * 3.0, 0.0),
                 ];
-                new_vertices.extend(self.tessellate_polyline(
-                    &guide,
-                    1.0,
-                    [1.0, 0.72, 0.25, 0.75],
-                ));
+                new_vertices.extend(self.tessellate_polyline(&guide, 1.0, [1.0, 0.72, 0.25, 0.75]));
             }
         }
 
-    let mut preview_controls = self.active_polyline.clone();
-    let raw_preview = self.preview_point;
-    let distance_target = self.polyline_distance_target();
-    let displayed_preview = distance_target.or(raw_preview);
-    if let Some(preview_point) = displayed_preview {
-        let should_append = preview_controls
-            .last()
-            .map(|last|{
-                (*last - preview_point).magnitude2() > f32:: EPSILON
-            })
-            .unwrap_or(false);
-        if should_append {
-            preview_controls.push(preview_point);
+        let mut preview_controls = self.active_polyline.clone();
+        let raw_preview = self.preview_point;
+        let distance_target = self.polyline_distance_target();
+        let displayed_preview = distance_target.or(raw_preview);
+        if let Some(preview_point) = displayed_preview {
+            let should_append = preview_controls
+                .last()
+                .map(|last| (*last - preview_point).magnitude2() > f32::EPSILON)
+                .unwrap_or(false);
+            if should_append {
+                preview_controls.push(preview_point);
+            }
         }
-    }
-    if let (Some(target), Some(cursor)) = (distance_target, raw_preview) {
-        if (target- cursor).magnitude2() > f32::EPSILON {
-            let guide = [
-                target + Vector3::new(0.0, POLYLINE_HEIGHT * 3.0, 0.0),
-                cursor + Vector3::new(0.0, POLYLINE_HEIGHT * 3.0, 0.0),
-            ];
-            new_vertices.extend(self.tessellate_polyline(&guide, 1.0, [1.0, 1.0, 1.0, 0.75]));
+        if let (Some(target), Some(cursor)) = (distance_target, raw_preview) {
+            if (target - cursor).magnitude2() > f32::EPSILON {
+                let guide = [
+                    target + Vector3::new(0.0, POLYLINE_HEIGHT * 3.0, 0.0),
+                    cursor + Vector3::new(0.0, POLYLINE_HEIGHT * 3.0, 0.0),
+                ];
+                new_vertices.extend(self.tessellate_polyline(&guide, 1.0, [1.0, 1.0, 1.0, 0.75]));
+            }
         }
-    }
-    let renderer_preview = if self.curve_active {
-        Self::sample_curve(
-            &preview_controls,
-            self.curve_subdivisions.max(4) as usize
-        )
-    } else {
-        preview_controls.clone()
-    };
-    if renderer_preview.len() > 1 {
-        new_vertices.extend(self.tessellate_polyline(
-            &renderer_preview,
-            POLYLINE_WIDTH_PIXELS,
-            self.polyline_color
-        ));
-    }
-    for point in &preview_controls {
-        new_vertices.extend(Self::tessellate_vertex_circle(
-            *point,
-            marker_radius,
-            marker_color,
-        ));
-    }
-    self.point_vertices = new_vertices;
-    self.redraw = true;
+        let renderer_preview = if self.curve_active {
+            if let Some(preview) = displayed_preview {
+                Self::sample_curve_preview(
+                    &self.active_polyline,
+                    preview,
+                    self.curve_subdivisions.max(4) as usize,
+                )
+            } else {
+                Self::sample_curve(
+                    &self.active_polyline,
+                    self.curve_subdivisions.max(4) as usize,
+                )
+            }
+        } else {
+            preview_controls.clone()
+        };
+        if renderer_preview.len() > 1 {
+            new_vertices.extend(self.tessellate_polyline(
+                &renderer_preview,
+                POLYLINE_WIDTH_PIXELS,
+                self.polyline_color,
+            ));
+        }
+        for point in &preview_controls {
+            new_vertices.extend(Self::tessellate_vertex_circle(
+                *point,
+                marker_radius,
+                marker_color,
+            ));
+        }
+        self.point_vertices = new_vertices;
+        self.redraw = true;
     }
     pub fn extrude_selected(&mut self, height: f32) {
         let entity = match self.selected_entity {
-            Some(selected_id) => self.entities.iter_mut().find(|entity| entity.id == selected_id),
+            Some(selected_id) => self
+                .entities
+                .iter_mut()
+                .find(|entity| entity.id == selected_id),
             None => self.entities.last_mut(),
         };
         if let Some(entity) = entity {
@@ -1237,9 +1189,13 @@ impl Viewport {
         if points.len() < 2 {
             return vertices;
         }
-        let closed = points.len() > 2
-            && (points[0] - points[points.len() - 1]).magnitude2() <= f32::EPSILON;
-        let point_count = if closed { points.len() - 1 } else { points.len() };
+        let closed =
+            points.len() > 2 && (points[0] - points[points.len() - 1]).magnitude2() <= f32::EPSILON;
+        let point_count = if closed {
+            points.len() - 1
+        } else {
+            points.len()
+        };
         if point_count < 2 {
             return vertices;
         }
@@ -1260,7 +1216,11 @@ impl Viewport {
         for index in 0..point_count {
             let current = points[index];
             let previous = if index == 0 {
-                if closed { points[point_count - 1] } else { current }
+                if closed {
+                    points[point_count - 1]
+                } else {
+                    current
+                }
             } else {
                 points[index - 1]
             };
@@ -1313,9 +1273,10 @@ impl Viewport {
     }
 
     fn world_width_for_pixels(&self, pixel_width: f32) -> f32 {
-        let camera_distance = (self.camera.eye - self.camera.target).magnitude().max(0.001);
-        let visible_height =
-            2.0 * camera_distance * (self.camera.fov_y.to_radians() * 0.5).tan();
+        let camera_distance = (self.camera.eye - self.camera.target)
+            .magnitude()
+            .max(0.001);
+        let visible_height = 2.0 * camera_distance * (self.camera.fov_y.to_radians() * 0.5).tan();
         pixel_width * visible_height / self.height.max(1) as f32
     }
 
@@ -1330,56 +1291,70 @@ impl Viewport {
         let p2 = [point.x - half_size, y, point.z + half_size];
         let p3 = [point.x + half_size, y, point.z + half_size];
         [
-            Vertex { position: p0, coords: [0.0; 3], color },
-            Vertex { position: p1, coords: [0.0; 3], color },
-            Vertex { position: p2, coords: [0.0; 3], color },
-            Vertex { position: p2, coords: [0.0; 3], color },
-            Vertex { position: p1, coords: [0.0; 3], color },
-            Vertex { position: p3, coords: [0.0; 3], color },
-        ]
-    }
-    fn tessellate_vertex_circle(
-    point: Vector3<f32>,
-    radius: f32,
-    color: [f32; 4],
-) -> Vec<Vertex> {
-    const SEGMENTS: usize = 16;
-
-    let mut vertices = Vec::with_capacity(SEGMENTS * 3);
-    let center = Vector3::new(
-        point.x,
-        point.y + POLYLINE_HEIGHT * 2.0,
-        point.z,
-    );
-
-    for index in 0..SEGMENTS {
-        let angle1 =
-            index as f32 / SEGMENTS as f32 * std::f32::consts::TAU;
-        let angle2 =
-            (index + 1) as f32 / SEGMENTS as f32 * std::f32::consts::TAU;
-
-        let point1 = Vector3::new(
-            center.x + angle1.cos() * radius,
-            center.y,
-            center.z + angle1.sin() * radius,
-        );
-        let point2 = Vector3::new(
-            center.x + angle2.cos() * radius,
-            center.y,
-            center.z + angle2.sin() * radius,
-        );
-
-        for position in [center, point1, point2] {
-            vertices.push(Vertex {
-                position: position.into(),
+            Vertex {
+                position: p0,
                 coords: [0.0; 3],
                 color,
-            });
-        }
+            },
+            Vertex {
+                position: p1,
+                coords: [0.0; 3],
+                color,
+            },
+            Vertex {
+                position: p2,
+                coords: [0.0; 3],
+                color,
+            },
+            Vertex {
+                position: p2,
+                coords: [0.0; 3],
+                color,
+            },
+            Vertex {
+                position: p1,
+                coords: [0.0; 3],
+                color,
+            },
+            Vertex {
+                position: p3,
+                coords: [0.0; 3],
+                color,
+            },
+        ]
     }
+    fn tessellate_vertex_circle(point: Vector3<f32>, radius: f32, color: [f32; 4]) -> Vec<Vertex> {
+        const SEGMENTS: usize = 16;
 
-    vertices
-}
+        let mut vertices = Vec::with_capacity(SEGMENTS * 3);
+        let center = Vector3::new(point.x, point.y + POLYLINE_HEIGHT * 2.0, point.z);
+
+        for index in 0..SEGMENTS {
+            let angle1 = index as f32 / SEGMENTS as f32 * std::f32::consts::TAU;
+            let angle2 = (index + 1) as f32 / SEGMENTS as f32 * std::f32::consts::TAU;
+
+            let point1 = Vector3::new(
+                center.x + angle1.cos() * radius,
+                center.y,
+                center.z + angle1.sin() * radius,
+            );
+            let point2 = Vector3::new(
+                center.x + angle2.cos() * radius,
+                center.y,
+                center.z + angle2.sin() * radius,
+            );
+
+            for position in [center, point1, point2] {
+                vertices.push(Vertex {
+                    position: position.into(),
+                    coords: [0.0; 3],
+                    color,
+                });
+            }
+        }
+
+        vertices
+    }
     pub fn add_polyline(&mut self, vertices: Vec<Vector3<f32>>, color: [f32; 4], thickness: f32) {
         self.save_undo_state();
         let id = self.next_entity;
@@ -1400,7 +1375,9 @@ impl Viewport {
             if is_pressed {
                 if !self.grab_mode {
                     if let Some(selected_id) = self.selected_entity {
-                        if let Some(entity) = self.entities.iter().find(|entity| entity.id == selected_id) {
+                        if let Some(entity) =
+                            self.entities.iter().find(|entity| entity.id == selected_id)
+                        {
                             self.grab_snapshot = entity.vertices.clone();
                             self.grab_origin = self.fetch_point(self.cursor_pos);
                             self.grab_mode = self.grab_origin.is_some();
@@ -1433,7 +1410,7 @@ impl Viewport {
         self.entities.clear();
         self.point_vertices.clear();
         self.active_polyline.clear();
-        self.preview_point  = None;
+        self.preview_point = None;
         self.selected_entity = None;
         self.polyline_active = false;
         self.curve_active = false;
@@ -1450,8 +1427,8 @@ impl Viewport {
         let distance = self.polyline_distance?;
         let start = *self.active_polyline.last()?;
         let cursor = self.preview_point?;
-        let direction = cursor- start;
-        let horizontal_length = (direction.x * direction.x + direction.z *  direction.z).sqrt();
+        let direction = cursor - start;
+        let horizontal_length = (direction.x * direction.x + direction.z * direction.z).sqrt();
         if horizontal_length <= f32::EPSILON {
             return None;
         }
@@ -1462,9 +1439,7 @@ impl Viewport {
         ))
     }
     pub fn set_polyline_distance(&mut self, distance: Option<f32>) {
-        self.polyline_distance = distance.filter(|value| {
-            value.is_finite() && *value > 0.0
-        });
+        self.polyline_distance = distance.filter(|value| value.is_finite() && *value > 0.0);
         self.rebuild_vertices();
     }
     pub fn commit_polyline_distance(&mut self, distance: f32) -> bool {
@@ -1487,7 +1462,7 @@ impl Viewport {
         true
     }
     pub fn start_polyline(&mut self) {
-        self.polyline_distance=  None;
+        self.polyline_distance = None;
         self.active_polyline.clear();
         self.preview_point = None;
         self.curve_active = false;
@@ -1544,14 +1519,13 @@ impl Viewport {
         self.near_snap_enabled = near_enabled;
         self.mid_snap_enabled = mid_enabled;
         self.int_snap_enabled = int_enabled;
-        self.osnap = 
-            end_enabled || near_enabled || mid_enabled || int_enabled;
+        self.osnap = end_enabled || near_enabled || mid_enabled || int_enabled;
         if !self.osnap && !self.construction_snap_enabled {
             self.preview_point = None;
             self.rebuild_vertices();
         }
     }
-    pub fn set_construction_snap(&mut self, enabled:bool) {
+    pub fn set_construction_snap(&mut self, enabled: bool) {
         self.construction_snap_enabled = enabled;
     }
 
@@ -1575,7 +1549,7 @@ impl Viewport {
         if !self.ortho_enabled {
             return None;
         }
-        let anchor= *self.active_polyline.last()?;
+        let anchor = *self.active_polyline.last()?;
         let difference = point - anchor;
         if difference.x.abs() >= difference.z.abs() {
             Some(Vector3::new(point.x, point.y, anchor.z))
@@ -1689,10 +1663,7 @@ impl Viewport {
             first_start.z + rz * t,
         ))
     }
-    pub fn get_snap_pos(
-        &self,
-        point: Vector3<f32>,
-    ) -> (Vector3<f32>, bool, Option<&'static str>) {
+    pub fn get_snap_pos(&self, point: Vector3<f32>) -> (Vector3<f32>, bool, Option<&'static str>) {
         if self.end_snap_enabled || self.construction_snap_enabled {
             let radius = self.world_width_for_pixels(END_SNAP_RADIUS_PIXELS);
             let mut best_end: Option<(f32, Vector3<f32>, bool)> = None;
@@ -1771,8 +1742,7 @@ impl Viewport {
                         if shares_endpoint {
                             continue;
                         }
-                        let Some(intersection) = Self::segment_intersection_xz(a, b, c, d)
-                        else {
+                        let Some(intersection) = Self::segment_intersection_xz(a, b, c, d) else {
                             continue;
                         };
                         let Some(screen) = self.world_to_screen(intersection) else {
@@ -1936,7 +1906,7 @@ impl Viewport {
         }
         self.vertice_append(&flat_vertices);
     }
-    pub fn polyline(&mut self, mouse_pos: PhysicalPosition<f64>)-> bool {
+    pub fn polyline(&mut self, mouse_pos: PhysicalPosition<f64>) -> bool {
         let hit_pos = match self.fetch_point(mouse_pos) {
             Some(hit_pos) => hit_pos,
             None => return false,
@@ -1949,9 +1919,7 @@ impl Viewport {
         if should_close && !self.curve_active {
             self.active_polyline.push(snap_pos);
             let points = self.active_polyline.clone();
-            self.add_polyline(
-                points, self.polyline_color, POLYLINE_WIDTH_PIXELS
-            );
+            self.add_polyline(points, self.polyline_color, POLYLINE_WIDTH_PIXELS);
             self.active_polyline.clear();
             self.preview_point = None;
             self.polyline_active = false;
@@ -1979,8 +1947,7 @@ impl Viewport {
         let start_angle = delta.z.atan2(delta.x);
         let mut points = Vec::with_capacity(subdivisions + 1);
         for index in 0..=subdivisions {
-            let angle = start_angle
-                + std::f32::consts::TAU * index as f32 / subdivisions as f32;
+            let angle = start_angle + std::f32::consts::TAU * index as f32 / subdivisions as f32;
             points.push(Vector3::new(
                 center.x + radius * angle.cos(),
                 center.y,
@@ -2021,28 +1988,17 @@ impl Viewport {
         self.rebuild_vertices();
         true
     }
-    pub fn update_rectangle_preview(
-        &mut self,
-        x: f32,
-        y: f32,
-    ) -> Option<(f32, f32)> {
+    pub fn update_rectangle_preview(&mut self, x: f32, y: f32) -> Option<(f32, f32)> {
         let first = self.rectangle_first?;
-        self.cursor_pos =
-            PhysicalPosition::new(x as f64, y as f64);
+        self.cursor_pos = PhysicalPosition::new(x as f64, y as f64);
         let raw_point = self.fetch_point(self.cursor_pos)?;
         let second = self.get_snap_pos(raw_point).0;
         self.rectangle_second = Some(second);
         self.rebuild_vertices();
-        Some((
-            (second.x - first.x).abs(),
-            (second.z - first.z).abs(),
-        ))
+        Some(((second.x - first.x).abs(), (second.z - first.z).abs()))
     }
     pub fn commit_rectangle(&mut self) -> bool {
-        let (Some(first), Some(second)) = (
-            self.rectangle_first,
-            self.rectangle_second,
-        ) else {
+        let (Some(first), Some(second)) = (self.rectangle_first, self.rectangle_second) else {
             return false;
         };
         let width = (second.x - first.x).abs();
@@ -2098,17 +2054,13 @@ impl Viewport {
         let Some(center) = self.circle_center else {
             return false;
         };
-        let current_target= self
+        let current_target = self
             .circle_target
-            .unwrap_or(center+Vector3::new(1.0, 0.0, 0.0));
+            .unwrap_or(center + Vector3::new(1.0, 0.0, 0.0));
         let offset = current_target - center;
         let planar_length = (offset.x * offset.x + offset.z * offset.z).sqrt();
         let direction = if planar_length > 0.0001 {
-            Vector3::new(
-                offset.x / planar_length,
-                0.0,
-                offset.z / planar_length,
-            )
+            Vector3::new(offset.x / planar_length, 0.0, offset.z / planar_length)
         } else {
             Vector3::new(1.0, 0.0, 0.0)
         };
@@ -2153,12 +2105,7 @@ impl Viewport {
             self.commit_circle(subdivisions);
         }
     }
-    pub fn draw_circle_command(
-        &mut self,
-        subdivisions: usize,
-        radius: f32,
-        center: Vector3<f32>,
-    ) {
+    pub fn draw_circle_command(&mut self, subdivisions: usize, radius: f32, center: Vector3<f32>) {
         if subdivisions < 3 || !radius.is_finite() || radius <= 0.0 {
             return;
         }
@@ -2168,40 +2115,145 @@ impl Viewport {
             self.add_polyline(points, self.polyline_color, POLYLINE_WIDTH_PIXELS);
         }
     }
-    fn sample_curve(
-        points: &[Vector3<f32>],
-        subdivisions: usize,
-    ) -> Vec<Vector3<f32>> {
-        if points.len() < 2 {
-            return Vec::new();
+    fn curve_knot(previous: f32, first: Vector3<f32>, second: Vector3<f32>) -> f32 {
+        previous + (second - first).magnitude().max(0.00001).sqrt()
+    }
+
+    fn curve_lerp(
+        first: Vector3<f32>,
+        second: Vector3<f32>,
+        first_time: f32,
+        second_time: f32,
+        time: f32,
+    ) -> Vector3<f32> {
+        let difference = second_time - first_time;
+        if difference.abs() <= 0.000001 {
+            return first;
         }
-        if points.len() == 2 {
-            return points.to_vec();
-        }
-        let subdivisions = subdivisions.max(4);
-        let mut sampled = Vec::new();
-        for index in 0..points.len() - 1 {
-            let p0 = if index == 0 {
-                points[index]
-            } else {
-                points[index - 1]
-            };
-            let p1 = points[index];
-            let p2 = points[index + 1];
-            let p3 = if index + 2 < points.len() {
-                points[index + 2]
-            } else {
-                points[index + 1]
-            };
-            for step in 0..subdivisions {
-                let t = step as f32 / subdivisions as f32;
-                sampled.push(Self::catmull_rom(
-                    p0, p1, p2, p3, t,
-                ));
+        first * ((second_time - time) / difference)
+            + second * ((time - first_time) / difference)
+    }
+
+    fn centripetal_curve_point(
+        p0: Vector3<f32>,
+        p1: Vector3<f32>,
+        p2: Vector3<f32>,
+        p3: Vector3<f32>,
+        amount: f32,
+    ) -> Vector3<f32> {
+        let t0 = 0.0;
+        let t1 = Self::curve_knot(t0, p0, p1);
+        let t2 = Self::curve_knot(t1, p1, p2);
+        let t3 = Self::curve_knot(t2, p2, p3);
+        let time = t1 + (t2 - t1) * amount;
+        let a1 = Self::curve_lerp(p0, p1, t0, t1, time);
+        let a2 = Self::curve_lerp(p1, p2, t1, t2, time);
+        let a3 = Self::curve_lerp(p2, p3, t2, t3, time);
+        let b1 = Self::curve_lerp(a1, a2, t0, t2, time);
+        let b2 = Self::curve_lerp(a2, a3, t1, t3, time);
+        Self::curve_lerp(b1, b2, t1, t2, time)
+    }
+
+    fn sample_curve(points: &[Vector3<f32>], subdivisions: usize) -> Vec<Vector3<f32>> {
+        let mut fit_points = Vec::new();
+        for point in points {
+            let different = fit_points
+                .last()
+                .map(|last: &Vector3<f32>| (*last - *point).magnitude2() > 0.0000001)
+                .unwrap_or(true);
+            if different {
+                fit_points.push(*point);
             }
         }
-        sampled.push(*points.last().unwrap());
+        if fit_points.len() < 2 {
+            return fit_points;
+        }
+        let closed = fit_points.len() >= 4
+            && (fit_points[0] - fit_points[fit_points.len() - 1]).magnitude2() < 0.000001;
+        if closed {
+            fit_points.pop();
+        }
+        if fit_points.len() < 2 {
+            return fit_points;
+        }
+        if fit_points.len() == 2 {
+            return fit_points;
+        }
+        let steps = subdivisions.max(24);
+        let mut sampled = Vec::new();
+
+        if closed {
+            let count = fit_points.len();
+            for index in 0..count {
+                let p0 = fit_points[(index + count - 1) % count];
+                let p1 = fit_points[index];
+                let p2 = fit_points[(index + 1) % count];
+                let p3 = fit_points[(index + 2) % count];
+                for step in 0..steps {
+                    sampled.push(Self::centripetal_curve_point(
+                        p0,
+                        p1,
+                        p2,
+                        p3,
+                        step as f32 / steps as f32,
+                    ));
+                }
+            }
+            if let Some(first) = sampled.first().copied() {
+                sampled.push(first);
+            }
+        } else {
+            for index in 0..fit_points.len() - 1 {
+                let p1 = fit_points[index];
+                let p2 = fit_points[index + 1];
+                let p0 = if index == 0 {
+                    p1 + (p1 - p2)
+                } else {
+                    fit_points[index - 1]
+                };
+                let p3 = if index + 2 < fit_points.len() {
+                    fit_points[index + 2]
+                } else {
+                    p2 + (p2 - p1)
+                };
+                for step in 0..steps {
+                    sampled.push(Self::centripetal_curve_point(
+                        p0,
+                        p1,
+                        p2,
+                        p3,
+                        step as f32 / steps as f32,
+                    ));
+                }
+            }
+            sampled.push(*fit_points.last().unwrap());
+        }
         sampled
+    }
+
+    fn sample_curve_preview(
+        confirmed: &[Vector3<f32>],
+        preview: Vector3<f32>,
+        subdivisions: usize,
+    ) -> Vec<Vector3<f32>> {
+        if confirmed.is_empty() {
+            return vec![preview];
+        }
+        let stable = Self::sample_curve(confirmed, subdivisions);
+        let mut with_preview = confirmed.to_vec();
+        if with_preview
+            .last()
+            .map(|last| (*last - preview).magnitude2() > 0.0000001)
+            .unwrap_or(true)
+        {
+            with_preview.push(preview);
+        }
+        let mut full = Self::sample_curve(&with_preview, subdivisions);
+        let shared = stable.len().min(full.len());
+        for index in 0..shared {
+            full[index] = stable[index] * 0.9 + full[index] * 0.1;
+        }
+        full
     }
     pub fn draw_curve(&mut self, subdivisions: usize) {
         self.holding_left = false;
@@ -2214,34 +2266,14 @@ impl Viewport {
             return;
         }
         let control_points = mem::take(&mut self.active_polyline);
-        let sampled_points = 
-            Self::sample_curve(&control_points, subdivisions);
+        let sampled_points = Self::sample_curve(&control_points, subdivisions);
         if sampled_points.len() >= 2 {
-            self.add_polyline(
-                sampled_points, 
-                self.polyline_color, 
-                POLYLINE_WIDTH_PIXELS
-            );
+            self.add_polyline(sampled_points, self.polyline_color, POLYLINE_WIDTH_PIXELS);
             if let Some(curve) = self.entities.last_mut() {
                 curve.show_markers = false;
             }
         }
         self.rebuild_vertices();
-    }
-    pub fn catmull_rom(
-        p0: Vector3<f32>,
-        p1: Vector3<f32>,
-        p2: Vector3<f32>,
-        p3: Vector3<f32>,
-        t: f32,
-    ) -> Vector3<f32> {
-        let t2 = t * t;
-        let t3 = t2 * t;
-        (p1 * 2.0
-            + (p2 - p0) * t
-            + (p0 * 2.0 - p1 * 5.0 + p2 * 4.0 - p3) * t2
-            + (-p0 + p1 * 3.0 - p2 * 3.0 + p3) * t3)
-            * 0.5
     }
     pub fn add_line(&mut self, point1: Vector3<f32>, point2: Vector3<f32>, step_size: f32) {
         let dir = point2 - point1;
@@ -2309,7 +2341,11 @@ impl Viewport {
             let origin = self.grab_origin?;
             let offset = self.grid_snap_offset(current - origin);
             if let Some(selected_id) = self.selected_entity {
-                if let Some(entity) = self.entities.iter_mut().find(|entity| entity.id == selected_id) {
+                if let Some(entity) = self
+                    .entities
+                    .iter_mut()
+                    .find(|entity| entity.id == selected_id)
+                {
                     entity.vertices = self
                         .grab_snapshot
                         .iter()
@@ -2329,9 +2365,7 @@ impl Viewport {
         if !self.active_polyline.is_empty() {
             let position_changed = self
                 .preview_point
-                .map(|previous| {
-                    (previous - position).magnitude2() > 0.00000001
-                })
+                .map(|previous| (previous - position).magnitude2() > 0.00000001)
                 .unwrap_or(true);
 
             if position_changed {
@@ -2384,17 +2418,13 @@ impl Viewport {
                 selected: false,
                 height: source.height,
                 show_markers: source.show_markers,
-                hatched: source.hatched
+                hatched: source.hatched,
             });
         }
         self.rebuild_vertices();
         count as usize
     }
-    pub fn polar_array(
-        &mut self,
-        count: u32,
-        center: Vector3<f32>
-    ) -> usize {
+    pub fn polar_array(&mut self, count: u32, center: Vector3<f32>) -> usize {
         if count == 0 {
             return 0;
         }
@@ -2435,11 +2465,7 @@ impl Viewport {
         self.rebuild_vertices();
         count as usize
     }
-    pub fn cancel_active_command(
-        &mut self,
-        code: KeyCode,
-        is_pressed: bool,
-    ) -> bool {
+    pub fn cancel_active_command(&mut self, code: KeyCode, is_pressed: bool) -> bool {
         let circle_active = self.circle_center.is_some();
         let copy_active = !self.copy_sources.is_empty();
         let move_active = self.move_anchor.is_some();
@@ -2508,10 +2534,7 @@ mod tests {
     #[test]
     fn grab_key_moves_selected_shape_until_released() {
         let mut viewport = Viewport::new(800, 600);
-        let original = vec![
-            Vector3::new(-0.5, 0.0, 0.0),
-            Vector3::new(0.5, 0.0, 0.0),
-        ];
+        let original = vec![Vector3::new(-0.5, 0.0, 0.0), Vector3::new(0.5, 0.0, 0.0)];
         viewport.entities.push(shape(7, original.clone()));
         viewport.selected_entity = Some(7);
         viewport.cursor_pos = PhysicalPosition::new(400.0, 300.0);
@@ -2535,8 +2558,14 @@ mod tests {
     fn extrude_selected_does_not_change_unselected_shapes() {
         let mut viewport = Viewport::new(800, 600);
         viewport.entities = vec![
-            shape(1, vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(1.0, 0.0, 0.0)]),
-            shape(2, vec![Vector3::new(2.0, 0.0, 0.0), Vector3::new(3.0, 0.0, 0.0)]),
+            shape(
+                1,
+                vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(1.0, 0.0, 0.0)],
+            ),
+            shape(
+                2,
+                vec![Vector3::new(2.0, 0.0, 0.0), Vector3::new(3.0, 0.0, 0.0)],
+            ),
         ];
         viewport.selected_entity = Some(1);
 
@@ -2587,10 +2616,7 @@ mod tests {
     #[test]
     fn near_snap_uses_active_polyline_before_grid_snap() {
         let mut viewport = Viewport::new(800, 600);
-        viewport.active_polyline = vec![
-            Vector3::new(-0.5, 0.0, 0.0),
-            Vector3::new(0.5, 0.0, 0.0),
-        ];
+        viewport.active_polyline = vec![Vector3::new(-0.5, 0.0, 0.0), Vector3::new(0.5, 0.0, 0.0)];
         viewport.set_osnap_modes(false, true, false, false);
         viewport.set_grid_snap(true);
 
@@ -2629,8 +2655,7 @@ mod tests {
         ));
         viewport.set_osnap_modes(false, false, true, false);
 
-        let (snapped, closes_shape, snap_kind) =
-            viewport.get_snap_pos(Vector3::new(0.0, 0.0, 0.0));
+        let (snapped, closes_shape, snap_kind) = viewport.get_snap_pos(Vector3::new(0.0, 0.0, 0.0));
 
         assert!(snapped.magnitude() < 0.00001);
         assert!(!closes_shape);
@@ -2652,8 +2677,7 @@ mod tests {
         ];
         viewport.set_osnap_modes(false, false, false, true);
 
-        let (snapped, closes_shape, snap_kind) =
-            viewport.get_snap_pos(Vector3::new(0.0, 0.0, 0.0));
+        let (snapped, closes_shape, snap_kind) = viewport.get_snap_pos(Vector3::new(0.0, 0.0, 0.0));
 
         assert!(snapped.magnitude() < 0.00001);
         assert!(!closes_shape);

@@ -1,9 +1,10 @@
 mod camera;
-mod render;
 mod reference_image;
+mod render;
 mod viewport;
 
 use crate::render::State;
+use cgmath::InnerSpace;
 use std::mem::size_of;
 use std::sync::Arc;
 use winit::application::ApplicationHandler;
@@ -12,7 +13,6 @@ use winit::event::{ElementState, KeyEvent, MouseButton, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::keyboard::{KeyCode, ModifiersState, PhysicalKey};
 use winit::window::Window;
-use cgmath::InnerSpace;
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -121,10 +121,7 @@ pub enum PopupContent {
 }
 
 impl App {
-    pub fn popup_window(
-        &mut self,
-        case: i32
-    ) {
+    pub fn popup_window(&mut self, case: i32) {
         if case == 1 {
             if self.show_extrude_popup {
                 return;
@@ -204,17 +201,25 @@ impl ApplicationHandler<State> for App {
     ) {
         let egui_consumed = if let Some(state) = self.state.as_mut() {
             if let Some(window) = state.window.as_ref() {
-                state.egui_winit.as_mut().map(|e_w| e_w.on_window_event(window, &event).consumed).unwrap_or(false)
+                state
+                    .egui_winit
+                    .as_mut()
+                    .map(|e_w| e_w.on_window_event(window, &event).consumed)
+                    .unwrap_or(false)
             } else {
                 false
             }
         } else {
             false
         };
-        if egui_consumed && matches!(
-            event,
-            WindowEvent::KeyboardInput { .. } | WindowEvent::MouseInput { .. } | WindowEvent::CursorMoved { .. } | WindowEvent::MouseWheel { .. }
-        )
+        if egui_consumed
+            && matches!(
+                event,
+                WindowEvent::KeyboardInput { .. }
+                    | WindowEvent::MouseInput { .. }
+                    | WindowEvent::CursorMoved { .. }
+                    | WindowEvent::MouseWheel { .. }
+            )
         {
             return;
         }
@@ -230,14 +235,16 @@ impl ApplicationHandler<State> for App {
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::Resized(size) => state.resize(size.width, size.height),
-            WindowEvent::RedrawRequested => match state.render(&mut self.show_extrude_popup, &mut self.extrude_input) {
-                Ok(_) => {}
-                Err(e) => {
-                    log::error!("{:?}", e);
-                    eprintln!("{:?}", e);
-                    event_loop.exit();
+            WindowEvent::RedrawRequested => {
+                match state.render(&mut self.show_extrude_popup, &mut self.extrude_input) {
+                    Ok(_) => {}
+                    Err(e) => {
+                        log::error!("{:?}", e);
+                        eprintln!("{:?}", e);
+                        event_loop.exit();
+                    }
                 }
-            },
+            }
             WindowEvent::KeyboardInput {
                 event:
                     KeyEvent {
@@ -247,7 +254,10 @@ impl ApplicationHandler<State> for App {
                     },
                 ..
             } => {
-                if state.viewport.graph_handle_key(code, key_state.is_pressed()) {
+                if state
+                    .viewport
+                    .graph_handle_key(code, key_state.is_pressed())
+                {
                     if let Some(window) = &state.window {
                         window.request_redraw();
                     }
@@ -267,14 +277,13 @@ impl ApplicationHandler<State> for App {
                         window.request_redraw();
                     }
                 }
-            },
+            }
             WindowEvent::MouseWheel {
                 device_id: _device_id,
                 delta,
                 phase: _phase,
             } => {
-                let _ = &mut state.viewport.camera_controller
-                    .handle_scroll(&delta);
+                let _ = &mut state.viewport.camera_controller.handle_scroll(&delta);
                 if let Some(window) = &state.window {
                     window.request_redraw();
                 }
@@ -282,14 +291,16 @@ impl ApplicationHandler<State> for App {
             WindowEvent::CursorMoved { position, .. } => {
                 self.cursor_pos = position;
                 if self.holding_left {
-                    state.viewport.drawing(
-                        self.cursor_pos,
-                        MouseButton::Left,
-                        true,
-                    );
+                    state
+                        .viewport
+                        .drawing(self.cursor_pos, MouseButton::Left, true);
                 }
             }
-            WindowEvent::MouseInput { state: mouse_state, button, .. } => {
+            WindowEvent::MouseInput {
+                state: mouse_state,
+                button,
+                ..
+            } => {
                 if button == MouseButton::Left {
                     self.holding_left = mouse_state == ElementState::Pressed;
                 }
@@ -297,17 +308,28 @@ impl ApplicationHandler<State> for App {
                     if mouse_state == ElementState::Pressed {
                         match button {
                             MouseButton::Middle => {
-                                let mouse_px = cgmath::Vector2::new(self.cursor_pos.x as f32, self.cursor_pos.y as f32);
-                                state.viewport.select_shape(mouse_px,10.0,false);
+                                let mouse_px = cgmath::Vector2::new(
+                                    self.cursor_pos.x as f32,
+                                    self.cursor_pos.y as f32,
+                                );
+                                state.viewport.select_shape(mouse_px, 10.0, false);
                             }
                             MouseButton::Left => {
-                                let cursor = cgmath::vec2(self.cursor_pos.x as f32, self.cursor_pos.y as f32);
+                                let cursor = cgmath::vec2(
+                                    self.cursor_pos.x as f32,
+                                    self.cursor_pos.y as f32,
+                                );
                                 for (idx, entity) in state.entities.iter().enumerate() {
                                     for vertex in &entity.vertices {
-                                        if let Some(screen_pos) = state.viewport.world_to_screen(*vertex) {
+                                        if let Some(screen_pos) =
+                                            state.viewport.world_to_screen(*vertex)
+                                        {
                                             let dist = (screen_pos - cursor).magnitude();
                                             if dist < 50.0 {
-                                                println!("Debug, Clicked near: {}, Dist: {dist:.1}px", idx);
+                                                println!(
+                                                    "Debug, Clicked near: {}, Dist: {dist:.1}px",
+                                                    idx
+                                                );
                                             }
                                         }
                                     }
@@ -338,7 +360,7 @@ impl eframe::App for App {
             ui.heading("Extrude Input");
             ui.label(format!("Saved value: {}", self.extrude_input))
         });
-        if self.show_extrude_popup {        
+        if self.show_extrude_popup {
             egui::Window::new("Extrude Selected")
                 .resizable(false)
                 .collapsible(false)
@@ -347,14 +369,21 @@ impl eframe::App for App {
                         ui.label("Select a shape to extrude");
                         return;
                     };
-                    let height_opt = state.entities.iter().find(|e| e.id == sel_id).map(|e| e.height);
+                    let height_opt = state
+                        .entities
+                        .iter()
+                        .find(|e| e.id == sel_id)
+                        .map(|e| e.height);
                     let Some(mut height) = height_opt else {
                         ui.label("Selected shape not found.");
                         return;
                     };
                     ui.horizontal(|ui| {
                         ui.label("Height: ");
-                        if ui.add(egui::DragValue::new(&mut height).speed(0.1)).changed() {
+                        if ui
+                            .add(egui::DragValue::new(&mut height).speed(0.1))
+                            .changed()
+                        {
                             state.viewport.extrude_selected(height);
                         }
                     });
