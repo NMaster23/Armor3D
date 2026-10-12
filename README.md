@@ -48,7 +48,7 @@ Additional smaller improvements and bug fixes are most likely documented in the 
 Armor3D does not yet include the full feature set of Rhino. There may be many incomplete features in the works - will fix in due time. The available features may not be polished, as this project is still in BETA. 
 
 ## Download
-Download the EXE from the [latest Armor3D release](https://github.com/NMaster23/Armor3D/releases/tag/v3.1). After that is completed, ignore the Windows security feature, and then you're in the app!
+Download the EXE from the [latest Armor3D release](https://github.com/NMaster23/Armor3D/releases/tag/v4.1). After that is completed, ignore the Windows security feature, and then you're in the app!
 
 ## Run locally
 This version is specifically built for Windows.
