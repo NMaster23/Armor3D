@@ -99,6 +99,13 @@ Week 1 used a harvest-inspired palette of orange and green.
 ## Week 2 theme: Treasure
 This week we could not implement the theme but next week we will try to include it in our project.
 
+## Known Issues
+- Some drawing and editing tools are still experimental
+- Complex curves may behave weird
+- DXF importing and exporting currently supports a limited set of entities
+- Large drawings may reduce the overall viewport performance
+
+
 ## Where AI assistance has been used
 - Creating some of the UI animations
 - Fix/find bugs
