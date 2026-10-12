@@ -33,11 +33,22 @@ The Rust core uses wgpu for viewport rendering and geometry, and is exposed to t
 - Added ability to copy objects
 - Control Z and Control Y capabilities
 
+## Week 4 Progress
+- added and improved curve drawing
+- added circle and rectangle drawing tools
+- added radius and diameter input for circles
+- added ortho mode 
+- added distance input feature
+- added image importing
+- added hatch
+
+Additional smaller improvements and bug fixes are most likely documented in the commit history.
+
 ## Current limitations
-Armor3D does not yet include the full feature set of Rhino. Curve drawing and the newer textured-renderer work are in progress, and some tools may be incomplete. DXF import currently handles LINE and LWPOLYLINE entities.
+Armor3D does not yet include the full feature set of Rhino. There may be many incomplete features in the works - will fix in due time. The available features may not be polished, as this project is still in BETA. 
 
 ## Download
-Downlod the EXE from the latest release: (https://github.com/NMaster23/Armor3D/releases/tag/v3.1). After that is completed, ignore the Windows security feature, and then you're in the app!
+Download the EXE from the [latest Armor3D release](https://github.com/NMaster23/Armor3D/releases/tag/v3.1). After that is completed, ignore the Windows security feature, and then you're in the app!
 
 ## Run locally
 This version is specifically built for Windows.
@@ -47,7 +58,7 @@ The UI imports the compiled `armor_core` Python extension, so build and install 
 ```powershell
 $py = "$env:LOCALAPPDATA\Python\pythoncore-3.14-64\python.exe"
 $env:Path = "$HOME\.cargo\bin;$env:Path"
-& $py -m pip install customtkinter pillow maturin
+& $py -m pip install customtkinter pillow maturin ezdxf
 & $py -m maturin build --release --manifest-path "armor-core\Cargo.toml" --interpreter $py
 $wheel = Get-ChildItem "armor-core\target\wheels\armor_core-*.whl" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
 & $py -m pip install --force-reinstall $wheel.FullName
@@ -95,6 +106,7 @@ This week we could not implement the theme but next week we will try to include 
 - Merging Rust grid and Python UI - AI was used here because of the time concern
 - Merging controls between Python and Rust - and adding binds
 - Fixing Rust features
+- Fix curve logic - this part has been re-made with AI assistance
 - Rest of AI usage that has not been mentioned here is most likely in the commits
 
 ## Credits
