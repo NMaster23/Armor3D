@@ -232,7 +232,7 @@ impl CameraController {
 
     pub(crate) fn update_camera(&mut self, camera: &mut Camera) {
         let move_speed = self.speed * 0.15;
-        let rotate_speed = 0.003;
+        let rotate_speed = 0.03;
 
         let view = camera.target - camera.eye;
         let view_dir = view.normalize();

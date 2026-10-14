@@ -454,8 +454,7 @@ impl State {
             glyphon::Shaping::Advanced,
             None,
         );
-        self.text_buffer
-            .shape_until_scroll(&mut self.font_system, false);
+        self.text_buffer.shape_until_scroll(&mut self.font_system, false);
         self.text_pos = pos;
     }
     pub async fn new_embedded(hwnd: isize, width: u32, height: u32) -> anyhow::Result<State> {
