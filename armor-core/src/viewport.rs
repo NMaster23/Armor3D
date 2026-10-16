@@ -219,27 +219,6 @@ impl Viewport {
     fn is_closed_shape(vertices: &[Vector3<f32>]) -> bool {
         vertices.len() >= 4 && (vertices[0] - vertices[vertices.len() - 1]).magnitude2() < 0.0001
     }
-    pub fn hatch_fill(&mut self, line_id: usize) -> bool {
-        let Some(index) = self.entities.iter().position(|p| p.id == line_id) else {
-            return false;
-        };
-        if self.entities[index].vertices.len() < 3 {
-            return false;
-        }
-        let needs_closing = !Self::is_closed_shape(&self.entities[index].vertices);
-        if self.entities[index].hatched && !needs_closing {
-            return true;
-        }
-        self.save_undo_state();
-        let polyline = &mut self.entities[index];
-        if needs_closing {
-            let first = polyline.vertices[0];
-            polyline.vertices.push(first);
-        }
-        polyline.hatched = true;
-        self.rebuild_vertices();
-        true
-    }
     pub fn hatch_selected(&mut self) -> usize {
         let hatchable_ids: Vec<usize> = self
             .entities
