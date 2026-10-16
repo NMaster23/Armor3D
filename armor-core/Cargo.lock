@@ -340,6 +340,7 @@ dependencies = [
  "pollster",
  "pyo3",
  "raw-window-handle",
+ "ttf-parser",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",

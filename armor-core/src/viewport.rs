@@ -1,6 +1,6 @@
 use crate::Vertex;
 use crate::camera::{Camera, CameraController};
-use cgmath::{InnerSpace, SquareMatrix, Vector3, Vector4, Zero};
+use cgmath::{InnerSpace, Quaternion, SquareMatrix, Vector3, Vector4, Zero};
 use lyon::lyon_tessellation::{
     BuffersBuilder, FillOptions, FillTessellator, FillVertex, VertexBuffers,
 };
@@ -11,12 +11,49 @@ use winit::dpi::PhysicalPosition;
 use winit::event::MouseButton;
 use winit::event_loop::ActiveEventLoop;
 use winit::keyboard::KeyCode;
+use std::fmt::Write;
 
 const END_SNAP_RADIUS_PIXELS: f32 = 12.0;
 const NEAR_SNAP_RADIUS_PIXELS: f32 = 10.0;
 const POLYLINE_WIDTH_PIXELS: f32 = 2.5;
 const POLYLINE_HEIGHT: f32 = 0.002;
 const DEFAULT_POLYLINE_COLOR: [f32; 4] = [214.0 / 255.0, 166.0 / 255.0, 64.0 / 255.0, 1.0];
+
+#[derive(Clone, Copy, Debug)]
+enum OutlineCommand {
+    LineTo(f32, f32),
+    LineTo(f32, f32),
+    QuadTo(f32, f32, f32, f32),
+    Cu
+        self.commands.push(OutlineCommand::QuadTo(x, y));ose,
+}
+
+#[derive(Default)]
+struct Builder {
+    commands: Vec<OutlineCommand>,
+};
+
+impl ttf_parser::OutlineBuilder for Builder {
+    fn move_to(&mut self, x: f32, y: f32) {
+        self.commands.push(OutlineCommand::LineTo(x, y));
+    }
+
+    fn line_to(&mut self, x: f32, y: f32) {
+        self.commands.push(OutlineCommand::QuadTo(x, y));
+    }
+
+    fn quad_to(&mut self, x1: f32, y1: f32, x: f32, y: f32) {
+        self.commands.push(OutlineCommand::QuadTo(x, y));
+    }
+
+    fn curve_to(&mut self, x1: f32, y1: f32, x2: f32, y2: f32, x: f32, y: f32) {
+        self.commands.push(OutlineCommand::CurveTo(x1, y1, x2, y2, x, y));
+    }
+
+    fn close(&mut self) {
+        self.commands.push(OutlineCommand::Close);
+    }
+}
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -36,7 +73,15 @@ pub struct PolyLine {
     pub show_markers: bool,
 }
 
-
+#[derive(Clone, Debug)]
+pub struct TextEntity {
+    id: usize,
+    pos: Vector3<f32>,
+    quat: Quaternion<f32>,
+    color: [f32; 4],
+    text: String,
+    size: f32,
+}
 
 pub struct ShapeUndoStore<T> {
     current: Vec<T>,
@@ -96,26 +141,27 @@ pub struct Viewport {
     pub polyline_color: [f32; 4],
     pub curve_subdivisions: u32,
     pub curve_active: bool,
-    polyline_distance: Option<f32>,
-    move_anchor: Option<Vector3<f32>>,
-    move_snapshots: Vec<(usize, Vec<Vector3<f32>>)>,
+    pub polyline_distance: Option<f32>,
+    pub move_anchor: Option<Vector3<f32>>,
+    pub move_snapshots: Vec<(usize, Vec<Vector3<f32>>)>,
     pub point_vertices: Vec<Vertex>,
-    next_entity: usize,
+    pub next_entity: usize,
     pub camera: Camera,
     pub camera_controller: CameraController,
     pub width: u32,
     pub height: u32,
     pub redraw: bool,
-    grab_mode: bool,
-    grab_origin: Option<Vector3<f32>>,
-    grab_snapshot: Vec<Vector3<f32>>,
-    circle_center: Option<Vector3<f32>>,
-    circle_target: Option<Vector3<f32>>,
-    rectangle_first: Option<Vector3<f32>>,
-    rectangle_second: Option<Vector3<f32>>,
-    copy_sources: Vec<PolyLine>,
-    copy_base: Option<Vector3<f32>>,
-    copy_target: Option<Vector3<f32>>,
+    pub grab_mode: bool,
+    pub grab_origin: Option<Vector3<f32>>,
+    pub grab_snapshot: Vec<Vector3<f32>>,
+    pub circle_center: Option<Vector3<f32>>,
+    pub circle_target: Option<Vector3<f32>>,
+    pub rectangle_first: Option<Vector3<f32>>,
+    pub rectangle_second: Option<Vector3<f32>>,
+    pub copy_sources: Vec<PolyLine>,
+    pub copy_base: Option<Vector3<f32>>,
+    pub copy_target: Option<Vector3<f32>>,
+    pub text_entities: Vec<TextEntity>,
 }
 
 impl Viewport {
@@ -484,6 +530,7 @@ impl Viewport {
             copy_sources: Vec::new(),
             copy_base: None,
             copy_target: None,
+            text_entities: Vec::new(),
         }
     }
 }
@@ -503,6 +550,48 @@ impl Viewport {
     // pub fn edit_shape(_point: cgmath::Vector3<f32>, _color: [f32; 4]) -> Vec<Vertex> {
     //     Vec::new()
     // }
+    pub fn draw_text(
+        &mut self,
+        text: String,
+        pos: Vector3<f32>,
+        quat: Quaternion<f32>,
+        color: [f32; 4],
+        size: f32,
+    ) -> bool {
+        if text.is_empty()
+            || !size.is_finite()
+            || size <= 0.0
+            || !pos.x.is_finite()
+            || !pos.y.is_finite()
+            || !pos.z.is_finite()
+            || !quat.s.is_finite()
+            || !quat.v.x.is_finite()
+            || !quat.v.y.is_finite()
+            || !quat.v.z.is_finite()
+            || !quat.is_zero()
+            || color.iter().any(|c| !c.is_finite())
+        {
+            return false;
+        }
+        let id = self.next_entity;
+        self.next_entity += 1;
+        self.text_entities.push(TextEntity {
+            id,
+            pos,
+            quat: quat.normalize(),
+            color,
+            text,
+            size,
+        });
+        self.rebuild_vertices();
+        true
+    }
+    pub fn render_text(
+        entity: &TextEntity,
+        font_data: &[u8],
+    ) -> Result<Vec<Vertex>, Error> {
+
+    }
     pub fn store_shape(&mut self, points: &[cgmath::Vector3<f32>], color: [f32; 4]) {
         self.hist_entities.save_undo();
         let shape = PolyLine {
@@ -1382,7 +1471,7 @@ impl Viewport {
         self.save_undo_state();
         let id = self.next_entity;
         self.next_entity += 1;
-        let hatched = Self::is_closed_shape(&vertices);
+        let hatched = false;
         self.entities.push(PolyLine {
             id,
             vertices,
