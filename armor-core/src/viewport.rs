@@ -11,7 +11,7 @@ use winit::dpi::PhysicalPosition;
 use winit::event::MouseButton;
 use winit::event_loop::ActiveEventLoop;
 use winit::keyboard::KeyCode;
-use std::fmt::Write;
+use std::fmt::Error;
 
 const END_SNAP_RADIUS_PIXELS: f32 = 12.0;
 const NEAR_SNAP_RADIUS_PIXELS: f32 = 10.0;
@@ -22,16 +22,15 @@ const DEFAULT_POLYLINE_COLOR: [f32; 4] = [214.0 / 255.0, 166.0 / 255.0, 64.0 / 2
 #[derive(Clone, Copy, Debug)]
 enum OutlineCommand {
     LineTo(f32, f32),
-    LineTo(f32, f32),
     QuadTo(f32, f32, f32, f32),
-    Cu
-        self.commands.push(OutlineCommand::QuadTo(x, y));ose,
+    CurveTo(f32, f32, f32, f32, f32, f32),
+    Close,
 }
 
 #[derive(Default)]
 struct Builder {
     commands: Vec<OutlineCommand>,
-};
+}
 
 impl ttf_parser::OutlineBuilder for Builder {
     fn move_to(&mut self, x: f32, y: f32) {
@@ -39,11 +38,11 @@ impl ttf_parser::OutlineBuilder for Builder {
     }
 
     fn line_to(&mut self, x: f32, y: f32) {
-        self.commands.push(OutlineCommand::QuadTo(x, y));
+        self.commands.push(OutlineCommand::LineTo(x, y));
     }
 
     fn quad_to(&mut self, x1: f32, y1: f32, x: f32, y: f32) {
-        self.commands.push(OutlineCommand::QuadTo(x, y));
+        self.commands.push(OutlineCommand::QuadTo(x1, y1, x, y));
     }
 
     fn curve_to(&mut self, x1: f32, y1: f32, x2: f32, y2: f32, x: f32, y: f32) {
@@ -587,10 +586,10 @@ impl Viewport {
         true
     }
     pub fn render_text(
-        entity: &TextEntity,
-        font_data: &[u8],
+        _entity: &TextEntity,
+        _font_data: &[u8],
     ) -> Result<Vec<Vertex>, Error> {
-
+        Ok(Vec::new())
     }
     pub fn store_shape(&mut self, points: &[cgmath::Vector3<f32>], color: [f32; 4]) {
         self.hist_entities.save_undo();
@@ -1983,41 +1982,6 @@ impl Viewport {
         }
         self.point_vertices.extend_from_slice(vertices);
         self.redraw = true;
-    }
-    pub fn fill_2d(&mut self, points: &[Vector3<f32>]) {
-        if points.len() < 3 {
-            return;
-        }
-        let mut builder = Path::builder();
-        builder.begin(point(points[0].x, points[0].z));
-        for p in &points[1..] {
-            builder.line_to(point(p.x, p.z));
-        }
-        builder.close();
-        let path = builder.build();
-        let mut geometry: VertexBuffers<Vertex, u16> = VertexBuffers::new();
-        let mut tessellator = FillTessellator::new();
-        let color = [0.4, 0.7, 0.4, 0.7];
-        let result = tessellator.tessellate_path(
-            &path,
-            &FillOptions::default(),
-            &mut BuffersBuilder::new(&mut geometry, |vertex: FillVertex| {
-                let vertex_pos = vertex.position();
-                Vertex {
-                    position: [vertex_pos.x, 0.0, vertex_pos.y],
-                    coords: [0.0, 0.0, 0.0],
-                    color,
-                }
-            }),
-        );
-        if result.is_err() {
-            return;
-        }
-        let mut flat_vertices = Vec::with_capacity(geometry.indices.len());
-        for &index in &geometry.indices {
-            flat_vertices.push(geometry.vertices[index as usize]);
-        }
-        self.vertice_append(&flat_vertices);
     }
     pub fn polyline(&mut self, mouse_pos: PhysicalPosition<f64>) -> bool {
         let hit_pos = match self.fetch_point(mouse_pos) {

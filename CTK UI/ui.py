@@ -3171,7 +3171,7 @@ def executeaiactions(actions):
             results.append(
                 f"Draw line from {start} to {end}"
             )
-        return results
+    return results
 def finishairesponse():
     global aibusy
     try:
@@ -3182,7 +3182,7 @@ def finishairesponse():
     if response_type == 'success':
         if isinstance(response, dict):
             reply = response.get("reply", "").strip()
-            actions = response.get("acitons", [])
+            actions = response.get("actions", [])
         else:
             reply = str(response).strip()
             actions = []
@@ -3196,11 +3196,9 @@ def finishairesponse():
     else:
         finishthinkingmessage(str(response), error=True)
     aibusy = False
-    ai_input.configure(state='Normal')
+    ai_input.configure(state='normal')
     stopsendanimation()
     ai_input.focus_set()
-
-
 
 def getaicolorname(rgba):
     red, green, blue = rgba[:3]
@@ -3277,10 +3275,12 @@ def getaiscene():
                     for value in color],},
             "properties": { "height": round(height, 5), "selected": selected, },})
 
-    draft_points = [
-        [round(x, 5), round(y, 5), round(z, 5)]
-        for x, y, z in renderer.active_polyline_data()
-    ]
+    draft_points = []
+    if activecommand in ("polyline", "curve"):
+        draft_points = [
+            [round(x, 5), round(y, 5), round(z, 5)]
+            for x, y, z in renderer.active_polyline_data()
+        ]
     if draft_points:
         draft_lengths = [
             round(math.dist(start, end), 5)

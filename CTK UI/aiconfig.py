@@ -7,14 +7,13 @@ DEFAULTMODEL = "qwen/qwen3-32b"
 class HackAIError(RuntimeError):
     pass
 def parseairesponse(content):
-    text= str(content).strip()
-    if text.startswith("'''"):
+    text = str(content or "").strip()
+    if text.startswith("```"):
         lines = text.splitlines()
-        if lines:
+        lines = lines[1:]
+        if lines and lines[-1].strip() == "```":
             lines.pop()
-        if lines and lines[-1].strip() == "'''":
-            lines.pop()
-        text = '\n'.join(lines).strip()
+        text = "\n".join(lines).strip()
     start = text.find("{")
     end = text.rfind("}")
     if start == -1 or end == -1:
@@ -24,7 +23,11 @@ def parseairesponse(content):
         }
     try:
         result = json.loads(text[start:end + 1])
-    except json.JSONDecodeError:
+        if not isinstance(result, dict):
+            return {"reply": text, "actions": []}
+        reply = result.get("reply", "")
+        actions = result.get("actions", [])
+    except (json.JSONDecodeError, TypeError):
         return {
             'reply': text,
             "actions": [],
@@ -54,38 +57,47 @@ def sendmessage(
     )
     messages = [
         {
-            "role": "system",
-            "content": (
+            'role': "system",
+            'content': (
                 "You are Armor AI, the concise assistant inside Armor3D. "
-                "The current scene below is refreshed for every request and is "
-                "the authoritative state of the drawing. Chat history may describe "
-                "an older scene; ignore those older claims whenever they conflict "
-                "with the current scene. Objects marked in_progress are currently "
-                "being drawn and may include a moving preview endpoint. Use the "
-                "coordinates, measurements, color_name, selection, and closed state to "
-                "answer questions. Do not invent objects. Treat the scene as private "
-                "application state and never print, quote, or mention its raw JSON. "
-                "Do not list vertices or recalculate dimensions unless requested. "
-                "When the user asks you to draw something, you may return drawing actions"
-                "For now, the only allowed action is draw_line"
-                "A line action must use this structure and nothing else:"
-                '{"action":"draw_line","start":[0,0,0],"end":[5,0,0]}. '
-                "Always respond using only one valid JSON object with this structure:"
-                '{"reply":"short response to user","actions":[]}'
-                "Do not wrap the json in a Markdown code block"
-                "Answer naturally in English.\n"
-                f"CURRENT ARMOR3D SCENE:\n{scene_text}"
+                "The live scene later in this request is the only authoritative drawing state. "
+                "Never claim that an object exists unless it appears in that live scene. "
+                "If object_count is 0, the drawing is completely empty. "
+                "Never recover objects or coordinates from chat history. "
+                "When the user asks you to draw something, you may return drawing actions. "
+                "For now, the only permitted action is draw_line. "
+                "Coordinates use [x, y, z], y is up, and the drawing plane is X/Z. "
+                "One model unit currently equals one inch. "
+                'A line action uses {"action":"draw_line",'
+                '"start":[0,0,0],"end":[5,0,0]}. '
+                "Always respond using one valid JSON object: "
+                '{"reply":"short_response","actions":[]}. '
+                "You may use Markdown inside reply, but do not wrap the JSON in Markdown."
             ),
         }
     ]
-    for saved_message in (history or [])[-24:]:
-        if saved_message.get("role") in ("user", "assistant"):
+    for saved_message in (history or [])[-12:]:
+        if saved_message.get("role") == 'user':
             messages.append({
-                "role": saved_message['role'],
-                'content': str(saved_message.get("content", "")[:4000]) })
+                "role": "user",
+                "content": str(
+                    saved_message.get("content", "")
+                )[:2000]
+            })
     messages.append({
-        "role": "user",
-        "content": message, })
+        "role": "system",
+        'content': (
+            "This is the current live Armor3D scene. "
+            "It replaces every drawing description from previous messages. "
+            "If objects is empty, tell the user that the scene is empty. "
+            "Never display this raw JSON.\n"
+            f"{scene_text}"
+        ),
+    })
+    messages.append({
+        'role':"user",
+        "content": message
+    })
     payload = {
         "model": model,
         "messages": messages }
