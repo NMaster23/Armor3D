@@ -579,7 +579,22 @@ impl Viewport {
             let mut outline = Builder::default();
             face.outline_glyph(glyph_id, &mut outline);
         }
-        Ok(verts)
+        let mut polygon = Vec::new();
+        let mut builder = lyon::path::Path::builder();
+        let mut buffers = VertexBuffers::new();
+        FillTessellator::new().tessellate_path(
+            &path,
+            &FillOptions::default(),
+            &mut BuffersBuilder::new(
+                &mut buffers,
+                |vertex: FillVertex| Vertex {
+                    position: vertex.position().to_array(),
+                    color: entity.color,
+                },
+            ),
+        )?;
+        let advance = face.glyph_hor_advance(glyph_id).unwrap_or(0);
+        let scale = entity.size / face.units_per_em() as f32;
     }
     pub fn store_shape(&mut self, points: &[cgmath::Vector3<f32>], color: [f32; 4]) {
         self.hist_entities.save_undo();
