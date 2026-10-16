@@ -521,7 +521,7 @@ def viewport_mouse_move(event):
     if snapposition and (
         activecommand in (
             'polyline', 'curve', 'copy_place', 'circle',
-            'mirror_first', 'mirror_second', "distance", "mirror_second", "mirror_first", "rectangle",
+            'mirror_first', 'mirror_second', "distance", "rectangle", "polar_center",
         ) or gridsnapon
     ):
         snap_x, snap_y = map(round, snapposition)
@@ -590,7 +590,7 @@ def viewport_mouse_down(event):
     if activecommand in ("picture_first", "picture_second"):
         pickpicturecorner(event)
         return
-    if activecommand in ('mirror_select', 'copy_select'):
+    if activecommand in ('mirror_select', 'copy_select', 'polar_select'):
         hide_selection_box()
         left_drag_start = (event.x, event.y)
         left_dragged = False
@@ -602,6 +602,10 @@ def viewport_mouse_down(event):
     if activecommand in ('copy_base', 'copy_place'):
         renderer.mouse_move(event.x, event.y)
         pickcopypoint(event.x, event.y)
+        return
+    if activecommand == 'polar_center':
+        renderer.mouse_move(event.x, event.y)
+        pickpolarcenter()
         return
     if activecommand == 'angle':
         pickanglepoint(event)
@@ -701,7 +705,7 @@ def viewport_left_drag(event):
             else:
                 hidesnapcursor()
         return
-    if (activecommand not in (None, "mirror_select", "copy_select") or left_drag_start is None):
+    if (activecommand not in (None, "mirror_select", "copy_select", "polar_select") or left_drag_start is None):
         return
     dx = event.x-left_drag_start[0]
     dy = event.y-left_drag_start[1]
@@ -715,7 +719,7 @@ def viewport_mouse_up(event):
         return
     if activecommand in ("picture_first", "picture_second"):
         return
-    if activecommand in ("mirror_select", "copy_select"):
+    if activecommand in ("mirror_select", "copy_select", "polar_select"):
         additive = bool(event.state & 0x0001)
         if left_drag_start is not None:
             if left_dragged:
@@ -827,6 +831,9 @@ def viewport_key(event, pressed):
     if pressed and event.keysym == 'Return' and activecommand == 'copy_select':
         confirmcopyselection()
         return 'break'
+    if pressed and event.keysym == "Return" and activecommand =='polar_select':
+        confirmpolarselection()
+        return 'break'
     if event.keysym in ("2", "K_2", 'bracketright'):
         return
     if pressed and event.keysym in ("Delete", "BackSpace"):
@@ -890,6 +897,7 @@ history_index = 0
 activecommand = None
 lastcommand = None
 mirrorpoint1= None
+polarcenter = None
 
 def selectedobjectcount():
     if renderer is None:
@@ -1016,7 +1024,59 @@ def pickcopypoint(x, y):
             writehistory(
                 f"Copied {count} object{'s' if count != 1 else ''}"
             )
-
+def startpolararray(event=None):
+    global activecommand, polarcenter
+    polarcenter = None
+    command.delete(0, 'end')
+    if renderer is None:
+        return
+    if selectedobjectcount() == 0:
+        activecommand = 'polar_select'
+        command.configure(
+            placeholder_text = "Select objects, then press Enter"
+        )
+        writehistory(
+            "> ArrayPolar\nSelect objects, then press enter"
+        )
+    else:
+        beginpolarcenter()
+    viewport.focus_set()
+def confirmpolarselection():
+    if selectedobjectcount() == 0:
+        writehistory("No objects selected")
+        command.configure(placeholder_text="Select objects, then press enter")
+        return
+    beginpolarcenter()
+def beginpolarcenter():
+    global activecommand
+    activecommand = 'polar_center'
+    renderer.set_construction_snap(True)
+    renderer.start_polyline()
+    command.delete(0, 'end')
+    command.configure(placeholder_text="Pick center of polar array")
+    writehistory("Pick center of polar array")
+    viewport.configure(cursor='crosshair')
+    viewport.focus_set()
+def pickpolarcenter():
+    global activecommand, polarcenter
+    position = renderer.cursor_world_position()
+    if position is None:
+        return
+    renderer.mouse_button(True)
+    renderer.mouse_button(False)
+    points = renderer.active_polyline_data()
+    if points:
+        point = points[0]
+        polarcenter  = (point[0], point[1], point[2])
+    else:
+        polarcenter = (position[0], position[2], position[1])
+    renderer.cancel_polyline()
+    renderer.set_construction_snap(False)
+    activecommand = 'polar_count'
+    command.delete(0, 'end')
+    command.configure(placeholder_text="Number of items, including original")
+    writehistory("Enter number of items")
+    app.after_idle(command._entry.focus_set)
 def writehistory(text):
     history.configure(state='normal')
     history.insert('end', text+ '\n')
@@ -1231,6 +1291,8 @@ def runnamedcommand(name):
         'exp': startexplode,
         'rectangle': startrectangle,
         "rect": startrectangle,
+        "arraypolar": startpolararray,
+        "polararray": startpolararray,
         'text': starttext,
         'txt': starttext,
         'distance': startdistance,
@@ -1272,11 +1334,17 @@ def repeatlastcommand():
     runnamedcommand(previous)
 def closeactivecommand(commit=False):
     global rectanglefirstpoint
+    global polarcenter
     global activecommand, circle_center, circle_measure_mode
     global picturefirstpoint, picturefilename
     global anglefirstline
     if activecommand is None:
         return
+    if activecommand == 'polar_center' and renderer is not None:
+        renderer.cancel_polyline()
+        renderer.set_construction_snap(False)
+    if activecommand in ("polar_select", "polar_center", 'polar_count'):
+        polarcenter = None
     if activecommand == 'angle' and renderer is not None:
         renderer.cancel_polyline()
         anglefirstline = None
@@ -1341,6 +1409,36 @@ viewport.bind("<Escape>", cancelactivecommand)
 def runcmd(event):
     global history_index, activecommand
     global circle_center, circle_measure_mode
+    global polarcenter
+    if activecommand == 'polar_select':
+        confirmpolarselection()
+        return 'break'
+    if activecommand == 'polar_count':
+        typed = command.get().strip()
+        try:
+            item_count = int(typed)
+        except ValueError:
+            writehistory("Enter a whole number from 2 to 360")
+            return 'break'
+        if not 2<= item_count <= 360:
+            writehistory("Array count must be from 2 to 360")
+            return 'break'
+        source_count = selectedobjectcount()
+        created = renderer.polar_array(item_count, polarcenter)
+        if created:
+            writehistory(
+                f"Created polar array: {item_count} items for "
+                f"{source_count} selected object"
+                f"{'s' if source_count != 1 else ''}"
+            )
+        else:
+            writehistory("Polar array could not be created")
+        polarcenter= None
+        activecommand = None
+        command.delete(0, 'end')
+        command.configure(placeholder_text='Command:')
+        viewport.configure(cursor='arrow')
+        return 'break'
     if activecommand == "mirror_select":
         confirmmirrorselection()
         return "break"
@@ -1423,7 +1521,7 @@ def runcmd(event):
     return "break"
 command.bind("<Return>", runcmd)
 commandnames = ["Polyline", "Curve", "Join", "Explode", "Rectangle", "Text", "File", "New", "Save", "Save as", '3DM', "PNG", "DXF", "Analyze", "Distance", "Angle", "Tools", "Revolve", "Extrude", "Mirror", "Copy",
-                'Circle', "Fillet", "Trim", "Arc", "Picture", "Import DXF", "Import", "hatch"]
+                'Circle', "Fillet", "Trim", "Arc", "Picture", "Import DXF", "Import", "hatch", "ArrayPolar", "PolarArray"]
 
 
 def handlenewconfirmation(event):
@@ -1600,6 +1698,13 @@ def typecmduni(event):
             command._entry.icursor("end")
             app.after_idle(updatecommandsuggestion)
             return "break"
+        return
+    if activecommand == 'polar_count':
+        if event.char and event.char.isdigit():
+            command._entry.focus_set()
+            command.insert('end', event.char)
+            command._entry.icursor("end")
+            return 'break'
         return
     if activecommand is not None:
         return
@@ -2871,9 +2976,41 @@ def positionextramenu(event=None):
     panel_y = app_y + (app_height - panel_height) // 2
     extraoverlay.geometry(f"{app_width}x{app_height}+{app_x}+{app_y}")
     extradialog.geometry( f"{panel_width}x{panel_height}+{panel_x}+{panel_y}")
+extracloseeenabled = False
+extraclosejob = None
+def enableextraclose():
+    global extracloseeenabled, extraclosejob
+    extracloseeenabled = True
+    extraclosejob = None
 def closeextramenu(event=None):
+    global extracloseeenabled, extraclosejob
+    if extraclosejob is not None:
+        app.after_cancel(extraclosejob)
+        extraclosejob = None
+    extracloseeenabled = False
     extradialog.withdraw()
     extraoverlay.withdraw()
+    app.after_idle(viewport.focus_set)
+    return 'break'
+def extraoverlayclick(event):
+    if not extracloseeenabled:
+        return 'break'
+    return closeextramenu()
+def openextramenu(event=None):
+    global extracloseeenabled, extraclosejob
+    if extradialog.winfo_viewable():
+        return 'break'
+    if extraclosejob is not None:
+        app.after_cancel(extraclosejob)
+    extracloseeenabled = False
+    positionextramenu()
+    extraoverlay.deiconify()
+    extraoverlay.lift()
+    extradialog.deiconify()
+    extradialog.lift()
+    extradialog.focus_set()
+    extraclosejob = app.after(180, enableextraclose)
+    return 'break'
 def extratoolbutton(name, x, y):
     button = Canvas( extrapanel,  width=112, height=44, bg="#342719",  highlightthickness=0, cursor="hand2")
     background = button.create_rectangle(2, 2, 110, 42, fill="#191D1A", outline=HOVER_BG, width=2)
@@ -2891,10 +3028,21 @@ def extratoolbutton(name, x, y):
     button.bind("<Leave>", leave)
     button.bind("<Button-1>", clicked)
     button.place(x=x, y=y)
-extratoolbutton("Circle", 30, 85)
-extratoolbutton('Arc', 420, 85)
-extratoolbutton("Fillet", 160, 85)
-extratoolbutton("Trim", 290, 85)
+extratools = (
+    "Circle",
+    "Arc",
+    "Fillet",
+    "Trim",
+    "Array Polar"
+) 
+for index, tool_name in enumerate(extratools):
+    column = index % 5
+    row = index // 5
+    extratoolbutton(
+        tool_name, 
+        24+ column * 132,
+        85 + row * 58
+    )
 closeextra = Canvas(extrapanel,  width=38, height=38,  bg="#342719", highlightthickness=0, cursor="hand2")
 closeextralabel = closeextra.create_text( 19, 19,  text="×", fill="#F3E6C5", font=("Iceland", 25))
 closeextra.place(relx=1, x=-52, y=14)
@@ -2908,7 +3056,7 @@ def openextramenu(event=None):
     extradialog.deiconify()
     extradialog.lift()
     extradialog.focus_force()
-extraoverlay.bind("<Button-1>", closeextramenu)
+extraoverlay.bind("<Button-1>", extraoverlayclick)
 extradialog.bind("<Escape>", closeextramenu)
 app.bind("<Configure>", positionextramenu, add="+")
 for item in (extrabox, extratext):
