@@ -1,5 +1,6 @@
 use crate::Vertex;
 use crate::camera::{Camera, CameraController};
+use anyhow::Ok;
 use cgmath::{InnerSpace, Quaternion, SquareMatrix, Vector3, Vector4, Zero};
 use lyon::lyon_tessellation::{
     BuffersBuilder, FillOptions, FillTessellator, FillVertex, VertexBuffers,
@@ -21,6 +22,10 @@ const DEFAULT_POLYLINE_COLOR: [f32; 4] = [214.0 / 255.0, 166.0 / 255.0, 64.0 / 2
 
 #[derive(Clone, Copy, Debug)]
 enum OutlineCommand {
+<<<<<<< Updated upstream
+=======
+    MoveTo(f32, f32),
+>>>>>>> Stashed changes
     LineTo(f32, f32),
     QuadTo(f32, f32, f32, f32),
     CurveTo(f32, f32, f32, f32, f32, f32),
@@ -34,7 +39,7 @@ struct Builder {
 
 impl ttf_parser::OutlineBuilder for Builder {
     fn move_to(&mut self, x: f32, y: f32) {
-        self.commands.push(OutlineCommand::LineTo(x, y));
+        self.commands.push(OutlineCommand::MoveTo(x, y));
     }
 
     fn line_to(&mut self, x: f32, y: f32) {
@@ -565,10 +570,26 @@ impl Viewport {
         true
     }
     pub fn render_text(
+<<<<<<< Updated upstream
         _entity: &TextEntity,
         _font_data: &[u8],
     ) -> Result<Vec<Vertex>, Error> {
         Ok(Vec::new())
+=======
+        entity: &TextEntity,
+        font_data: &[u8],
+    ) -> Result<Vec<Vertex>, anyhow::Error> {
+        let face = ttf_parser::Face::parse(font_data, 0)?;
+        let mut verts = Vec::new();
+        for char in entity.text.chars() {
+            let Some(glyph_id) = face.glyph_index(char) else {
+                continue;
+            };
+            let mut outline = Builder::default();
+            face.outline_glyph(glyph_id, &mut outline);
+        }
+        Ok(verts)
+>>>>>>> Stashed changes
     }
     pub fn store_shape(&mut self, points: &[cgmath::Vector3<f32>], color: [f32; 4]) {
         self.hist_entities.save_undo();
