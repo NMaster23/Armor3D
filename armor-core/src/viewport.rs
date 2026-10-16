@@ -22,10 +22,7 @@ const DEFAULT_POLYLINE_COLOR: [f32; 4] = [214.0 / 255.0, 166.0 / 255.0, 64.0 / 2
 
 #[derive(Clone, Copy, Debug)]
 enum OutlineCommand {
-<<<<<<< Updated upstream
-=======
     MoveTo(f32, f32),
->>>>>>> Stashed changes
     LineTo(f32, f32),
     QuadTo(f32, f32, f32, f32),
     CurveTo(f32, f32, f32, f32, f32, f32),
@@ -570,12 +567,6 @@ impl Viewport {
         true
     }
     pub fn render_text(
-<<<<<<< Updated upstream
-        _entity: &TextEntity,
-        _font_data: &[u8],
-    ) -> Result<Vec<Vertex>, Error> {
-        Ok(Vec::new())
-=======
         entity: &TextEntity,
         font_data: &[u8],
     ) -> Result<Vec<Vertex>, anyhow::Error> {
@@ -589,7 +580,6 @@ impl Viewport {
             face.outline_glyph(glyph_id, &mut outline);
         }
         Ok(verts)
->>>>>>> Stashed changes
     }
     pub fn store_shape(&mut self, points: &[cgmath::Vector3<f32>], color: [f32; 4]) {
         self.hist_entities.save_undo();
