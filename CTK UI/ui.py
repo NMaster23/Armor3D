@@ -3125,22 +3125,82 @@ def restorechat():
         sender = 'You' if item ['role'] == 'user' else "Armor AI"    
         addchatmessage(sender, item['content'])
 app.after_idle(restorechat)
+def currentlayercolor():
+    value = layer_color.lstrip("#")
+    return (
+        int(value[0:2], 16) / 255.0,
+        int(value[2:4], 16) / 255.0,
+        int(value[4:6], 16) / 255.0,
+        1.0
+    )
+def validpoint(value):
+    if not isinstance(value, list) or len(value) != 3:
+        return None
+    try:
+        point = tuple(float(coordinate) for coordinate in value)
+    except (TypeError, ValueError):
+        return None
+    if not all(math.isfinite(coordinate) for coordinate in point):
+        return None
+    if any(abs(coordinate) > 100000 for coordinate in point):
+        return None
+    return point
+def executeaiactions(actions):
+    if renderer is None:
+        return ["Viewport is not ready"]
+    results = []
+    for action in actions[:8]:
+        if not isinstance(action, dict):
+            continue
+        if action.get('action') != 'draw_line':
+            continue
+        start = validpoint(action.get("start"))
+        end = validpoint(action.get('end'))
+        if start is None or end is None:
+            results.append("Ignored an invalid line")
+            continue
+        if math.dist(start, end) <= 0.000001:
+            results.append("Ignored a zero length line")
+            continue
+        created = renderer.import_polyline(
+            [start, end],
+            currentlayercolor(),
+            False,
+        )
+        if created:
+            results.append(
+                f"Draw line from {start} to {end}"
+            )
+        return results
 def finishairesponse():
     global aibusy
     try:
-        response_type, message = airesults.get_nowait()
+        response_type, response = airesults.get_nowait()
     except queue.Empty:
         app.after(50, finishairesponse)
         return
-    if response_type == "success":
-        finishthinkingmessage(message)
-        rememberchatmessage("assistant", message)
+    if response_type == 'success':
+        if isinstance(response, dict):
+            reply = response.get("reply", "").strip()
+            actions = response.get("acitons", [])
+        else:
+            reply = str(response).strip()
+            actions = []
+        actions_results = executeaiactions(actions)
+        if actions_results:
+            writehistory("> Armor AI\n" + "\n".join(actions_results))
+        if not reply:
+            reply = 'Done'
+        finishthinkingmessage(reply)
+        rememberchatmessage("assistant", reply)
     else:
-        finishthinkingmessage(message, error=True)
+        finishthinkingmessage(str(response), error=True)
     aibusy = False
-    ai_input.configure(state="normal")
+    ai_input.configure(state='Normal')
     stopsendanimation()
     ai_input.focus_set()
+
+
 
 def getaicolorname(rgba):
     red, green, blue = rgba[:3]
