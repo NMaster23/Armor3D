@@ -6,6 +6,37 @@ API_URL = "https://ai.hackclub.com/proxy/v1/chat/completions"
 DEFAULTMODEL = "qwen/qwen3-32b"
 class HackAIError(RuntimeError):
     pass
+def parseairesponse(content):
+    text= str(content).strip()
+    if text.startswith("'''"):
+        lines = text.splitlines()
+        if lines:
+            lines.pop()
+        if lines and lines[-1].strip() == "'''":
+            lines.pop()
+        text = '\n'.join(lines).strip()
+    start = text.find("{")
+    end = text.rfind("}")
+    if start == -1 or end == -1:
+        return {
+            'reply': text,
+            'actions': []
+        }
+    try:
+        result = json.loads(text[start:end + 1])
+    except json.JSONDecodeError:
+        return {
+            'reply': text,
+            "actions": [],
+        }
+    if not isinstance(reply, str):
+        reply = str(reply)
+    if not isinstance(actions, list):
+        actions = []
+    return {
+        'reply': reply,
+        'actions': actions
+    }
 def sendmessage(
         message, api_key=None,
         model=DEFAULTMODEL, history=None, scene=None
@@ -35,6 +66,13 @@ def sendmessage(
                 "answer questions. Do not invent objects. Treat the scene as private "
                 "application state and never print, quote, or mention its raw JSON. "
                 "Do not list vertices or recalculate dimensions unless requested. "
+                "When the user asks you to draw something, you may return drawing actions"
+                "For now, the only allowed action is draw_line"
+                "A line action must use this structure and nothing else:"
+                '{"action":"draw_line","start":[0,0,0],"end":[5,0,0]}. '
+                "Always respond using only one valid JSON object with this structure:"
+                '{"reply":"short response to user","actions":[]}'
+                "Do not wrap the json in a Markdown code block"
                 "Answer naturally in English.\n"
                 f"CURRENT ARMOR3D SCENE:\n{scene_text}"
             ),
@@ -74,7 +112,8 @@ def sendmessage(
             f"Could not connect to HackAI: {error.reason}"
         ) from error
     try:
-        return data["choices"][0]["message"]["content"]
+        content = data["choices"][0]["message"]["content"]
+        return parseairesponse(content)
     except (KeyError, IndexError, TypeError) as error:
         raise HackAIError(
             f"Unexpected HackAI response: {data}"
