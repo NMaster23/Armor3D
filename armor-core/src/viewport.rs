@@ -2448,46 +2448,61 @@ impl Viewport {
         self.rebuild_vertices();
         count as usize
     }
-    pub fn polar_array(&mut self, count: u32, center: Vector3<f32>) -> usize {
-        if count == 0 {
+    pub fn polar_array(&mut self, item_count: u32, center: Vector3<f32>) -> usize {
+        if item_count < 2 {
             return 0;
         }
-        let Some(id) = self.selected_entity else {
+        let sources: Vec<PolyLine> = self
+            .entities
+            .iter()
+            .filter(|entity| entity.selected)
+            .cloned()
+            .collect();
+        if sources.is_empty() {
             return 0;
-        };
-        let Some(source) = self.entities.iter().find(|e| e.id == id).cloned() else {
-            return 0;
-        };
-        let angle_step = std::f32::consts::TAU / count as f32;
+        } 
         self.save_undo_state();
-        for copy_number in 1..=count {
-            let current_angle = angle_step * copy_number as f32;
-            let mut new_verts = Vec::new();
-            for v in &source.vertices {
-                let local_pos = v - center;
-                let rotated_pos = Vector3::new(
-                    (local_pos.x * current_angle.cos()) - (local_pos.z * current_angle.sin()),
-                    (local_pos.x * current_angle.sin()) + (local_pos.z * current_angle.cos()),
-                    local_pos.z,
-                );
-                let final_pos = rotated_pos + center;
-                new_verts.push(final_pos);
+        let angle_step = std::f32::consts::TAU / item_count as f32;
+        let mut created = 0;
+        for copy_number in 1..item_count {
+            let angle = angle_step * copy_number as f32;
+            let cos_angle = angle.cos();
+            let sin_angle = angle.sin();
+            for source in &sources {
+                let vertices = source
+                    .vertices
+                    .iter()
+                    .map(|point| {
+                        let local = *point - center;
+                        Vector3::new(
+                            local.x * cos_angle - local.z * sin_angle,
+                            local.y,
+                            local.x * sin_angle + local.z * cos_angle,
+                        ) + center
+                    })
+                    .collect();
+                let id = self.next_entity;
+                self.next_entity += 1;
+                self.entities.push(PolyLine {
+                    id,
+                    vertices,
+                    color: source.color,
+                    thickness: source.thickness,
+                    selected: true,
+                    height: source.height,
+                    show_markers: source.show_markers,
+                    hatched: source.hatched,
+                });
+                created += 1;
             }
-            let id = self.next_entity;
-            self.next_entity += 1;
-            self.entities.push(PolyLine {
-                id,
-                vertices: new_verts,
-                color: source.color,
-                thickness: source.thickness,
-                selected: false,
-                height: source.height,
-                show_markers: source.show_markers,
-                hatched: source.hatched,
-            });
         }
+        self.selected_entity = self
+            .entities
+            .iter()
+            .find(|entity| entity.selected)
+            .map(|entity| entity.id);
         self.rebuild_vertices();
-        count as usize
+        created
     }
     pub fn cancel_active_command(&mut self, code: KeyCode, is_pressed: bool) -> bool {
         let circle_active = self.circle_center.is_some();
