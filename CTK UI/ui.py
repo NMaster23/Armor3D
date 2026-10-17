@@ -3144,34 +3144,56 @@ def validpoint(value):
         return None
     if any(abs(coordinate) > 100000 for coordinate in point):
         return None
-    return point
+    return (point[0], point[1], -point[2])
 def executeaiactions(actions):
     if renderer is None:
         return ["Viewport is not ready"]
+    if not isinstance(actions, list):
+        return []
     results = []
     for action in actions[:8]:
         if not isinstance(action, dict):
             continue
-        if action.get('action') != 'draw_line':
+        action_type = action.get("action")
+        if action_type == "draw_line":
+            points = [
+                validpoint(action.get("start")),
+                validpoint(action.get("end")),
+
+            ]
+            closed = False
+        elif action_type == "draw_polyline":
+            raw_points = action.get("points")
+            if not isinstance(raw_points, list) or not 2 <= len(raw_points) <= 128:
+                results.append("Ignored  an invalid polyline")
+                continue
+            points = [validpoint(point) for point in raw_points]
+            closed = action.get("closed", False)
+            if not isinstance(closed, bool):
+                results.append("Ignored an invalid polyline")
+                continue
+            points =[validpoint(point) for point in raw_points]
+            closed = action.get('closed', False)
+            if not isinstance(closed, bool):
+                results.append("Ignored an invalid polyline")
+                continue
+        else:
             continue
-        start = validpoint(action.get("start"))
-        end = validpoint(action.get('end'))
-        if start is None or end is None:
-            results.append("Ignored an invalid line")
+        if any(point is None for point in points):
+            results.append("Ignored an invalid shape")
             continue
-        if math.dist(start, end) <= 0.000001:
-            results.append("Ignored a zero length line")
+        if any(math.dist(start, end) <= 0.000001 for start, end in zip(points, points[1:])):
+            results.append("Ignored a shape with a zero length segment")
             continue
-        created = renderer.import_polyline(
-            [start, end],
-            currentlayercolor(),
-            False,
-        )
+        if closed and len(points) < 3:
+            results.append("A closed shape needs at least 3 points")
+            continue
+        print("AI points:", points, "closed:", closed)
+        created = renderer.import_polyline( points, currentlayercolor(), closed,)
         if created:
-            results.append(
-                f"Draw line from {start} to {end}"
-            )
+            results.append("Drew a closed shape" if closed else "Drew a line")
     return results
+
 def finishairesponse():
     global aibusy
     try:
@@ -3199,24 +3221,20 @@ def finishairesponse():
     ai_input.configure(state='normal')
     stopsendanimation()
     ai_input.focus_set()
-
 def getaicolorname(rgba):
     red, green, blue = rgba[:3]
-
     def distance(hexcolor):
         value = hexcolor.lstrip("#")
         target = tuple(int(value[index:index + 2], 16) / 255 for index in (0, 2, 4))
         return sum((actual - expected) ** 2 for actual, expected in zip((red, green, blue), target))
-
     return min(colors, key=lambda item: distance(item[1]))[0]
-
 def getaiscene():
     if renderer is None:
         return {"scene_version": 1, "objects": []}
     objects = []
     for object_id, vertices, color, height, selected in renderer.scene_data():
         points = [
-            [round(x, 5), round(y, 5), round(z, 5)]
+            [round(x, 5), round(y, 5), round(-z, 5)]
             for x, y, z in vertices ]
         closed = (
             len(points) >= 3
@@ -3278,7 +3296,7 @@ def getaiscene():
     draft_points = []
     if activecommand in ("polyline", "curve"):
         draft_points = [
-            [round(x, 5), round(y, 5), round(z, 5)]
+            [round(x, 5), round(y, 5), round(-z, 5)]
             for x, y, z in renderer.active_polyline_data()
         ]
     if draft_points:
@@ -3389,6 +3407,13 @@ sendbutton.bind("<Enter>", sendenter)
 sendbutton.bind("<Leave>", sendleave)
 sendbutton.bind("<Button-1>", sendai)
 ai_input.bind("<Return>", sendai)
+def clearaihistory():
+    global chatmemory
+    chatmemory = []
+    savechatmemory()
+    aichat.configure(state='normal')
+    aichat.delete('1.0', 'end')
+    aichat.configure(state='disabled')
 settingshade  = Toplevel(app)
 settingshade.withdraw()
 settingshade.overrideredirect(True)
@@ -3408,6 +3433,12 @@ ctk.CTkLabel(settingspanel, text="Model", font=("Lexend", 12), text_color="#F3E6
 modelmenu = ctk.CTkOptionMenu(settingspanel, width=220, height=36, values=["openai/gpt-6-sol-pro","openai/gpt-4o-mini", "qwen/qwen3-32b", "google/gemini-2.5-flash", "moonshotai/kimi-k2", ], font=("Lexend", 12), fg_color=HOVER_BG, button_color="#A77A2F", button_hover_color=HOVER_BORDER, dropdown_fg_color="#342719")
 modelmenu.set("voyageai/voyage-4")
 modelmenu.place(x=25, y=185)
+clearhistorybutton = Canvas(settingspanel, width=180, height=38, bg="#342719", highlightthickness=0, cursor="hand2",)
+clearhistorytext = clearhistorybutton.create_text(90, 19, text="Clear AI History", fill="#F3E6C5", font=("Iceland", 16))
+clearhistorybutton.bind("<Enter>", lambda event: clearhistorybutton.itemconfig(clearhistorytext, fill="#F4C95D"))
+clearhistorybutton.bind("<Leave>", lambda event: clearhistorybutton.itemconfig(clearhistorytext, fill="#F3E6C5"))
+clearhistorybutton.bind("<Button-1>", lambda event: clearaihistory(), )
+clearhistorybutton.place(x=5, y=228)
 def positionsettings(event=None):
     if event is not None and event.widget is not app:
         return
@@ -3442,7 +3473,7 @@ settingsavetext =settingsave.create_text(50, 19, text='Save', fill='#F3E6C5', fo
 settingsave.bind("<Enter>", lambda event: (settingsave.itemconfig(settingsavebox, fill=HOVER_BG), settingsave.itemconfig(settingsavetext, fill="#F4C95D")))
 settingsave.bind("<Leave>", lambda event: (settingsave.itemconfig(settingsavebox, fill='#242823'), settingsave.itemconfig(settingsavetext, fill='#F3E6C5')))
 settingsave.bind("<Button-1>", lambda event :savesettings())
-settingsave.place(relx=1, x=-125, y=220)
+settingsave.place(relx=1, x=-125, y=232)
 
 settingsclose= Canvas(settingspanel, width=36, height=36, bg="#342719", highlightthickness=0, cursor='hand2')
 settingsclosetext = settingsclose.create_text(18, 18, text='×', fill='#F3E6C5',font=("Iceland", 24) )
