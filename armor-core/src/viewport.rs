@@ -1,12 +1,13 @@
 use crate::Vertex;
 use crate::camera::{Camera, CameraController};
 use anyhow::Ok;
-use cgmath::{InnerSpace, Quaternion, SquareMatrix, Vector3, Vector4, Zero};
+use cgmath::{InnerSpace, Quaternion, Rotation, SquareMatrix, Vector3, Vector4, Zero};
 use lyon::lyon_tessellation::{
     BuffersBuilder, FillOptions, FillTessellator, FillVertex, VertexBuffers,
 };
 use lyon::math::point;
 use lyon::path::Path;
+use lyon::path::traits::PathBuilder;
 use std::mem;
 use winit::dpi::PhysicalPosition;
 use winit::event::MouseButton;
@@ -548,7 +549,7 @@ impl Viewport {
             || !quat.v.x.is_finite()
             || !quat.v.y.is_finite()
             || !quat.v.z.is_finite()
-            || !quat.is_zero()
+            || quat.is_zero()
             || color.iter().any(|c| !c.is_finite())
         {
             return false;
@@ -571,30 +572,74 @@ impl Viewport {
         font_data: &[u8],
     ) -> Result<Vec<Vertex>, anyhow::Error> {
         let face = ttf_parser::Face::parse(font_data, 0)?;
+        let units = face.units_per_em() as f32;
+        let scale = entity.size / units;
         let mut verts = Vec::new();
+        let mut pen_x = 0.0;
         for char in entity.text.chars() {
             let Some(glyph_id) = face.glyph_index(char) else {
                 continue;
             };
             let mut outline = Builder::default();
             face.outline_glyph(glyph_id, &mut outline);
+            let mut path_builder = Path::builder();
+            for command in outline.commands {
+                match command {
+                    OutlineCommand::MoveTo(x, y) => {
+                        path_builder.begin(point(
+                            x * scale + pen_x,
+                            -y * scale,
+                        ));
+                    }
+                    OutlineCommand::LineTo(x, y) => {
+                        path_builder.line_to(point(
+                            x * scale + pen_x,
+                            -y * scale,
+                        ));
+                    }
+                    OutlineCommand::QuadTo(x1, y1, x, y) => {
+                        path_builder.quadratic_bezier_to(
+                            point(x1 * scale + pen_x, -y1 * scale),
+                            point(x * scale + pen_x, -y * scale),
+                        );
+                    }
+                    OutlineCommand::CurveTo(x1, y1, x2, y2, x, y) => {
+                        path_builder.cubic_bezier_to(
+                            point(x1 * scale + pen_x, -y1 * scale),
+                            point(x2 * scale + pen_x, -y2 * scale),
+                            point(x * scale + pen_x, -y * scale),
+                        );
+                    }
+                    OutlineCommand::Close => {
+                        path_builder.end(true);
+                    }
+                };
+            }
+            let path = path_builder.build();
+            let mut buffers: VertexBuffers<Vertex, usize> = VertexBuffers::new();
+            FillTessellator::new().tessellate_path(
+                &path,
+                &FillOptions::default(),
+                &mut BuffersBuilder::new(
+                    &mut buffers,
+                    |v: FillVertex| {
+                        let p = v.position();
+                        let local = Vector3::new(p.x, p.y, 0.0);
+                        let world = entity.pos + entity.quat.rotate_vector(local);
+                        Vertex {
+                            position: world.into(),
+                            coords: [0.0; 3],
+                            color: entity.color,
+                        }
+                    },
+                ),
+            )?;
+            for &index in &buffers.indices {
+                verts.push(buffers.vertices[index as usize]);
+            }
+            pen_x += face.glyph_hor_advance(glyph_id).unwrap_or(0) as f32 * scale;
         }
-        let mut polygon = Vec::new();
-        let mut builder = lyon::path::Path::builder();
-        let mut buffers = VertexBuffers::new();
-        FillTessellator::new().tessellate_path(
-            &path,
-            &FillOptions::default(),
-            &mut BuffersBuilder::new(
-                &mut buffers,
-                |vertex: FillVertex| Vertex {
-                    position: vertex.position().to_array(),
-                    color: entity.color,
-                },
-            ),
-        )?;
-        let advance = face.glyph_hor_advance(glyph_id).unwrap_or(0);
-        let scale = entity.size / face.units_per_em() as f32;
+        Ok(verts)
     }
     pub fn store_shape(&mut self, points: &[cgmath::Vector3<f32>], color: [f32; 4]) {
         self.hist_entities.save_undo();
