@@ -3148,30 +3148,51 @@ def validpoint(value):
 def executeaiactions(actions):
     if renderer is None:
         return ["Viewport is not ready"]
+    if not isinstance(actions, list):
+        return []
     results = []
     for action in actions[:8]:
         if not isinstance(action, dict):
             continue
-        if action.get('action') != 'draw_line':
+        action_type = action.get("action")
+        if action_type == "draw_line":
+            points = [
+                validpoint(action.get("start")),
+                validpoint(action.get("end")),
+
+            ]
+            closed = False
+        elif action_type == "draw_polyline":
+            raw_points = action.get("points")
+            if not isinstance(raw_points, list) or not 2 <= len(raw_points) <= 128:
+                results.append("Ignored  an invalid polyline")
+                continue
+            points = [validpoint(point) for point in raw_points]
+            closed = action.get("closed", False)
+            if not isinstance(closed, bool):
+                results.append("Ignored an invalid polyline")
+                continue
+            points =[validpoint(point) for point in raw_points]
+            closed = action.get('closed', False)
+            if not isinstance(closed, bool):
+                results.append("Ignored an invalid polyline")
+                continue
+        else:
             continue
-        start = validpoint(action.get("start"))
-        end = validpoint(action.get('end'))
-        if start is None or end is None:
-            results.append("Ignored an invalid line")
+        if any(point is None for point in points):
+            results.append("Ignored an invalid shape")
             continue
-        if math.dist(start, end) <= 0.000001:
-            results.append("Ignored a zero length line")
+        if any(math.dist(start, end) <= 0.000001 for start, end in zip(points, points[1:])):
+            results.append("Ignored a shape with a zero length segment")
             continue
-        created = renderer.import_polyline(
-            [start, end],
-            currentlayercolor(),
-            False,
-        )
+        if closed and len(points) < 3:
+            results.append("A closed shape needs at least 3 points")
+            continue
+        created = renderer.import_polyline( points, currentlayercolor(), closed,)
         if created:
-            results.append(
-                f"Draw line from {start} to {end}"
-            )
+            results.append("Drew a closed shape" if closed else "Drew a line")
     return results
+
 def finishairesponse():
     global aibusy
     try:
@@ -3199,17 +3220,13 @@ def finishairesponse():
     ai_input.configure(state='normal')
     stopsendanimation()
     ai_input.focus_set()
-
 def getaicolorname(rgba):
     red, green, blue = rgba[:3]
-
     def distance(hexcolor):
         value = hexcolor.lstrip("#")
         target = tuple(int(value[index:index + 2], 16) / 255 for index in (0, 2, 4))
         return sum((actual - expected) ** 2 for actual, expected in zip((red, green, blue), target))
-
     return min(colors, key=lambda item: distance(item[1]))[0]
-
 def getaiscene():
     if renderer is None:
         return {"scene_version": 1, "objects": []}

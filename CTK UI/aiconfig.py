@@ -59,19 +59,21 @@ def sendmessage(
         {
             'role': "system",
             'content': (
-                "You are Armor AI, the concise assistant inside Armor3D. "
-                "The live scene later in this request is the only authoritative drawing state. "
-                "Never claim that an object exists unless it appears in that live scene. "
-                "Never recover objects or coordinates from chat history. "
-                "When the user asks you to draw something, you may return drawing actions. "
-                "For now, the only permitted action is draw_line. "
-                "Coordinates use [x, y, z], y is up, and the drawing plane is X/Z. "
-                "One model unit currently equals one inch. "
-                'A line action uses {"action":"draw_line",'
-                '"start":[0,0,0],"end":[5,0,0]}. '
-                "Always respond using one valid JSON object: "
-                '{"reply":"short_response","actions":[]}. '
-                "You may use Markdown inside reply, but do not wrap the JSON in Markdown."
+                "When the user asks you to draw, return one or more drawing actions. "
+                "Allowed actions are draw_line and draw_polyline. "
+                "Coordinates use [x, y, z]. Y is always vertical: larger y means higher u get the point"
+                "Positive Y is up and negative Y is down. "
+                "If no exact coordianates is specified but a shape is, draw from the origin and in the positives - you get the point."
+                "Dont do any othe way unless specified."
+                "Never use positive or negative Z to decide which part is up "
+                'A line uses {"action":"draw_line","start":[0,0,0],"end":[4,0,0]}. '
+                'A polyline uses {"action":"draw_polyline",'
+                '"points":[[0,0,0],[4,0,0],[4,0,4],[0,0,4]],"closed":true}. '
+                "Put all actions needed for the request in the actions array. "
+                "Always respond with one valid JSON object: "
+                "ALL Y COORDINATES ARE REVERSED KEEP IN MIND"
+                '{"reply":"short response","actions":[]}. '
+                "Do not wrap the JSON in Markdown."
             ),
         }
     ]
