@@ -2,18 +2,18 @@ use crate::Vertex;
 use crate::camera::{Camera, CameraController};
 use anyhow::Ok;
 use cgmath::{InnerSpace, Quaternion, Rotation, SquareMatrix, Vector3, Vector4, Zero};
+use glyphon::Family;
+use glyphon::fontdb::Query;
 use lyon::lyon_tessellation::{
     BuffersBuilder, FillOptions, FillTessellator, FillVertex, VertexBuffers,
 };
 use lyon::math::point;
 use lyon::path::Path;
-use lyon::path::traits::PathBuilder;
 use std::mem;
 use winit::dpi::PhysicalPosition;
 use winit::event::MouseButton;
 use winit::event_loop::ActiveEventLoop;
 use winit::keyboard::KeyCode;
-use std::fmt::Error;
 
 const END_SNAP_RADIUS_PIXELS: f32 = 12.0;
 const NEAR_SNAP_RADIUS_PIXELS: f32 = 10.0;

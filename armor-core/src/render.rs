@@ -1,12 +1,11 @@
 use crate::camera::{Camera, CameraUniform};
 use crate::reference_image::ReferenceImageLayer;
-use crate::viewport::{PolyLine, Viewport};
+use crate::viewport::{PolyLine, TextEntity, Viewport};
 use crate::{GRAPH_INDICES, GRAPH_VERTICES, Vertex};
-use anyhow::Ok;
 use cgmath::Vector3;
+use glyphon::fontdb::Query;
 use glyphon::{
-    Attrs, Buffer, Color, FontSystem, Metrics, Resolution, SwashCache, TextArea, TextAtlas,
-    TextBounds, TextRenderer,
+    Attrs, Buffer, Color, Family, FontSystem, Metrics, Resolution, SwashCache, TextArea, TextAtlas, TextBounds, TextRenderer,
 };
 use std::sync::Arc;
 use wgpu::util::DeviceExt;
@@ -446,6 +445,37 @@ impl State {
             egui_ctx: egui_ctx,
             egui_renderer,
         })
+    }
+    pub fn get_all_fonts(
+        &mut self,
+    ) -> Vec<String> {
+        let mut names: Vec<String> = self
+            .font_system
+            .db()
+            .faces()
+            .flat_map(|f| f.families.iter().map(|(name, lang)| name.clone()))
+            .collect();
+        names.sort();
+        names.dedup();
+        names
+    }
+    pub fn text_to_vertex(
+        &mut self,
+        entity: &TextEntity,
+        font_name: &str,
+        font_family: Family<'_>,
+    ) {
+        let query = Query {
+            families: &[Family::Name(font_name), font_family],
+            ..Default::default()
+        };
+        if let Some(id) = self.font_system.db().query(&query) {
+            self.font_system.db().with_face_data(id, |f_b, f_i| {
+                if let Ok(verts) = Viewport::render_text(entity, f_b) {
+                    self.point_vertices.extend(verts);
+                }
+            });
+        }
     }
     pub fn draw_text(&mut self, text: &str, pos: Vector3<f32>) {
         self.text_buffer.set_text(
