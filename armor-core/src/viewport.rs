@@ -77,12 +77,13 @@ pub struct PolyLine {
 
 #[derive(Clone, Debug)]
 pub struct TextEntity {
-    id: usize,
-    pos: Vector3<f32>,
-    quat: Quaternion<f32>,
-    color: [f32; 4],
-    text: String,
-    size: f32,
+    pub id: usize,
+    pub pos: Vector3<f32>,
+    pub quat: Quaternion<f32>,
+    pub color: [f32; 4],
+    pub text: String,
+    pub size: f32,
+    pub cached_vertices: Vec<Vertex>,
 }
 
 pub struct ShapeUndoStore<T> {
@@ -563,6 +564,7 @@ impl Viewport {
             color,
             text,
             size,
+            cached_vertices: Vec::new(),
         });
         self.rebuild_vertices();
         true
@@ -624,7 +626,7 @@ impl Viewport {
                     &mut buffers,
                     |v: FillVertex| {
                         let p = v.position();
-                        let local = Vector3::new(p.x, p.y, 0.0);
+                        let local = Vector3::new(p.x, POLYLINE_HEIGHT, p.y);
                         let world = entity.pos + entity.quat.rotate_vector(local);
                         Vertex {
                             position: world.into(),
@@ -1324,6 +1326,9 @@ impl Viewport {
                 marker_color,
             ));
         }
+        for entity in &self.text_entities {
+            new_vertices.extend_from_slice(&entity.cached_vertices);
+        }
         self.point_vertices = new_vertices;
         self.redraw = true;
     }
@@ -1584,6 +1589,7 @@ impl Viewport {
         self.copy_base = None;
         self.copy_target = None;
         self.rebuild_vertices();
+        self.text_entities.clear();
     }
     fn polyline_distance_target(&self) -> Option<Vector3<f32>> {
         let distance = self.polyline_distance?;

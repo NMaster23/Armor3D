@@ -459,33 +459,28 @@ impl State {
         names.dedup();
         names
     }
-    pub fn text_to_vertex(
+    pub fn add_text(
         &mut self,
-        entity: &TextEntity,
+        mut entity: TextEntity,
         font_name: &str,
         font_family: Family<'_>,
-    ) {
+    ) -> bool {
+        if !self.viewport.draw_text(entity.text.clone(), entity.pos, entity.quat, entity.color, entity.size) {
+            return false;
+        }
         let query = Query {
             families: &[Family::Name(font_name), font_family],
             ..Default::default()
         };
         if let Some(id) = self.font_system.db().query(&query) {
             self.font_system.db().with_face_data(id, |f_b, f_i| {
-                if let Ok(verts) = Viewport::render_text(entity, f_b) {
-                    self.point_vertices.extend(verts);
+                if let Ok(verts) = Viewport::render_text(&entity, f_b) {
+                    entity.cached_vertices.extend(verts);
+                    self.viewport.redraw = true;
                 }
             });
         }
-    }
-    pub fn draw_text(&mut self, text: &str, pos: Vector3<f32>) {
-        self.text_buffer.set_text(
-            text,
-            &Attrs::new().family(glyphon::Family::SansSerif),
-            glyphon::Shaping::Advanced,
-            None,
-        );
-        self.text_buffer.shape_until_scroll(&mut self.font_system, false);
-        self.text_pos = pos;
+        true
     }
     pub async fn new_embedded(hwnd: isize, width: u32, height: u32) -> anyhow::Result<State> {
         use raw_window_handle::{
