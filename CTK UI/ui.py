@@ -3144,7 +3144,7 @@ def validpoint(value):
         return None
     if any(abs(coordinate) > 100000 for coordinate in point):
         return None
-    return point
+    return (point[0], -point[1], point[2])
 def executeaiactions(actions):
     if renderer is None:
         return ["Viewport is not ready"]
@@ -3406,6 +3406,13 @@ sendbutton.bind("<Enter>", sendenter)
 sendbutton.bind("<Leave>", sendleave)
 sendbutton.bind("<Button-1>", sendai)
 ai_input.bind("<Return>", sendai)
+def clearaihistory():
+    global chatmemory
+    chatmemory = []
+    savechatmemory()
+    aichat.configure(state='normal')
+    aichat.delete('1.0', 'end')
+    aichat.configure(state='disabled')
 settingshade  = Toplevel(app)
 settingshade.withdraw()
 settingshade.overrideredirect(True)
@@ -3425,6 +3432,12 @@ ctk.CTkLabel(settingspanel, text="Model", font=("Lexend", 12), text_color="#F3E6
 modelmenu = ctk.CTkOptionMenu(settingspanel, width=220, height=36, values=["openai/gpt-6-sol-pro","openai/gpt-4o-mini", "qwen/qwen3-32b", "google/gemini-2.5-flash", "moonshotai/kimi-k2", ], font=("Lexend", 12), fg_color=HOVER_BG, button_color="#A77A2F", button_hover_color=HOVER_BORDER, dropdown_fg_color="#342719")
 modelmenu.set("voyageai/voyage-4")
 modelmenu.place(x=25, y=185)
+clearhistorybutton = Canvas(settingspanel, width=180, height=38, bg="#342719", highlightthickness=0, cursor="hand2",)
+clearhistorytext = clearhistorybutton.create_text(90, 19, text="Clear AI History", fill="#F3E6C5", font=("Iceland", 16))
+clearhistorybutton.bind("<Enter>", lambda event: clearhistorybutton.itemconfig(clearhistorytext, fill="#F4C95D"))
+clearhistorybutton.bind("<Leave>", lambda event: clearhistorybutton.itemconfig(clearhistorytext, fill="#F3E6C5"))
+clearhistorybutton.bind("<Button-1>", lambda event: clearaihistory(), )
+clearhistorybutton.place(x=5, y=228)
 def positionsettings(event=None):
     if event is not None and event.widget is not app:
         return
@@ -3459,7 +3472,7 @@ settingsavetext =settingsave.create_text(50, 19, text='Save', fill='#F3E6C5', fo
 settingsave.bind("<Enter>", lambda event: (settingsave.itemconfig(settingsavebox, fill=HOVER_BG), settingsave.itemconfig(settingsavetext, fill="#F4C95D")))
 settingsave.bind("<Leave>", lambda event: (settingsave.itemconfig(settingsavebox, fill='#242823'), settingsave.itemconfig(settingsavetext, fill='#F3E6C5')))
 settingsave.bind("<Button-1>", lambda event :savesettings())
-settingsave.place(relx=1, x=-125, y=220)
+settingsave.place(relx=1, x=-125, y=232)
 
 settingsclose= Canvas(settingspanel, width=36, height=36, bg="#342719", highlightthickness=0, cursor='hand2')
 settingsclosetext = settingsclose.create_text(18, 18, text='×', fill='#F3E6C5',font=("Iceland", 24) )
