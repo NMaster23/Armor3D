@@ -3144,7 +3144,7 @@ def validpoint(value):
         return None
     if any(abs(coordinate) > 100000 for coordinate in point):
         return None
-    return (point[0], -point[1], point[2])
+    return (point[0], point[1], -point[2])
 def executeaiactions(actions):
     if renderer is None:
         return ["Viewport is not ready"]
@@ -3188,6 +3188,7 @@ def executeaiactions(actions):
         if closed and len(points) < 3:
             results.append("A closed shape needs at least 3 points")
             continue
+        print("AI points:", points, "closed:", closed)
         created = renderer.import_polyline( points, currentlayercolor(), closed,)
         if created:
             results.append("Drew a closed shape" if closed else "Drew a line")
