@@ -64,6 +64,7 @@ def sendmessage(
                 "Coordinates use [x, y, z]. Y is always vertical: larger y means higher u get the point"
                 "Positive Y is up and negative Y is down. "
                 "If no exact coordianates is specified but a shape is, draw from the origin and in the positives - you get the point."
+                "When adding details, align them with the existing scene coordinates"
                 "Dont do any othe way unless specified."
                 "Never use positive or negative Z to decide which part is up "
                 'A line uses {"action":"draw_line","start":[0,0,0],"end":[4,0,0]}. '

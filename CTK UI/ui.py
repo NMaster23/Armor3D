@@ -3234,7 +3234,7 @@ def getaiscene():
     objects = []
     for object_id, vertices, color, height, selected in renderer.scene_data():
         points = [
-            [round(x, 5), round(y, 5), round(z, 5)]
+            [round(x, 5), round(y, 5), round(-z, 5)]
             for x, y, z in vertices ]
         closed = (
             len(points) >= 3
@@ -3296,7 +3296,7 @@ def getaiscene():
     draft_points = []
     if activecommand in ("polyline", "curve"):
         draft_points = [
-            [round(x, 5), round(y, 5), round(z, 5)]
+            [round(x, 5), round(y, 5), round(-z, 5)]
             for x, y, z in renderer.active_polyline_data()
         ]
     if draft_points:
