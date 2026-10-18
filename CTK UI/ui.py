@@ -3151,32 +3151,39 @@ def executeaiactions(actions):
     if not isinstance(actions, list):
         return []
     results = []
+    existing_object_ids = {object_id for object_id, *_ in renderer.scene_data()}
     for action in actions[:8]:
         if not isinstance(action, dict):
             continue
         action_type = action.get("action")
-        if action_type == 'hatch_shape':
+        if action_type == 'hatch_shapes':
             object_ids = action.get("object_ids")
-            if (
-                not isinstance(object_ids, list)
+            if (not isinstance(object_ids, list)
                 or not object_ids
                 or len(object_ids) > 64
-                or any(type(object_ids) is not int for object_ids in object_ids)
-            ):
+                or any(type(object_id) is not int for object_id in object_ids)):
                 results.append("Ignored an invalid hatch request")
                 continue
             count = renderer.hatch_objects(object_ids)
-            if count:
-                results.append(f"Hatched {count} closed shapes(s)")
-            else:
-                results.append("Those objects were not hatchable closed shapes")
+            results.append(
+                f"Hatched {count} closed shape(s)"
+                if count
+                else "Those IDs did not match any new hatchable shapes"
+            )
             continue
-        if action_type == "hatch_selected":
-            count = renderer.hatch_selected()
-            if count:
-                results.append(f"Hatched {count} selected closed shape(s)")
-            else:
-                results.append("No selected closed shapes to hatch")
+        if action_type == 'hatch_new_shapes':
+            new_closed_ids = []
+            for object_id, vertices, _color, _height, _selected in renderer.scene_data():
+                if object_id in existing_object_ids or len(vertices) < 4:
+                    continue
+                if math.dist(vertices[0], vertices[-1]) <= 0.0001:
+                    new_closed_ids.append(object_id)
+            count = renderer.hatch_objects(new_closed_ids)
+            results.append(
+                f"Hatched {count} newly created closed shapes(s)"
+                if count
+                else "No newly created closed shapes were available to hatch"
+            )
             continue
         if action_type == "draw_line":
             points = [

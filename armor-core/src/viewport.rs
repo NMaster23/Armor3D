@@ -821,7 +821,15 @@ impl Viewport {
             }
             inside
         }
-    )
+    fn is_coplanar_with_plane(
+        points: &[Vector3<f32>],
+        plane: &(Vector3<f32>, Vector3<f32>, Vector3<f32>, Vector3<f32>)
+    )-> bool {
+        let (origin, _, _, normal) = *plane;
+        points
+            .iter()
+            .all(|point| ((*point - origin).dot(normal)).abs()<= 0.001)
+    }
     pub fn tessellate_fill(points: &[Vector3<f32>], color: [f32; 4]) -> Vec<Vertex> {
         Self::tessellate_fill_contours(&[points], color)
     }
@@ -852,7 +860,7 @@ impl Viewport {
             builder.begin(point(x, y));
             for vertex in &contour[1..] {
                 let (x, y) = project(*vertex);
-                builder.line_to(point(x, y))
+                builder.line_to(point(x, y));
             }
             builder.end(true);
         }
