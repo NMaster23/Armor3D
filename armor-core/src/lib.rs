@@ -304,6 +304,9 @@ impl ViewportRenderer {
     fn extrude(&mut self, height: f32) {
         self.state.viewport.extrude_selected(height);
     }
+    fn extrude_object(&mut self, object_id: usize, height: f32) -> bool {
+        self.state.viewport.extrude_object(object_id, height)
+    }
     fn mouse_move(&mut self, x: f64, y: f64) -> Option<String> {
         self.state.viewport.mouse_move(x, y)
     }

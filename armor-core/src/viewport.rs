@@ -1528,6 +1528,24 @@ impl Viewport {
             self.rebuild_vertices();
         }
     }
+    pub fn extrude_object(&mut self, object_id: usize, height: f32) -> bool {
+        if !height.is_finite() || height.abs() > 100_000.0 {
+            return false;
+        }
+        let Some(entity) = self.entities.iter().find(|entity| entity.id == object_id) else{
+            return false;
+        };
+        if !Self::is_closed_shape(&entity.vertices) {
+            return false;
+        }
+        self.save_undo_state();
+        let Some(entity) = self.entities.iter_mut().find(|entity| entity.id == object_id) else{
+            return false;
+        };
+        entity.height = height;
+        self.rebuild_vertices();
+        true
+    }
     pub fn begin_extrude_drag(&mut self) -> bool {
         let Some(id) = self.selected_entity.or_else(|| {
             self.entities
@@ -2952,7 +2970,6 @@ mod tests {
         assert_eq!(viewport.entities[0].height, 2.0);
         assert_eq!(viewport.entities[1].height, 0.0);
     }
-
     #[test]
     fn mouse_move_previews_end_snap_without_clicking() {
         let mut viewport = Viewport::new(800, 600);

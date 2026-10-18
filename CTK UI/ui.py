@@ -3187,6 +3187,7 @@ def executeaiactions(actions):
         return []
     results = []
     existing_object_ids = {object_id for object_id, *_ in renderer.scene_data()}
+    newly_created_ids = []
     for action in actions[:8]:
         if not isinstance(action, dict):
             continue
@@ -3252,6 +3253,26 @@ def executeaiactions(actions):
                 else "No newly created closed shapes were available to hatch"
             )
             continue
+        if action_type == 'extrude':
+            target_id = action.get("object_id")
+            if action.get("target") == 'last_created':
+                if not newly_created_ids:
+                    results.append("There is no newly created shape to extrude")
+                    continue
+                target_id = newly_created_ids[-1]
+            height = action.get("height")
+            if (
+                type(target_id) is not int
+                or type(height) not in (int, float)
+                or not math.isfinite(height)
+                or abs(height) > 100_000):
+                results.append("Ignored an invalid extrusion request")
+                continue
+            if renderer.extrude_object(target_id, float(height)):
+                results.append(f"Extruded object {target_id} to height {height}")
+            else:
+                results.append(f"Object {target_id} was missing or is not a closed shape")
+            continue
         if action_type == "draw_line":
             points = [
                 validpoint(action.get("start")),
@@ -3286,8 +3307,11 @@ def executeaiactions(actions):
             results.append("A closed shape needs at least 3 points")
             continue
         print("AI points:", points, "closed:", closed)
-        created = renderer.import_polyline( points, currentlayercolor(), closed,)
+        before_ids = {object_id for object_id, *_ in renderer.scene_data()}
+        created = renderer.import_polyline(points, currentlayercolor(), closed,)
         if created:
+            after_ids = {object_id for object_id, *_ in renderer.scene_data()}
+            newly_created_ids.extend(sorted(after_ids - before_ids))
             results.append("Drew a closed shape" if closed else "Drew a line")
     return results
 

@@ -62,7 +62,11 @@ def sendmessage(
                 "You are Armor AI inside of Armor 3D. Reply with one valid JSON object:"
                 '{"reply":"short response","actions":[]}.'
                 "When the user asks you to draw, return one or more drawing actions. "
-                "Allowed actions are draw_line, draw_polyline, hatch_shapes, and hatch_new_shapes. "
+                "Allowed actions are draw_line, draw_polyline, hatch_shapes, hatch_new_shapes, and extrude. "
+                'Use {"action":"extrude","target":"last_created","height":3} to extrude the most recently drawn closed shape. '
+                'Use {"action":"extrude","object_id":12,"height":3} to extrude an existing closed shape by its scene ID. '
+                "Extrude height is the final total distance along Y; positive is up and negative is down. "
+                "Only extrude closed shapes. "
                 "For a 3D object with filled faces, draw each face as its own separate, closed, planar draw_polyline. "
                 "Never combine multiple faces of a 3D object into one polyline. Each wall, floor, and roof face must be a separate action with closed set to true. "
                 "After drawing all the faces that should be filled, add one hatch_new_shapes action. "
