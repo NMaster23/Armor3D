@@ -5,7 +5,7 @@ use cgmath::{InnerSpace, Quaternion, Rotation, SquareMatrix, Vector3, Vector4, Z
 use glyphon::Family;
 use glyphon::fontdb::Query;
 use lyon::lyon_tessellation::{
-    BuffersBuilder, FillOptions, FillTessellator, FillVertex, VertexBuffers,
+    BuffersBuilder, FillOptions, FillRule, FillTessellator, FillVertex, VertexBuffers,
 };
 use lyon::math::point;
 use lyon::path::Path;
@@ -719,28 +719,75 @@ impl Viewport {
                 color: side_color,
             });
         }
-        vertices
+        vertices}
+    fn polygon_area_xz(points: &[Vector3<f32>]) -> f32 {
+        let count = if Self::is_closed_shape(points) {
+            points.len() - 1
+        } else {
+            points.len()
+        };
+        if count < 3 {
+            return 0.0;}
+        let mut doubled_area = 0.0;
+        for index in 0..count {
+            let a = points[index];
+            let b = points[(index + 1) % count];
+            doubled_area += a.x * b.z - b.x * a.z;
+        }
+        doubled_area.abs() * 0.5}
+    fn point_in_polygon_xz(point: Vector3<f32>, polygon: &[Vector3<f32>]) -> bool {
+        let count = if Self::is_closed_shape(polygon) {
+            polygon.len() - 1
+        } else {
+            polygon.len()};
+        if count < 3 {
+            return false;
+        }
+        let mut inside = false;
+        let mut previous = count - 1;
+        for current in 0..count {
+            let a = polygon[current];
+            let b = polygon[previous];
+            let crosses = (a.z > point.z) != (b.z > point.z)
+                && point.x
+                    < (b.x - a.x) * (point.z - a.z) / (b.z - a.z) + a.x;
+            if crosses {
+                inside = !inside;}
+            previous = current;
+        }
+        inside
     }
-    pub fn tessellate_fill(points: &[cgmath::Vector3<f32>], color: [f32; 4]) -> Vec<Vertex> {
-        if points.len() < 3 {
+    pub fn tessellate_fill(points: &[Vector3<f32>], color: [f32; 4]) -> Vec<Vertex> {
+        Self::tessellate_fill_contours(&[points], color)
+    }
+    fn tessellate_fill_contours(contours: &[&[Vector3<f32>]], color: [f32; 4],) -> Vec<Vertex> {
+        let Some(first_contour) = contours.iter().find(|points| points.len() >= 3) else {
             return Vec::new();
-        }
+        };
+        let hatch_y = first_contour[0].y;
         let mut builder = Path::builder();
-        builder.begin(point(points[0].x, points[0].z));
-        for p in &points[1..] {
-            builder.line_to(point(p.x, p.z));
+        for contour in contours {
+            if contour.len() < 3
+                || contour
+                    .iter()
+                    .any(|point| (point.y - hatch_y).abs() > 0.0001)
+            {continue;}
+            builder.begin(point(contour[0].x, contour[0].z));
+            for vertex in &contour[1..] {
+            builder.line_to(point(vertex.x, vertex.z));
+            }   
+            builder.end(true);
         }
-        builder.close();
         let path = builder.build();
         let mut geometry: VertexBuffers<Vertex, u16> = VertexBuffers::new();
         let mut tessellator = FillTessellator::new();
         let result = tessellator.tessellate_path(
             &path,
-            &FillOptions::default(),
+            &FillOptions::default().with_fill_rule(FillRule::EvenOdd),
             &mut BuffersBuilder::new(&mut geometry, |vertex: FillVertex| {
-                let pos = vertex.position();
+                let position = vertex.position();
                 Vertex {
-                    position: [pos.x, 0.0, pos.y],
+                    position: [position.x, hatch_y, position.y],
                     coords: [0.0, 0.0, 0.0],
                     color,
                 }
@@ -748,11 +795,11 @@ impl Viewport {
         );
         if result.is_err() {
             return Vec::new();
-        }
+        }   
         geometry
             .indices
             .iter()
-            .map(|&i| geometry.vertices[i as usize])
+            .map(|&index| geometry.vertices[index as usize])
             .collect()
     }
     pub fn dist_to_segment(
@@ -1177,8 +1224,40 @@ impl Viewport {
             };
             let closed = Self::is_closed_shape(&entity.vertices);
             if entity.hatched && closed {
-                let fill_color = [draw_color[0], draw_color[1], draw_color[2], 0.45];
-                new_vertices.extend(Self::tessellate_fill(&entity.vertices, fill_color));
+                let entity_area = Self::polygon_area_xz(&entity.vertices);
+                let is_inside_another_hatched_shape = self.entities.iter().any(|other| {
+                    if other.id == entity.id
+                        || !other.hatched
+                        || !Self::is_closed_shape(&other.vertices)
+                        || other.vertices.is_empty()
+                    {
+                        return false;
+                    }
+                    let same_plane = other.vertices.iter().all(|point| { (point.y - entity.vertices[0].y).abs() <= 0.0001});
+                    same_plane
+                        && Self::polygon_area_xz(&other.vertices) > entity_area
+                        && Self::point_in_polygon_xz(entity.vertices[0], &other.vertices) });
+                if !is_inside_another_hatched_shape {
+                    let mut contours: Vec<&[Vector3<f32>]> = vec![&entity.vertices];
+                    for inner in &self.entities {
+                        if inner.id == entity.id
+                            || !inner.hatched
+                            || !Self::is_closed_shape(&inner.vertices)
+                            || inner.vertices.is_empty()
+                        {
+                            continue;}
+                        let same_plane = inner.vertices.iter().all(|point| {
+                            (point.y - entity.vertices[0].y).abs() <= 0.0001
+                        });
+                        if same_plane
+                            && Self::polygon_area_xz(&inner.vertices) < entity_area
+                            && Self::point_in_polygon_xz(inner.vertices[0], &entity.vertices)
+                        {
+                            contours.push(inner.vertices.as_slice());}
+                    }
+                    let fill_color = [draw_color[0], draw_color[1], draw_color[2], 0.45];
+                    new_vertices.extend(Self::tessellate_fill_contours(&contours, fill_color));
+                }
             }
             if closed && entity.height > 0.0 {
                 new_vertices.extend(Self::extrude(&entity.vertices, draw_color, entity.height));
