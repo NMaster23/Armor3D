@@ -773,22 +773,35 @@ impl Viewport {
     pub fn tessellate_fill(points: &[Vector3<f32>], color: [f32; 4]) -> Vec<Vertex> {
         Self::tessellate_fill_contours(&[points], color)
     }
-    fn tessellate_fill_contours(contours: &[&[Vector3<f32>]], color: [f32; 4],) -> Vec<Vertex> {
-        let Some(first_contour) = contours.iter().find(|points| points.len() >= 3) else {
+    fn tessellate_fill_contours(
+        contours: &[&[Vector3<f32>]],
+        color: [f32; 4]
+    ) -> Vec<Vertex> {
+        let Some(outer) = contours.iter().find(|points| points.len() >- 3) else {
             return Vec::new();
         };
-        let hatch_y = first_contour[0].y;
+        let Some((origin, u, v, normal)) = Self::hatch_plane(outer) else {
+            return Vec::new();
+        };
         let mut builder = Path::builder();
         for contour in contours {
-            if contour.len() < 3
-                || contour
-                    .iter()
-                    .any(|point| (point.y - hatch_y).abs() > 0.0001)
-            {continue;}
-            builder.begin(point(contour[0].x, contour[0].z));
+            if countor.len() <3
+                || !counter.iter().all(|point| {
+                    ((*point - origin).dot(normal)).abs() <= 0.001
+                })
+            {
+                continue
+            }
+            let project = |point: Vector3<f32>| {
+                let offset = point - origin;
+                (offset.dot(u), offset.dot(v))
+            };
+            let (x, y) = project(contour[0]);
+            builder.begin(point(x, y));
             for vertex in &contour[1..] {
-            builder.line_to(point(vertex.x, vertex.z));
-            }   
+                let (x, y) = project(*vertex);
+                builder.line_to(point(x, y))
+            }
             builder.end(true);
         }
         let path = builder.build();
@@ -799,20 +812,20 @@ impl Viewport {
             &FillOptions::default().with_fill_rule(FillRule::EvenOdd),
             &mut BuffersBuilder::new(&mut geometry, |vertex: FillVertex| {
                 let position = vertex.position();
+                let world = origin + u*position.x + v * position.y;
                 Vertex {
-                    position: [position.x, hatch_y, position.y],
-                    coords: [0.0, 0.0, 0.0],
-                    color,
+                    position: [world.x, world.y, world.z].
+                    coords: [0.0, 0.0, 0.0], color
                 }
-            }),
+            })
         );
         if result.is_err() {
             return Vec::new();
-        }   
+        }
         geometry
             .indices
             .iter()
-            .map(|&index| geometry.vertices[index as usize])
+            .map(|index| geometry.vertices[index as usize])
             .collect()
     }
     pub fn dist_to_segment(
