@@ -1155,7 +1155,25 @@ impl Viewport {
         self.rebuild_vertices();
         deleted
     }
-
+    pub fn delete_objects(&mut self, ids: &[usize]) -> usize {
+        let deleted = self
+            .entities
+            .iter()
+            .filter(|entity| ids.contains(&entity.id))
+            .count();
+        if deleted ==  0 {
+            return 0;
+        }
+        self.save_undo_state();
+        self.entities.retain(|entity| !ids.contains(&entity.id));
+        self.selected_entity = self
+            .entities
+            .iter()
+            .find(|entity| entity.selected)
+            .map(|entity| entity.id);
+        self.rebuild_vertices();
+        deleted
+    }
     pub fn begin_move_selected(&mut self, x: f32, y: f32) -> bool {
         let mouse = cgmath::Vector2::new(x, y);
         let threshold_sq = 8.0 * 8.0;

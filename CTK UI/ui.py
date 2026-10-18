@@ -3156,6 +3156,38 @@ def executeaiactions(actions):
         if not isinstance(action, dict):
             continue
         action_type = action.get("action")
+        if action_type == 'undo':
+            steps = action.get("steps", 1)
+            if type(steps) is not int or not 1 <= steps <= 16:
+                results.append("Ignored an invalid undo request")
+                continue
+            undone = 0
+            for _ in range(steps):
+                if not renderer.undo():
+                    break
+                undone += 1
+            results.append(
+                f"Undid {undone} changes(s)"
+                if undone
+                else "There was nothing to undo"
+            )
+            continue
+        if action_type == "delete_objects":
+            object_ids = action.get("object_ids")
+            if (
+                not isinstance(object_ids, list)
+                or not object_ids
+                or len(object_ids) > 64
+                or any(type(object_id) is not int for object_id in object_ids)):
+                results.append("Ignored an invalid delete request")
+                continue
+            deleted = renderer.delete_objects(object_ids)
+            results.append(
+                f"Deleted {deleted} objects(s)"
+                if deleted
+                else "Those IDs did not match any scene objects"
+            )
+            continue
         if action_type == 'hatch_shapes':
             object_ids = action.get("object_ids")
             if (not isinstance(object_ids, list)

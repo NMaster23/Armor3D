@@ -350,7 +350,9 @@ impl ViewportRenderer {
     fn delete_selected(&mut self) -> usize {
         self.state.delete_selected_objects()
     }
-
+    fn delete_objects(&mut self, object_ids: Vec<usize>) -> usize {
+    self.state.viewport.delete_objects(&object_ids)
+    }
     fn begin_move_selected(&mut self, x: f32, y: f32) -> bool {
         self.state.viewport.begin_move_selected(x, y)
     }
