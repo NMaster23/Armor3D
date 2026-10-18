@@ -14,6 +14,8 @@ use winit::dpi::PhysicalPosition;
 use winit::event::MouseButton;
 use winit::event_loop::ActiveEventLoop;
 use winit::keyboard::KeyCode;
+use lyon::path::PathEvent;
+use lyon::path::iterator::PathIterator;
 
 const END_SNAP_RADIUS_PIXELS: f32 = 12.0;
 const NEAR_SNAP_RADIUS_PIXELS: f32 = 10.0;
@@ -98,6 +100,7 @@ pub struct NurbsSurfaceEntity {
 #[derive(Clone, Debug)]
 pub struct TextEntity {
     pub id: usize,
+    pub depth: f32,
     pub pos: Vector3<f32>,
     pub quat: Quaternion<f32>,
     pub color: [f32; 4],
@@ -474,7 +477,6 @@ impl Viewport {
             if first_new_id.is_none() {
                 first_new_id = Some(id);
             }
-
             self.entities.push(PolyLine {
                 id,
                 vertices: mirrored_vertices,
@@ -578,6 +580,7 @@ impl Viewport {
         quat: Quaternion<f32>,
         color: [f32; 4],
         size: f32,
+        depth: f32,
     ) -> bool {
         if text.is_empty()
             || !size.is_finite()
@@ -591,6 +594,8 @@ impl Viewport {
             || !quat.v.z.is_finite()
             || quat.is_zero()
             || color.iter().any(|c| !c.is_finite())
+            || !depth.is_finite()
+            || depth < 0.0
         {
             return false;
         }
@@ -598,6 +603,7 @@ impl Viewport {
         self.next_entity += 1;
         self.text_entities.push(TextEntity {
             id,
+            depth,
             pos,
             quat: quat.normalize(),
             color,
@@ -657,6 +663,14 @@ impl Viewport {
                 };
             }
             let path = path_builder.build();
+            let up = entity.quat.rotate_vector(Vector3::unit_y());
+            let cap_normal = [up.x, up.y, up.z];
+            let back_normal = [-up.x, -up.y, -up.z];
+            let height = if entity.depth > 0.0 {
+                POLYLINE_HEIGHT + entity.depth
+            } else {
+                POLYLINE_HEIGHT
+            };
             let mut buffers: VertexBuffers<Vertex, usize> = VertexBuffers::new();
             FillTessellator::new().tessellate_path(
                 &path,
@@ -665,11 +679,12 @@ impl Viewport {
                     &mut buffers,
                     |v: FillVertex| {
                         let p = v.position();
-                        let local = Vector3::new(p.x, POLYLINE_HEIGHT, p.y);
+                        let local = Vector3::new(p.x, height, p.y);
                         let world = entity.pos + entity.quat.rotate_vector(local);
+                        let norm_coords = if entity.depth > 0.0 { cap_normal } else { [0.0;3 ] };
                         Vertex {
                             position: world.into(),
-                            coords: [0.0; 3],
+                            coords: norm_coords,
                             color: entity.color,
                         }
                     },
@@ -677,6 +692,87 @@ impl Viewport {
             )?;
             for &index in &buffers.indices {
                 verts.push(buffers.vertices[index as usize]);
+            }
+            if entity.depth > 0.0 {
+                let offset = entity.quat.rotate_vector(Vector3::unit_y() * entity.depth);
+                for i in buffers.indices.chunks_exact(3) {
+                    for &idx in &[i[0], i[2], i[1]] {
+                        let vertex_data = buffers.vertices[idx];
+                        let pos = Vector3::new(vertex_data.position[0], vertex_data.position[1], vertex_data.position[2]) - offset;
+                        let vertex_struct = Vertex {
+                            position: pos.into(),
+                            coords: back_normal,
+                            color: entity.color,
+                        };
+                        verts.push(vertex_struct);
+                    }
+                }
+                let mut add_wall = |from: lyon::math::Point, to: lyon::math::Point| {
+                    let local_bottom_a = Vector3::new(from.x, POLYLINE_HEIGHT, from.y);
+                    let local_bottom_b = Vector3::new(to.x, POLYLINE_HEIGHT, to.y);
+                    let local_top_a = Vector3::new(from.x, height, from.y);
+                    let local_top_b = Vector3::new(to.x, height, to.y);
+                    let bottom_a = entity.pos + entity.quat.rotate_vector(local_bottom_a);
+                    let bottom_b = entity.pos + entity.quat.rotate_vector(local_bottom_b);
+                    let top_a = entity.pos + entity.quat.rotate_vector(local_top_a);
+                    let top_b = entity.pos + entity.quat.rotate_vector(local_top_b);
+                    let edge = Vector3::new(to.x - from.x, 0.0, to.y - from.y);
+                    let product = edge.cross(Vector3::unit_y());
+                    let n = if product.magnitude2() > f32::EPSILON {
+                        product.normalize()
+                    } else {
+                        Vector3::unit_y()
+                    };
+                    let world_n = entity.quat.rotate_vector(n);
+                    let wall_norm = [world_n.x, world_n.y, world_n.z];
+                    verts.push(Vertex {
+                        position: bottom_a.into(),
+                        coords: wall_norm,
+                        color: entity.color,
+                    });
+                    verts.push(Vertex {
+                        position: bottom_b.into(),
+                        coords: wall_norm,
+                        color: entity.color,
+                    });
+                    verts.push(Vertex {
+                        position: top_b.into(),
+                        coords: wall_norm,
+                        color: entity.color,
+                    });
+                    verts.push(Vertex {
+                        position: bottom_a.into(),
+                        coords: wall_norm,
+                        color: entity.color,
+                    });
+                    verts.push(Vertex {
+                        position: top_b.into(),
+                        coords: wall_norm,
+                        color: entity.color,
+                    });
+                    verts.push(Vertex {
+                        position: top_a.into(),
+                        coords: wall_norm,
+                        color: entity.color,
+                    });
+                };
+                for evt in path.iter().flattened(0.1) {
+                    match evt {
+                        PathEvent::Line { from, to } => {
+                            add_wall(from, to);
+                        }
+                        PathEvent::End {
+                            last,
+                            first,
+                            close,
+                        } => {
+                            if close && last != first {
+                                add_wall(last, first);
+                            }
+                        }
+                        _ => {}
+                    }
+                }
             }
             pen_x += face.glyph_hor_advance(glyph_id).unwrap_or(0) as f32 * scale;
         }

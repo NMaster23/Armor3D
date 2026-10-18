@@ -475,7 +475,7 @@ impl State {
         font_name: &str,
         font_family: Family<'_>,
     ) -> bool {
-        if !self.viewport.draw_text(entity.text.clone(), entity.pos, entity.quat, entity.color, entity.size) {
+        if !self.viewport.draw_text(entity.text.clone(), entity.pos, entity.quat, entity.color, entity.size, entity.depth) {
             return false;
         }
         let query = Query {
