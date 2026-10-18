@@ -1,4 +1,4 @@
-use cgmath::{Vector3, Vector4};
+use cgmath::{InnerSpace, Vector3, Vector4};
 
 use crate::Vertex;
 
@@ -13,6 +13,7 @@ impl NurbsControlPoint {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct NurbsEntity {
     pub curve: NurbsCurve,
     pub color: [f32; 4],
@@ -20,6 +21,7 @@ pub struct NurbsEntity {
     pub selected: bool,
 }
 
+#[derive(Clone, Debug)]
 pub struct NurbsSurface {
     degree_u: usize,
     degree_v: usize,
@@ -82,6 +84,48 @@ impl NurbsSurface {
             let u_max = self.knots_u[self.control_points.len()];
             let v_min = self.knots_v[self.degree_v];
             let v_max = self.knots_v[self.control_points[0].len()];
+            let mut grid: Vec<Vec<Vertex>> = Vec::with_capacity(u_steps + 1);
+            for i in 0..=u_steps {
+                let tu = (i as f32) / (u_steps as f32);
+                let u = u_min * (1.0 - tu) + u_max * tu;
+                let mut row = Vec::with_capacity(v_steps + 1);
+                for j in 0..=v_steps {
+                    let tv = (j as f32) / (v_steps as f32);
+                    let v = v_min * (1.0 - tv) + v_max * tv;
+                    let pos = self.evaluate(u, v);
+                    let eps = 0.001;
+                    let tu_vec = self.evaluate(u + eps, v) - self.evaluate(u - eps, v);
+                    let tv_vec = self.evaluate(u, v + eps) - self.evaluate(u, v - eps);
+                    let n_vec = tu_vec.cross(tv_vec);
+                    let normal = if n_vec.magnitude2() > 1.0e-7 {
+                        n_vec.normalize()
+                    } else {
+                        Vector3::new(0.0, 1.0, 0.0)
+                    };
+                    row.push(Vertex {
+                        position: [pos.x, pos.y, pos.z],
+                        coords: [normal.x, normal.y, normal.z],
+                        color,
+                    });
+                }
+                grid.push(row);
+            }
+            let mut verts = Vec::with_capacity(u_steps * v_steps * 6);
+            for i in 0..u_steps {
+                for j in 0..v_steps {
+                    let p00 = grid[i][j];
+                    let p10 = grid[i + 1][j];
+                    let p01 = grid[i][j + 1];
+                    let p11 = grid[i + 1][j + 1];
+                    verts.push(p00);
+                    verts.push(p01);
+                    verts.push(p10);
+                    verts.push(p10);
+                    verts.push(p01);
+                    verts.push(p11);
+                }
+            }
+            verts
         }
     }
 }

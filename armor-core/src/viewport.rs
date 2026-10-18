@@ -1,8 +1,8 @@
 use crate::Vertex;
 use crate::camera::{Camera, CameraController};
+use crate::nurbs::{NurbsCurve, NurbsSurface};
 use anyhow::Ok;
 use cgmath::{InnerSpace, Quaternion, Rotation, SquareMatrix, Vector3, Vector4, Zero};
-use glyphon::Family;
 use glyphon::fontdb::Query;
 use lyon::lyon_tessellation::{
     BuffersBuilder, FillOptions, FillRule, FillTessellator, FillVertex, VertexBuffers,
@@ -73,6 +73,26 @@ pub struct PolyLine {
     pub selected: bool,
     pub height: f32,
     pub show_markers: bool,
+}
+
+#[derive(Clone, Debug)]
+pub struct NurbsCurveEntity {
+    pub id: usize,
+    pub curve: NurbsCurve,
+    pub color: [f32; 4],
+    pub thickness: f32,
+    pub selected: bool,
+    pub show_control_points: bool,
+}
+
+#[derive(Clone, Debug)]
+pub struct NurbsSurfaceEntity {
+    pub id: usize,
+    pub surface: NurbsSurface,
+    pub color: [f32; 4],
+    pub selected: bool,
+    pub u_subdivisions: usize,
+    pub v_subdivisions: usize,
 }
 
 #[derive(Clone, Debug)]
@@ -166,6 +186,8 @@ pub struct Viewport {
     pub copy_base: Option<Vector3<f32>>,
     pub copy_target: Option<Vector3<f32>>,
     pub text_entities: Vec<TextEntity>,
+    pub nurbs_curves: Vec<NurbsCurveEntity>,
+    pub nurbs_surfaces: Vec<NurbsSurfaceEntity>,
 }
 
 impl Viewport {
@@ -1322,7 +1344,16 @@ impl Viewport {
         let mut new_vertices = Vec::new();
         let marker_radius = self.world_width_for_pixels(3.5);
         let marker_color = [1.0, 1.0, 1.0, 1.0];
-
+        for entity in &self.nurbs_surfaces {
+            let draw_color = if entity.selected { [1.0, 0.8, 0.0, 1.0] } else { entity.color };
+            let mesh_verts = entity.surface.sample_mesh(entity.u_subdivisions, entity.v_subdivisions, draw_color);
+            new_vertices.extend(mesh_verts);
+        }
+        for entity in &self.nurbs_curves {
+            let draw_color = if entity.selected { [1.0, 0.8, 0.0, 1.0] } else { entity.color };
+            let curve_points = entity.curve.sample(64);
+            new_vertices.extend(self.tessellate_polyline(&curve_points, entity.thickness, draw_color));
+        }
         for entity in &self.entities {
             let draw_color = if entity.selected {
                 [1.0, 0.8, 0.0, 1.0]
