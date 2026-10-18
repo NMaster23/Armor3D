@@ -289,10 +289,12 @@ impl ViewportRenderer {
     fn hatch_selected(&mut self) -> usize {
         self.state.viewport.hatch_selected()
     }
+    fn hatch_objects(&mut self, object_ids: Vec<usize>) -> usize {
+        self.state.viewport.hatch_objects(&object_ids)
+    }
     fn extrude(&mut self, height: f32) {
         self.state.viewport.extrude_selected(height);
     }
-
     fn mouse_move(&mut self, x: f64, y: f64) -> Option<String> {
         self.state.viewport.mouse_move(x, y)
     }

@@ -3155,6 +3155,29 @@ def executeaiactions(actions):
         if not isinstance(action, dict):
             continue
         action_type = action.get("action")
+        if action_type == 'hatch_shape':
+            object_ids = action.get("object_ids")
+            if (
+                not isinstance(object_ids, list)
+                or not object_ids
+                or len(object_ids) > 64
+                or any(type(object_ids) is not int for object_ids in object_ids)
+            ):
+                results.append("Ignored an invalid hatch request")
+                continue
+            count = renderer.hatch_objects(object_ids)
+            if count:
+                results.append(f"Hatched {count} closed shapes(s)")
+            else:
+                results.append("Those objects were not hatchable closed shapes")
+            continue
+        if action_type == "hatch_selected":
+            count = renderer.hatch_selected()
+            if count:
+                results.append(f"Hatched {count} selected closed shape(s)")
+            else:
+                results.append("No selected closed shapes to hatch")
+            continue
         if action_type == "draw_line":
             points = [
                 validpoint(action.get("start")),

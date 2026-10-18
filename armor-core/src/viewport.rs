@@ -224,10 +224,23 @@ impl Viewport {
         vertices.len() >= 4 && (vertices[0] - vertices[vertices.len() - 1]).magnitude2() < 0.0001
     }
     pub fn hatch_selected(&mut self) -> usize {
+        let ids: Vec<usize> = self
+            .entities
+            .iter()
+            .filter(|entity| entity.selected)
+            .map(|entity| entity.id)
+            .collect();
+        self.hatch_objects(&ids)
+    }
+    pub fn hatch_objects(&mut self, ids: &[usize]) -> usize {
         let hatchable_ids: Vec<usize> = self
             .entities
             .iter()
-            .filter(|entity| entity.selected && Self::is_closed_shape(&entity.vertices))
+            .filter(|entity| {
+                ids.contains(&entity.id)
+                    && !entity.hatched
+                    && Self::is_closed_shape(&entity.vertices)
+            })
             .map(|entity| entity.id)
             .collect();
         if hatchable_ids.is_empty() {
