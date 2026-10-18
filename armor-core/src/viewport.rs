@@ -1,6 +1,6 @@
 use crate::Vertex;
 use crate::camera::{Camera, CameraController};
-use crate::nurbs::{NurbsCurve, NurbsSurface};
+use crate::nurbs::{NurbsControlPoint, NurbsCurve, NurbsSurface};
 use anyhow::Ok;
 use cgmath::{InnerSpace, Quaternion, Rotation, SquareMatrix, Vector3, Vector4, Zero};
 use glyphon::fontdb::Query;
@@ -550,6 +550,8 @@ impl Viewport {
             copy_base: None,
             copy_target: None,
             text_entities: Vec::new(),
+            nurbs_curves: Vec::new(),
+            nurbs_surfaces: Vec::new(),
         }
     }
 }
@@ -1555,8 +1557,80 @@ impl Viewport {
         for entity in &self.text_entities {
             new_vertices.extend_from_slice(&entity.cached_vertices);
         }
+        for entity in &self.nurbs_surfaces {
+            let draw_color = if entity.selected { [1.0, 0.8, 0.0, 1.0] } else { entity.color };
+            let mesh_verts = entity.surface.sample_mesh(entity.u_subdivisions, entity.v_subdivisions, draw_color);
+            new_vertices.extend(mesh_verts);
+            if entity.selected {
+                let cage_color = [0.8, 0.8, 0.8, 0.6];
+                let pt_color = [1.0, 0.5, 0.0, 1.0];
+                let num_rows = entity.surface.control_points.len();
+                let num_cols = if num_rows > 0 {
+                    entity.surface.control_points[0].len()
+                } else {
+                    0
+                };
+                for row in &entity.surface.control_points {
+                    let row_pts: Vec<Vector3<f32>> = row.iter().map(|cp| cp.point).collect();
+                    if row_pts.len() >= 2 {
+                        new_vertices.extend(self.tessellate_polyline(&row_pts, 1.0, cage_color));
+                    }
+                }
+                for c_i in 0..num_cols {
+                    let col_pts: Vec<Vector3<f32>> = (0..num_rows).map(|r_i| entity.surface.control_points[r_i][c_i].point).collect();
+                    if col_pts.len() >= 2 {
+                        new_vertices.extend(self.tessellate_polyline(&col_pts, 1.0, cage_color));
+                    }
+                }
+                for row in &entity.surface.control_points {
+                    for cp in row {
+                        new_vertices.extend(Self::tessellate_vertex_circle(cp.point, marker_radius, pt_color));
+                    }
+                }
+            }
+        }
+        for entity in &self.nurbs_curves {
+            let draw_color = if entity.selected { [1.0, 0.0, 0.0, 1.0] } else { entity.color };
+            let curve_points = entity.curve.sample(64);
+            new_vertices.extend(self.tessellate_polyline(&curve_points, entity.thickness, draw_color));
+            if entity.selected || entity.show_control_points {
+                let cp_points: Vec<Vector3<f32>> = entity.curve.control_points.iter().map(|cp| cp.point).collect();
+                new_vertices.extend(self.tessellate_polyline(&cp_points, 1.0, [0.8, 0.8, 0.8, 0.5]));
+                for pt in &cp_points {
+                    new_vertices.extend(Self::tessellate_vertex_circle(*pt, marker_radius, [1.0, 0.5, 0.0, 1.0]));
+                }
+            }
+        }
         self.point_vertices = new_vertices;
         self.redraw = true;
+    }
+    pub fn add_nurbs_curve(&mut self, curve: NurbsCurve, color: [f32; 4], thickness: f32) -> usize {
+        let id = self.next_entity;
+        self.next_entity += 1;
+        self.nurbs_curves.push(NurbsCurveEntity {
+            id,
+            curve,
+            color,
+            thickness,
+            selected: false,
+            show_control_points: false,
+        });
+        self.rebuild_vertices();
+        id
+    }
+    pub fn add_nurbs_surface(&mut self, surface: NurbsSurface, color: [f32; 4], u_subdivisions: usize, v_subdivisions: usize) -> usize {
+        let id = self.next_entity;
+        self.next_entity += 1;
+        self.nurbs_surfaces.push(NurbsSurfaceEntity {
+            id,
+            surface,
+            color,
+            selected: false,
+            u_subdivisions,
+            v_subdivisions,
+        });
+        self.rebuild_vertices();
+        id
     }
     pub fn extrude_selected(&mut self, height: f32) {
         let entity = match self.selected_entity {
@@ -1810,6 +1884,33 @@ impl Viewport {
         }
 
         vertices
+    }
+    pub fn add_sample_nurbs_surface(&mut self) -> usize {
+        let mut control_points = Vec::new();
+        for i in 0..4 {
+            let mut row = Vec::new();
+            for j in 0..4 {
+                let x = (i as f32) * 1.0 - 1.5;
+                let z = (j as f32) * 1.0 - 1.5;
+                let dist_from_center = (x * x + z * z).sqrt();
+                let y = (1.5 - dist_from_center).max(0.0) * 0.75;
+                row.push(NurbsControlPoint {
+                    point: Vector3::new(x, y, z),
+                    weight: 1.0,
+                });
+            }
+            control_points.push(row);
+        }
+        let knots_u = NurbsCurve::clamped_knot_vector(4, 3);
+        let knots_v = NurbsCurve::clamped_knot_vector(4, 3);
+        let surface = NurbsSurface {
+            degree_u: 3,
+            degree_v: 3,
+            control_points,
+            knots_u,
+            knots_v,
+        };
+        self.add_nurbs_surface(surface, [0.2, 0.65, 0.95, 1.0], 32, 32)
     }
     pub fn add_polyline(&mut self, vertices: Vec<Vector3<f32>>, color: [f32; 4], thickness: f32) {
         self.save_undo_state();

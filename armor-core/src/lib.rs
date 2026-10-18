@@ -247,7 +247,9 @@ impl ViewportRenderer {
     fn draw_curve(&mut self, subdivisions: usize) {
         self.state.viewport.draw_curve(subdivisions);
     }
-
+    fn add_sample_nurbs_surface(&mut self) -> usize {
+        self.state.viewport.add_sample_nurbs_surface()
+    }
     fn duplicate_selected(&mut self, x: f32, y: f32, z: f32) -> usize {
         self.state
             .viewport

@@ -2,9 +2,10 @@ use cgmath::{InnerSpace, Vector3, Vector4};
 
 use crate::Vertex;
 
+#[derive(Clone, Debug)]
 pub struct NurbsControlPoint {
-    point: Vector3<f32>,
-    weight: f32,
+    pub point: Vector3<f32>,
+    pub weight: f32,
 }
 
 impl NurbsControlPoint {
@@ -23,11 +24,11 @@ pub struct NurbsEntity {
 
 #[derive(Clone, Debug)]
 pub struct NurbsSurface {
-    degree_u: usize,
-    degree_v: usize,
-    control_points: Vec<Vec<NurbsControlPoint>>,
-    knots_u: Vec<f32>,
-    knots_v: Vec<f32>,
+    pub(crate) degree_u: usize,
+    pub(crate) degree_v: usize,
+    pub(crate) control_points: Vec<Vec<NurbsControlPoint>>,
+    pub(crate) knots_u: Vec<f32>,
+    pub(crate) knots_v: Vec<f32>,
 }
 
 impl NurbsSurface {
@@ -130,10 +131,11 @@ impl NurbsSurface {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct NurbsCurve {
-    degree: usize,
-    control_points: Vec<NurbsControlPoint>,
-    knots: Vec<f32>,
+    pub degree: usize,
+    pub(crate) control_points: Vec<NurbsControlPoint>,
+    pub knots: Vec<f32>,
 }
 
 impl NurbsCurve {
