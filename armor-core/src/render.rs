@@ -3,6 +3,7 @@ use crate::reference_image::ReferenceImageLayer;
 use crate::viewport::{PolyLine, TextEntity, Viewport};
 use crate::{GRAPH_INDICES, GRAPH_VERTICES, Vertex};
 use cgmath::Vector3;
+use egui_wgpu::ScreenDescriptor;
 use glyphon::fontdb::Query;
 use glyphon::{
     Attrs, Buffer, Color, Family, FontSystem, Metrics, Resolution, SwashCache, TextArea, TextAtlas, TextBounds, TextRenderer,
@@ -376,7 +377,7 @@ impl State {
                 unclipped_depth: false,
                 conservative: false,
             },
-            depth_stencil: Self::depth_stencil_state(true),
+            depth_stencil: Self::depth_stencil_state(false),
             multisample: wgpu::MultisampleState {
                 count: 1,
                 mask: !0,
@@ -637,7 +638,7 @@ impl State {
                 bind_group_layouts: &[Some(&camera_bind_group_layout)],
                 immediate_size: 0,
             });
-        let create_pipeline = |module: &wgpu::ShaderModule, blend| {
+        let create_pipeline = |module: &wgpu::ShaderModule, blend, depth_write: bool| {
             device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                 label: Some("Render Pipeline"),
                 layout: Some(&render_pipeline_layout),
@@ -658,15 +659,14 @@ impl State {
                     compilation_options: wgpu::PipelineCompilationOptions::default(),
                 }),
                 primitive: wgpu::PrimitiveState::default(),
-                depth_stencil: Self::depth_stencil_state(true),
+                depth_stencil: Self::depth_stencil_state(depth_write),
                 multisample: wgpu::MultisampleState::default(),
                 multiview_mask: None,
                 cache: None,
             })
         };
-
-        let render_pipeline = create_pipeline(&shader, Some(wgpu::BlendState::REPLACE));
-        let graph_pipeline = create_pipeline(&graph_shader, Some(wgpu::BlendState::ALPHA_BLENDING));
+        let render_pipeline = create_pipeline(&shader, Some(wgpu::BlendState::REPLACE), true);
+        let graph_pipeline = create_pipeline(&graph_shader, Some(wgpu::BlendState::ALPHA_BLENDING), false);
         let viewport = Viewport::new(width, height);
         let mut font_system = FontSystem::new();
         let cache = glyphon::Cache::new(&device);
@@ -864,23 +864,92 @@ impl State {
             });
             render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
             self.reference_image.draw(&mut render_pass);
-            render_pass.set_pipeline(&self.graph_pipeline);
-            render_pass.set_vertex_buffer(0, self.graph_vertex_buffer.slice(..));
-            render_pass
-                .set_index_buffer(self.graph_index_buffer.slice(..), wgpu::IndexFormat::Uint16);
-            render_pass.draw_indexed(0..self.num_indices, 0, 0..1);
             if !self.viewport.point_vertices.is_empty() {
                 render_pass.set_pipeline(&self.render_pipeline);
                 render_pass.set_vertex_buffer(0, self.point_buffer.slice(..));
                 render_pass.draw(0..self.viewport.point_vertices.len() as u32, 0..1);
             }
+            render_pass.set_pipeline(&self.graph_pipeline);
+            render_pass.set_vertex_buffer(0, self.graph_vertex_buffer.slice(..));
+            render_pass
+                .set_index_buffer(self.graph_index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+            render_pass.draw_indexed(0..self.num_indices, 0, 0..1);
             self.text_renderer
                 .render(&mut self.text_atlas, &self.text_viewport, &mut render_pass)
                 .map_err(|error| anyhow::anyhow!("Rendering text failed: {error} "))?;
         }
+        if let (Some(window), Some(egui_winit)) = (self.window.as_ref(), self.egui_winit.as_mut()) {
+            let raw_input = egui_winit.take_egui_input(window);
+            let full_output = self.egui_ctx.run_ui(raw_input, |ui| {
+                if *show_extrude_popup {
+                    egui::Window::new("Extrude Selected")
+                        .resizable(false)
+                        .collapsible(false)
+                        .show(ui.ctx(), |ui| {
+                            let Some(sel_id) = self.viewport.selected_entity else {
+                                ui.label("Select a shape to extrude");
+                                return;
+                            };
+                            let height_opt = self
+                                .viewport
+                                .entities
+                                .iter()
+                                .find(|e| e.id == sel_id)
+                                .map(|e| e.height);
+                            let Some(mut height) = height_opt else {
+                                ui.label("Selected shape not found.");
+                                return;
+                            };
+                            ui.horizontal(|ui| {
+                                ui.label("Height: ");
+                                if ui
+                                    .add(egui::DragValue::new(&mut height).speed(0.1))
+                                    .changed()
+                                {
+                                    self.viewport.extrude_selected(height);
+                                }
+                                if ui.button("Close").clicked() {
+                                    *show_extrude_popup = false;
+                                }
+                            });
+                        });
+                    }
+            });
+            egui_winit.handle_platform_output(window, full_output.platform_output);
+            let paint_jobs = self.egui_ctx.tessellate(full_output.shapes, full_output.pixels_per_point);
+            let screen_desc = ScreenDescriptor {
+                size_in_pixels: [self.config.width, self.config.height],
+                pixels_per_point: full_output.pixels_per_point,
+            };
+            for (id, image_delta) in &full_output.textures_delta.set {
+                for image_deltas in image_delta {
+                    self.egui_renderer.update_texture(&self.device, &self.queue, *id, image_deltas);
+                }
+            }
+            self.egui_renderer.update_buffers(&self.device, &self.queue, &mut encoder, &paint_jobs, &screen_desc);
+            let egui_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    depth_slice: None,
+                    ops: wgpu::Operations { load: wgpu::LoadOp::Load, store: wgpu::StoreOp::Store }
+                })],
+                depth_stencil_attachment: None,
+                occlusion_query_set: None,
+                timestamp_writes: None,
+                multiview_mask: None,
+                ..Default::default()
+            });
+            {
+                let mut egui_pass = egui_pass.forget_lifetime();
+                self.egui_renderer.render(&mut egui_pass, &paint_jobs, &screen_desc);
+            }
+            for id in &full_output.textures_delta.free {
+                self.egui_renderer.free_texture(id);
+            }
+        }
         self.queue.submit(std::iter::once(encoder.finish()));
         self.queue.present(output);
-
         Ok(())
     }
     fn create_depth_texture(device: &wgpu::Device, width: u32, height: u32) -> (wgpu::Texture, wgpu::TextureView) {

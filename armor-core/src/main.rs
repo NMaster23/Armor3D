@@ -254,6 +254,9 @@ impl ApplicationHandler<State> for App {
                     },
                 ..
             } => {
+                if key_state.is_pressed() && code == KeyCode::KeyE {
+                    self.show_extrude_popup = !self.show_extrude_popup;
+                }
                 if state
                     .viewport
                     .graph_handle_key(code, key_state.is_pressed())
@@ -349,45 +352,6 @@ impl ApplicationHandler<State> for App {
                 }
             }
             _ => {}
-        }
-    }
-}
-
-impl eframe::App for App {
-    fn ui(&mut self, ctx: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        let state: &mut render::State = self.state.as_mut().expect("Error unwrapping state eframe");
-        egui::CentralPanel::default().show(ctx, |ui| {
-            ui.heading("Extrude Input");
-            ui.label(format!("Saved value: {}", self.extrude_input))
-        });
-        if self.show_extrude_popup {
-            egui::Window::new("Extrude Selected")
-                .resizable(false)
-                .collapsible(false)
-                .show(ctx, |ui| {
-                    let Some(sel_id) = state.viewport.selected_entity else {
-                        ui.label("Select a shape to extrude");
-                        return;
-                    };
-                    let height_opt = state
-                        .entities
-                        .iter()
-                        .find(|e| e.id == sel_id)
-                        .map(|e| e.height);
-                    let Some(mut height) = height_opt else {
-                        ui.label("Selected shape not found.");
-                        return;
-                    };
-                    ui.horizontal(|ui| {
-                        ui.label("Height: ");
-                        if ui
-                            .add(egui::DragValue::new(&mut height).speed(0.1))
-                            .changed()
-                        {
-                            state.viewport.extrude_selected(height);
-                        }
-                    });
-                });
         }
     }
 }

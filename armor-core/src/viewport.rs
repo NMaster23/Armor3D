@@ -679,14 +679,6 @@ impl Viewport {
         if points.len() < 3 {
             return vertices;
         }
-<<<<<<< Updated upstream
-        let side_color = [
-            color[0] * 0.75,
-            color[1] * 0.75,
-            color[2] * 0.75,
-            color[3] * 0.75,
-        ];
-=======
         let bottom_vertices = Self::tessellate_fill(points, color);
         for chunk in bottom_vertices.chunks_exact(3) {
             vertices.push(chunk[0]);
@@ -698,7 +690,6 @@ impl Viewport {
             vertex.position[1] += height;
         }
         vertices.extend(top_vertices);
->>>>>>> Stashed changes
         for window in points.windows(2) {
             let point0 = window[0];
             let point1 = window[1];
