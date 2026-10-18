@@ -2,6 +2,7 @@ mod camera;
 mod reference_image;
 mod render;
 mod viewport;
+pub mod nurbs;
 
 use crate::render::State;
 use cgmath::InnerSpace;
@@ -256,6 +257,9 @@ impl ApplicationHandler<State> for App {
             } => {
                 if key_state.is_pressed() && code == KeyCode::KeyE {
                     self.show_extrude_popup = !self.show_extrude_popup;
+                    if let Some(window) = &state.window {
+                        window.request_redraw();
+                    }
                 }
                 if state
                     .viewport
