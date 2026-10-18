@@ -70,6 +70,18 @@ def createnewfile():
     updatewindowtitle()
     writehistory("Created a new file")
     viewport.focus_set()
+extrude_drag_start_y = None
+def startextrude():
+    global activecommand, extrude_drag_start_y
+    if renderer is None or selectedobjectcount() != 1:
+        writehistory("Select one closed shape, then start extrude")
+        return
+    activecommand = 'extrude'
+    extrude_drag_start_y = None
+    command.delete(0, 'end')
+    command.configure(placeholder_text="Extrude: drag upward for height, release to finish")
+    viewport.configure(cursor='crosshair')
+    viewport.focus_set()
 def start_circle(event=None):
     global activecommand, circle_center, circle_measure_mode
     if renderer is None:
@@ -581,7 +593,7 @@ def show_selection_box(start_x, start_y, end_x, end_y):
         line.lift()
 def viewport_mouse_down(event):
     global rectanglefirstpoint
-    global left_drag_start, left_dragged, moving_selection
+    global left_drag_start, left_dragged, moving_selection, activecommand, extrude_drag_start_y
     global circle_center, circle_measure_mode, activecommand
     hidesnapindicator()
     viewport.focus_set()
@@ -652,6 +664,14 @@ def viewport_mouse_down(event):
                 writehistory("Circle created")
                 viewport.configure(cursor='arrow')
         return
+    if activecommand == 'extrude':
+        renderer.mouse_move(event.x, event.y)
+        if renderer.begin_extrude_drag():
+            extrude_drag_start_y = event.y
+            command.configure(placeholder_text= "Extrude: drag up or down, release to finish")
+        else:
+            writehistory("Extrude needs one selected closed shape")
+        return 
     if activecommand is None:
         hide_selection_box()
         additive = bool(event.state & 0x0001)
@@ -695,6 +715,11 @@ def viewport_left_drag(event):
         renderer.mouse_move(event.x, event.y)
         updatepicturepreview()
         return
+    if activecommand == 'extrude' and extrude_drag_start_y is not None:
+        height = (extrude_drag_start_y-event.y) * 0.02
+        renderer.preview_extrude_drag(height)
+        command.configure(placeholder_text=f"Extrude height: {height:.3f}")
+        return
     if moving_selection:
         if renderer is not None:
             renderer.move_selected(event.x, event.y)
@@ -714,10 +739,20 @@ def viewport_left_drag(event):
     left_dragged = True
     show_selection_box(left_drag_start[0], left_drag_start[1], event.x, event.y)
 def viewport_mouse_up(event):
-    global left_drag_start, left_dragged, moving_selection
+    global left_drag_start, left_dragged, moving_selection, activecommand, extrude_drag_start_y
     if renderer is None:
         return
     if activecommand in ("picture_first", "picture_second"):
+        return
+    if activecommand == 'extrude':
+        global extrude_drag_start_y
+        renderer.end_extrude_drag(True)
+        extrude_drag_start_y = None
+        activecommand = None
+        command.delete(0, 'end')
+        command.configure(placeholder_text='Command: ')
+        viewport.configure(cursor='arrow')
+        writehistory("Extrude finished")
         return
     if activecommand in ("mirror_select", "copy_select", "polar_select"):
         additive = bool(event.state & 0x0001)
@@ -1298,7 +1333,7 @@ def runnamedcommand(name):
         'distance': startdistance,
         "angle": startangle,
         "revolve": lambda: startplaceholdercmd("Revolve", "Select objects to revolve"),
-        "extrude": lambda: startplaceholdercmd("Extrude", "Select objects to extrude"),
+        "extrude": startextrude,
         "mirror": startmirror,
         "copy": startcopy,
         "new": newfilecommand,

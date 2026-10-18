@@ -292,6 +292,15 @@ impl ViewportRenderer {
     fn hatch_objects(&mut self, object_ids: Vec<usize>) -> usize {
         self.state.viewport.hatch_objects(&object_ids)
     }
+    fn begin_extrude_drag(&mut self) -> bool {
+        self.state.viewport.begin_extrude_drag()
+    }
+    fn preview_extrude_drag(&mut self, delta_y: f32) -> bool {
+        self.state.viewport.preview_extrude_drag(delta_y)
+    }
+    fn end_extrude_drag(&mut self, commit:bool) {
+        self.state.viewport.end_extrude_drag(commit);
+    }
     fn extrude(&mut self, height: f32) {
         self.state.viewport.extrude_selected(height);
     }

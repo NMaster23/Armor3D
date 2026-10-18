@@ -124,6 +124,7 @@ impl<T: Clone> ShapeUndoStore<T> {
     }
 }
 pub struct Viewport {
+    extrude_drag: Option<(usize, f32)>,
     pub hist_entities: ShapeUndoStore<PolyLine>,
     pub entities: Vec<PolyLine>,
     pub active_polyline: Vec<Vector3<f32>>,
@@ -491,6 +492,7 @@ impl Viewport {
             preview_point: None,
             selected_entity: None,
             osnap: true,
+            extrude_drag: None,
             end_snap_enabled: false,
             near_snap_enabled: false,
             mid_snap_enabled: false,
@@ -677,17 +679,6 @@ impl Viewport {
         if points.len() < 3 {
             return vertices;
         }
-        let bottom_vertices = Self::tessellate_fill(points, color);
-        for chunk in bottom_vertices.chunks_exact(3) {
-            vertices.push(chunk[0]);
-            vertices.push(chunk[2]);
-            vertices.push(chunk[1]);
-        }
-        let mut top_vertices = Self::tessellate_fill(points, color);
-        for vertex in &mut top_vertices {
-            vertex.position[1] += height;
-        }
-        vertices.extend(top_vertices);
         let side_color = [
             color[0] * 0.75,
             color[1] * 0.75,
@@ -1327,7 +1318,7 @@ impl Viewport {
                 entity.color
             };
             let closed = Self::is_closed_shape(&entity.vertices);
-            if entity.hatched && closed {
+            if entity.hatched && closed && entity.height.abs() <= f32::EPSILON {
                 if let Some(plane) = Self::hatch_plane(&entity.vertices) {
                     let entity_area = Self::polygon_area_on_plane(&entity.vertices, &plane);
                     let is_inside_another_hatched_shape = self.entities.iter().any(|other| {
@@ -1372,7 +1363,7 @@ impl Viewport {
                     }
                 }
             }
-            if closed && entity.height > 0.0 {
+            if closed && entity.height.abs() > f32::EPSILON {
                 new_vertices.extend(Self::extrude(&entity.vertices, draw_color, entity.height));
             }
             let entity_vertices =
@@ -1536,6 +1527,52 @@ impl Viewport {
             entity.height = height;
             self.rebuild_vertices();
         }
+    }
+    pub fn begin_extrude_drag(&mut self) -> bool {
+        let Some(id) = self.selected_entity.or_else(|| {
+            self.entities
+                .iter()
+                .find(|entity| entity.selected)
+                .map(|entity| entity.id)
+        }) else {
+            return false;
+        };
+        let Some(entity) = self.entities.iter().find(|entity| {
+            entity.id == id && Self::is_closed_shape(&entity.vertices)
+        }) else {
+            return false;
+        };
+        let start_height = entity.height;
+        self.save_undo_state();
+        self.extrude_drag = Some((id, start_height));
+        true
+    }
+    pub fn preview_extrude_drag(&mut self, delta_y: f32) -> bool {
+        if !delta_y.is_finite() {
+            return false;
+        }
+        let Some((id, start_height)) = self.extrude_drag else {
+            return false;
+        };
+        let Some(entity) = self.entities.iter_mut().find(|entity| entity.id == id) else {
+            return false;
+        };
+        entity.height = start_height + delta_y;
+        self.rebuild_vertices();
+        true
+    }
+    pub fn end_extrude_drag(&mut self, commit: bool) {
+        let Some((id, start_height)) = self.extrude_drag.take() else {
+            return;
+        };
+        if !commit {
+            if let Some(entity) = self.entities.iter_mut().find(|entity| entity.id == id) {
+                entity.height = start_height;
+            }
+            self.hist_entities.undo.pop();
+            self.hist_entities.current = self.entities.clone();
+        }
+        self.rebuild_vertices();
     }
     pub fn tessellate_polyline(
         &self,
