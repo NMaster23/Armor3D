@@ -7,12 +7,15 @@ use glyphon::fontdb::Query;
 use glyphon::{
     Attrs, Buffer, Color, Family, FontSystem, Metrics, Resolution, SwashCache, TextArea, TextAtlas, TextBounds, TextRenderer,
 };
+use wgpu::{DepthStencilState, TextureFormat};
 use std::sync::Arc;
 use wgpu::util::DeviceExt;
 use winit::dpi::PhysicalPosition;
 use winit::window::Window;
 
 const INITIAL_POINT_SIZE: usize = 16;
+
+const FALLBACK_FONT: &'static [u8] = include_bytes!("..\\..\\Assets\\FiraSans-Regular.ttf");
 
 const MESH_SHADER: &str = r#"
 struct CameraLightUniform {
@@ -100,6 +103,8 @@ pub struct State {
     pub(crate) egui_winit: Option<egui_winit::State>,
     egui_ctx: egui::Context,
     egui_renderer: egui_wgpu::Renderer,
+    depth_texture: wgpu::Texture,
+    depth_view: wgpu::TextureView,
 }
 
 impl State {
@@ -133,7 +138,7 @@ impl State {
     ) -> bool {
         let Some(first) = self
             .viewport
-            .fetch_point(winit::dpi::PhysicalPosition::new(x1 as f64, y1 as f64))
+            .fetch_point(winit::dpi::PhysicalPosition::new(x1 as f64, y1 as f64)) 
         else {
             return false;
         };
@@ -180,6 +185,7 @@ impl State {
     }
     pub async fn new(window: Arc<Window>) -> anyhow::Result<State> {
         let size = window.inner_size();
+        anyhow::ensure!(size.width > 0 && size.height > 0);
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
             #[cfg(not(target_arch = "wasm32"))]
             backends: wgpu::Backends::PRIMARY,
@@ -333,7 +339,7 @@ impl State {
                 unclipped_depth: false,
                 conservative: false,
             },
-            depth_stencil: None,
+            depth_stencil: Self::depth_stencil_state(true),
             multisample: wgpu::MultisampleState {
                 count: 1,
                 mask: !0,
@@ -370,7 +376,7 @@ impl State {
                 unclipped_depth: false,
                 conservative: false,
             },
-            depth_stencil: None,
+            depth_stencil: Self::depth_stencil_state(true),
             multisample: wgpu::MultisampleState {
                 count: 1,
                 mask: !0,
@@ -386,7 +392,7 @@ impl State {
         let swash_cache = SwashCache::new();
         let cache_state = wgpu::MultisampleState::default();
         let mut text_atlas = TextAtlas::new(&device, &queue, &cache, config.format);
-        let text_renderer = TextRenderer::new(&mut text_atlas, &device, cache_state, None);
+        let text_renderer = TextRenderer::new(&mut text_atlas, &device, cache_state, Self::depth_stencil_state(false));
         let mut text_buffer = Buffer::new(&mut font_system, Metrics::new(16.0, 20.0));
         text_buffer.set_size(Some(size.width as f32), Some(size.height as f32));
         text_buffer.set_text(
@@ -407,6 +413,7 @@ impl State {
             Some(device.limits().max_texture_dimension_2d as usize),
         );
         let egui_renderer = egui_wgpu::Renderer::new(&device, output_color_format, options);
+        let (depth_texture, depth_view) = Self::create_depth_texture(&device, size.width, size.height);
         Ok(Self {
             reference_image,
             surface,
@@ -444,6 +451,8 @@ impl State {
             egui_winit: Some(egui_winit),
             egui_ctx: egui_ctx,
             egui_renderer,
+            depth_texture,
+            depth_view,
         })
     }
     pub fn get_all_fonts(
@@ -475,11 +484,18 @@ impl State {
         if let Some(id) = self.font_system.db().query(&query) {
             self.font_system.db().with_face_data(id, |f_b, f_i| {
                 if let Ok(verts) = Viewport::render_text(&entity, f_b) {
-                    entity.cached_vertices.extend(verts);
-                    self.viewport.redraw = true;
+                    let mut text_entities = self.viewport.text_entities.last_mut();
+                    text_entities.expect("Error unwrapping text entities").cached_vertices.extend(verts);
                 }
             });
+        } else {
+            if let Ok(verts) = Viewport::render_text(&entity, FALLBACK_FONT) {
+                let mut text_entities = self.viewport.text_entities.last_mut();
+                text_entities.expect("Error unwrapping text entities").cached_vertices.extend(verts);
+            }
         }
+        self.viewport.redraw = true;
+        self.viewport.rebuild_vertices();
         true
     }
     pub async fn new_embedded(hwnd: isize, width: u32, height: u32) -> anyhow::Result<State> {
@@ -642,7 +658,7 @@ impl State {
                     compilation_options: wgpu::PipelineCompilationOptions::default(),
                 }),
                 primitive: wgpu::PrimitiveState::default(),
-                depth_stencil: None,
+                depth_stencil: Self::depth_stencil_state(true),
                 multisample: wgpu::MultisampleState::default(),
                 multiview_mask: None,
                 cache: None,
@@ -663,23 +679,17 @@ impl State {
             &mut text_atlas,
             &device,
             wgpu::MultisampleState::default(),
-            None,
+            Self::depth_stencil_state(false),
         );
         let mut text_buffer = Buffer::new(&mut font_system, Metrics::new(16.0, 20.0));
         text_buffer.set_size(Some(width as f32), Some(height as f32));
-        // Temporary viewport text disabled while the text tool is being built.
-        // text_buffer.set_text(
-        //     "Hello, World!",
-        //     &Attrs::new().family(glyphon::Family::SansSerif),
-        //     glyphon::Shaping::Advanced,
-        //     None,
-        // );
         text_buffer.shape_until_scroll(&mut font_system, false);
         let egui_renderer = egui_wgpu::Renderer::new(
             &device,
             config.format,
             egui_wgpu::RendererOptions::default(),
         );
+        let (depth_texture, depth_view) = Self::create_depth_texture(&device, width, height);
         Ok(Self {
             surface,
             reference_image,
@@ -717,6 +727,8 @@ impl State {
             egui_winit: None,
             egui_ctx: egui::Context::default(),
             egui_renderer,
+            depth_texture,
+            depth_view,
         })
     }
     pub fn resize(&mut self, width: u32, height: u32) {
@@ -728,9 +740,12 @@ impl State {
             self.viewport.camera.aspect = width as f32 / height as f32;
             self.viewport.rebuild_vertices();
             self.surface.configure(&self.device, &self.config);
+            let (depth_texture, depth_view) = Self::create_depth_texture(&self.device, width, height);
             self.is_surface_configured = true;
             self.text_buffer
                 .set_size(Some(width as f32), Some(height as f32));
+            self.depth_texture = depth_texture;
+            self.depth_view = depth_view;
         }
     }
 
@@ -842,7 +857,7 @@ impl State {
                         store: wgpu::StoreOp::Store,
                     },
                 })],
-                depth_stencil_attachment: None,
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment { view: &self.depth_view, depth_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(1.0), store: wgpu::StoreOp::Store }), stencil_ops: None}),
                 occlusion_query_set: None,
                 timestamp_writes: None,
                 multiview_mask: None,
@@ -867,6 +882,35 @@ impl State {
         self.queue.present(output);
 
         Ok(())
+    }
+    fn create_depth_texture(device: &wgpu::Device, width: u32, height: u32) -> (wgpu::Texture, wgpu::TextureView) {
+        let target_size = wgpu::Extent3d {
+            width: width.max(1),
+            height: height.max(1),
+            depth_or_array_layers: 1,
+        };
+        let depth_texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("Renderer Depth Target"),
+            size: target_size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Depth32Float,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            view_formats: &[],
+        });
+        let depth_view = depth_texture.create_view(&wgpu::TextureViewDescriptor::default());
+        (depth_texture, depth_view)
+    }
+    fn depth_stencil_state(depth_write: bool) -> Option<wgpu::DepthStencilState> {
+        let depth_stencil =  Some(wgpu::DepthStencilState {
+            format: wgpu::TextureFormat::Depth32Float,
+            depth_write_enabled: Some(depth_write),
+            depth_compare: Some(wgpu::CompareFunction::LessEqual),
+            stencil: wgpu::StencilState::default(),
+            bias: wgpu::DepthBiasState::default(),
+        });
+        depth_stencil
     }
 }
 

@@ -14,6 +14,7 @@ struct VertexInput {
 struct VertexOutput {
     @builtin(position) clip_position: vec4<f32>,
     @location(0) color: vec4<f32>,
+    @location(1) normal: vec3<f32>,
 }
 
 @vertex
@@ -21,10 +22,19 @@ fn vs_main(model: VertexInput) -> VertexOutput {
     var out: VertexOutput;
     out.color = model.color;
     out.clip_position = camera.view_proj * vec4<f32>(model.position, 1.0);
+    out.normal = model.tex_coords;
     return out;
 }
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    return in.color;
+    if length(in.normal) > 0.01 {
+        let n = normalize(in.normal);
+        let n_light_dir = normalize(vec3<f32>(0.45, 0.8, 0.35));
+        let diffuse_term = abs(dot(n, n_light_dir));
+        let final_brightness = 0.35 + 0.65 * diffuse_term;
+        return vec4<f32>(in.color.rgb * final_brightness, in.color.a);
+    } else {
+        return in.color;
+    }
 }

@@ -679,48 +679,69 @@ impl Viewport {
         if points.len() < 3 {
             return vertices;
         }
+<<<<<<< Updated upstream
         let side_color = [
             color[0] * 0.75,
             color[1] * 0.75,
             color[2] * 0.75,
             color[3] * 0.75,
         ];
+=======
+        let bottom_vertices = Self::tessellate_fill(points, color);
+        for chunk in bottom_vertices.chunks_exact(3) {
+            vertices.push(chunk[0]);
+            vertices.push(chunk[2]);
+            vertices.push(chunk[1]);
+        }
+        let mut top_vertices = Self::tessellate_fill(points, color);
+        for vertex in &mut top_vertices {
+            vertex.position[1] += height;
+        }
+        vertices.extend(top_vertices);
+>>>>>>> Stashed changes
         for window in points.windows(2) {
             let point0 = window[0];
             let point1 = window[1];
+            let product = (point1 - point0).cross(Vector3::new(0.0, height.signum(), 0.0));
+            let wall_normal = if product.magnitude2() > f32::EPSILON {
+                let n = product.normalize();
+                [n.x, n.y, n.z]
+            } else {
+                [0.0, 1.0, 0.0]
+            };
             let bottom0 = [point0.x, point0.y, point0.z];
             let bottom1 = [point1.x, point1.y, point1.z];
             let top0 = [point0.x, point0.y + height, point0.z];
             let top1 = [point1.x, point1.y + height, point1.z];
             vertices.push(Vertex {
                 position: bottom0,
-                coords: [0.0, 0.0, 0.0],
-                color: side_color,
+                coords: wall_normal,
+                color,
             });
             vertices.push(Vertex {
                 position: bottom1,
-                coords: [0.0, 0.0, 0.0],
-                color: side_color,
+                coords: wall_normal,
+                color,
             });
             vertices.push(Vertex {
                 position: top1,
-                coords: [0.0, 0.0, 0.0],
-                color: side_color,
+                coords: wall_normal,
+                color,
             });
             vertices.push(Vertex {
                 position: bottom0,
-                coords: [0.0, 0.0, 0.0],
-                color: side_color,
+                coords: wall_normal,
+                color,
             });
             vertices.push(Vertex {
                 position: top1,
-                coords: [0.0, 0.0, 0.0],
-                color: side_color,
+                coords: wall_normal,
+                color,
             });
             vertices.push(Vertex {
                 position: top0,
-                coords: [0.0, 0.0, 0.0],
-                color: side_color,
+                coords: wall_normal,
+                color,
             });
         }
         vertices}
@@ -866,7 +887,7 @@ impl Viewport {
                 let world = origin + u*position.x + v * position.y;
                 Vertex {
                     position: [world.x, world.y, world.z],
-                    coords: [0.0, 0.0, 0.0], color
+                    coords: [normal.x, normal.y, normal.z], color
                 }
             })
         );
@@ -1837,6 +1858,7 @@ impl Viewport {
         self.copy_target = None;
         self.rebuild_vertices();
         self.text_entities.clear();
+        self.text_entities.clear();
     }
     fn polyline_distance_target(&self) -> Option<Vector3<f32>> {
         let distance = self.polyline_distance?;
@@ -2033,7 +2055,7 @@ impl Viewport {
         } else {
             raw_point
         };
-        Some((point.x, point.z, point.y))
+        Some((point.x, point.y, point.z))
     }
 
     pub fn set_polyline_color(&mut self, red: f32, green: f32, blue: f32, alpha: f32) {

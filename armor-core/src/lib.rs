@@ -3,13 +3,16 @@ mod reference_image;
 mod render;
 mod viewport;
 
-use cgmath::Vector3;
+use cgmath::{Quaternion, Vector3};
+use glyphon::Family;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use render::State;
 use winit::dpi::PhysicalPosition;
 use winit::event::MouseButton;
 use winit::keyboard::KeyCode;
+
+use crate::viewport::TextEntity;
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -117,11 +120,29 @@ impl ViewportRenderer {
             .map_err(|error| pyo3::exceptions::PyRuntimeError::new_err(error.to_string()))?;
         Ok(Self { state })
     }
-    /*
-    fn draw_text(&mut self, text: &str, x: f32, y: f32, z: f32) {
-        self.state.draw_text(text, Vector3::new(x, y, z));
+    fn draw_text(&mut self, text: &str, pos: (f32, f32, f32), size: f32, font_name: &str, fontfamily: &str) -> bool {
+        let entity = TextEntity {
+            id: 0,
+            pos: Vector3::new(pos.0, pos.1, pos.2),
+            quat: Quaternion::new(1.0, 0.0, 0.0, 0.0),
+            color: self.state.viewport.polyline_color,
+            text: text.to_string(),
+            size,
+            cached_vertices: Vec::new(),
+        };
+        let font_family = match fontfamily.to_ascii_lowercase().as_str() {
+            "serif" => Family::Serif,
+            "mono" => Family::Monospace,
+            "cursive" => Family::Cursive,
+            "fantasy" => Family::Fantasy,
+            "sans" => Family::SansSerif,
+            _ => Family::Name(fontfamily),
+        };
+        self.state.add_text(entity, font_name, font_family)
     }
-    */
+    fn get_fonts(&mut self) -> Vec<String> {
+        self.state.get_all_fonts()
+    }
     fn undo(&mut self) -> bool {
         self.state.undo_scene()
     }
