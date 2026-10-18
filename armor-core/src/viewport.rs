@@ -733,43 +733,95 @@ impl Viewport {
             });
         }
         vertices}
-    fn polygon_area_xz(points: &[Vector3<f32>]) -> f32 {
+    fn hatch_plane(
+        points: &[Vector3<f32>]
+    ) -> Option<(Vector3<f32>, Vector3<f32>, Vector3<f32>, Vector3<f32>)> {
         let count = if Self::is_closed_shape(points) {
-            points.len() - 1
+            points.len() -1
         } else {
             points.len()
         };
         if count < 3 {
-            return 0.0;}
+            return None;
+        }
+        let origin = points[0];
+        let u = points[1..count]
+            .iter()
+            .map(|point| *point - origin)
+            .find(|direction| direction.magnitude2()> 1.0e-10)?
+            .normalize();
+        let normal = points[1..count]
+            .iter()
+            .map(|point| u.cross(*point - origin))
+            .find(|candidate| candidate.magnitude2() > 1.0e-10)?
+            .normalize();
+        let v = normal.cross(u).normalize();
+        let planar = points[..count]
+            .iter()
+            .all(|point| ((*point - origin).dot(normal)).abs() <= 0.001);
+        if !planar {
+            return None;
+        }
+        Some((origin, u, v, normal))
+    }
+    fn polygon_area_on_plane(
+        points: &[Vector3<f32>],
+        plane: &(Vector3<f32>, Vector3<f32>, Vector3<f32>, Vector3<f32>)
+    ) -> f32 {
+        let (origin, u, v, _) = *plane;
+        let count = if Self::is_closed_shape(points) {
+            points.len() -1
+        } else {
+            points.len()
+        };
+        if count < 3 {
+            return 0.0;
+        }
         let mut doubled_area = 0.0;
         for index in 0..count {
-            let a = points[index];
-            let b = points[(index + 1) % count];
-            doubled_area += a.x * b.z - b.x * a.z;
+            let a = points[index] - origin;
+            let b = points[(index + 1) % count] - origin;
+            let ax = a.dot(u);
+            let ay = a.dot(v);
+            let bx = b.dot(u);
+            let by = b.dot(v);
+            doubled_area += ax*by - bx * ay;
         }
-        doubled_area.abs() * 0.5}
-    fn point_in_polygon_xz(point: Vector3<f32>, polygon: &[Vector3<f32>]) -> bool {
-        let count = if Self::is_closed_shape(polygon) {
-            polygon.len() - 1
-        } else {
-            polygon.len()};
-        if count < 3 {
-            return false;
-        }
-        let mut inside = false;
-        let mut previous = count - 1;
-        for current in 0..count {
-            let a = polygon[current];
-            let b = polygon[previous];
-            let crosses = (a.z > point.z) != (b.z > point.z)
-                && point.x
-                    < (b.x - a.x) * (point.z - a.z) / (b.z - a.z) + a.x;
-            if crosses {
-                inside = !inside;}
-            previous = current;
-        }
-        inside
+        doubled_area.abs() * 0.5
     }
+    fn point_in_polygon_on_plane(
+        point_3d: Vector3<f32>,
+        polygon: &[Vector3<f32>],
+        plane: &(Vector3<f32>, Vector3<f32>, Vector3<f32>, Vector3<f32>)) -> bool {
+            let (origin, u, v, normal) = *plane;
+            let count = if Self::is_closed_shape(polygon) {
+                polygon.len() - 1
+            } else {
+                polygon.len()
+            };
+            if count < 3 || ((point_3d - origin).dot(normal)).abs() > 0.001 {
+                return false;
+            }
+            let project = |point: Vector3<f32>| {
+                let offset = point-origin;
+                (offset.dot(u), offset.dot(v))
+            };
+            let (px, py) = project(point_3d);
+            let mut inside = false;
+            let mut previous = count -1;
+            for current in 0..count {
+                let(ax, ay) = project(polygon[current]);
+                let (bx, by) = project(polygon[previous]);
+                if (ay > py) != (by > py)
+                    && px < (bx - ax) * (py-ay) / (by-ay) + ax
+                {
+                    inside = !inside;
+                }
+                previous = current;
+            }
+            inside
+        }
+    )
     pub fn tessellate_fill(points: &[Vector3<f32>], color: [f32; 4]) -> Vec<Vertex> {
         Self::tessellate_fill_contours(&[points], color)
     }
@@ -777,7 +829,7 @@ impl Viewport {
         contours: &[&[Vector3<f32>]],
         color: [f32; 4]
     ) -> Vec<Vertex> {
-        let Some(outer) = contours.iter().find(|points| points.len() >- 3) else {
+        let Some(outer) = contours.iter().find(|points| points.len() >= 3) else {
             return Vec::new();
         };
         let Some((origin, u, v, normal)) = Self::hatch_plane(outer) else {
@@ -785,8 +837,8 @@ impl Viewport {
         };
         let mut builder = Path::builder();
         for contour in contours {
-            if countor.len() <3
-                || !counter.iter().all(|point| {
+            if contour.len()<3
+                || !contour.iter().all(|point| {
                     ((*point - origin).dot(normal)).abs() <= 0.001
                 })
             {
@@ -814,7 +866,7 @@ impl Viewport {
                 let position = vertex.position();
                 let world = origin + u*position.x + v * position.y;
                 Vertex {
-                    position: [world.x, world.y, world.z].
+                    position: [world.x, world.y, world.z],
                     coords: [0.0, 0.0, 0.0], color
                 }
             })
@@ -825,7 +877,7 @@ impl Viewport {
         geometry
             .indices
             .iter()
-            .map(|index| geometry.vertices[index as usize])
+            .map(|&index| geometry.vertices[index as usize])
             .collect()
     }
     pub fn dist_to_segment(
@@ -1250,39 +1302,48 @@ impl Viewport {
             };
             let closed = Self::is_closed_shape(&entity.vertices);
             if entity.hatched && closed {
-                let entity_area = Self::polygon_area_xz(&entity.vertices);
-                let is_inside_another_hatched_shape = self.entities.iter().any(|other| {
-                    if other.id == entity.id
-                        || !other.hatched
-                        || !Self::is_closed_shape(&other.vertices)
-                        || other.vertices.is_empty()
-                    {
-                        return false;
-                    }
-                    let same_plane = other.vertices.iter().all(|point| { (point.y - entity.vertices[0].y).abs() <= 0.0001});
-                    same_plane
-                        && Self::polygon_area_xz(&other.vertices) > entity_area
-                        && Self::point_in_polygon_xz(entity.vertices[0], &other.vertices) });
-                if !is_inside_another_hatched_shape {
-                    let mut contours: Vec<&[Vector3<f32>]> = vec![&entity.vertices];
-                    for inner in &self.entities {
-                        if inner.id == entity.id
-                            || !inner.hatched
-                            || !Self::is_closed_shape(&inner.vertices)
-                            || inner.vertices.is_empty()
+                if let Some(plane) = Self::hatch_plane(&entity.vertices) {
+                    let entity_area = Self::polygon_area_on_plane(&entity.vertices, &plane);
+                    let is_inside_another_hatched_shape = self.entities.iter().any(|other| {
+                        if other.id == entity.id
+                            || !other.hatched
+                            || !Self::is_closed_shape(&other.vertices)
+                            || other.vertices.is_empty()
+                            || !Self::is_coplanar_with_plane(&other.vertices, &plane)
                         {
-                            continue;}
-                        let same_plane = inner.vertices.iter().all(|point| {
-                            (point.y - entity.vertices[0].y).abs() <= 0.0001
-                        });
-                        if same_plane
-                            && Self::polygon_area_xz(&inner.vertices) < entity_area
-                            && Self::point_in_polygon_xz(inner.vertices[0], &entity.vertices)
-                        {
-                            contours.push(inner.vertices.as_slice());}
+                            return false;
+                        }
+                        Self::polygon_area_on_plane(&other.vertices, &plane) > entity_area
+                            && Self::point_in_polygon_on_plane(
+                                entity.vertices[0],
+                                &other.vertices,
+                                &plane,
+                            )
+                    });
+                    if !is_inside_another_hatched_shape {
+                        let mut contours: Vec<&[Vector3<f32>]> = vec![&entity.vertices];
+                        for inner in &self.entities {
+                            if inner.id == entity.id
+                                || !inner.hatched
+                                || !Self::is_closed_shape(&inner.vertices)
+                                || inner.vertices.is_empty()
+                                || !Self::is_coplanar_with_plane(&inner.vertices, &plane)
+                            {
+                                continue;
+                            }
+                            if Self::polygon_area_on_plane(&inner.vertices, &plane) < entity_area
+                                && Self::point_in_polygon_on_plane(
+                                    inner.vertices[0],
+                                    &entity.vertices,
+                                    &plane,
+                                )
+                            {
+                                contours.push(inner.vertices.as_slice());
+                            }
+                        }
+                        let fill_color = [draw_color[0], draw_color[1], draw_color[2], 0.45];
+                        new_vertices.extend(Self::tessellate_fill_contours(&contours, fill_color));
                     }
-                    let fill_color = [draw_color[0], draw_color[1], draw_color[2], 0.45];
-                    new_vertices.extend(Self::tessellate_fill_contours(&contours, fill_color));
                 }
             }
             if closed && entity.height > 0.0 {
