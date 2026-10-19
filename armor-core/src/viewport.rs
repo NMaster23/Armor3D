@@ -293,7 +293,33 @@ impl Viewport {
         self.rebuild_vertices();
         self.copy_sources.len()
     }
-
+    pub fn revolve(&mut self, degrees: f32) -> usize {
+        if !degrees.is_finite() || degrees == 0.0 || degrees.abs() > 360.0 {
+            return 0;
+        }
+        let sources: Vec<Polyline> = self
+            .entities
+            .iter()
+            .filter(|entity| {
+                entity.selected && Self::is_closed_shape(&entity.vertices)
+            })
+            .cloned()
+            .collect();
+        if sources.is_empty() {
+            return 0;
+        }
+        let steps = ((degrees.abs() / 10.0).ceil() as usize).clamp(1, 72);
+        let radians = degrees.to_radians();
+        let rotate_poinmt = |point: Vector3<f32>, angle: f32| {
+            let (sin_angle, cos_angle) = angle.sin_cos();
+            Vector3::new(
+                point.x * cos_angle+point.z * sin_angle,
+                point.y,
+                -point.x * sin_angle + point.z * coz_angle
+            )
+        };
+        
+    }
     pub fn set_copy_base(&mut self, x: f32, y: f32) -> bool {
         let screen = PhysicalPosition::new(x as f64, y as f64);
         let Some(raw_point) = self.fetch_point(screen) else {

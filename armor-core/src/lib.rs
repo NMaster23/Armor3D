@@ -156,6 +156,9 @@ impl ViewportRenderer {
     fn set_reference_image_rect(&mut self, first: (f32, f32), second: (f32, f32)) -> bool {
         self.state.set_reference_image_rect(first, second)
     }
+    fn revolve_selected(&mut self, degrees: f32) -> usize {
+        self.state.viewport.revolve_selected(degrees)
+    }
     fn start_rectangle(&mut self) {
         self.state.viewport.start_rectangle();
     }

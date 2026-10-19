@@ -75,6 +75,19 @@ def focusextrudeheight():
     if activecommand in ("extrude_select", "extrude_input"):
         command._entry.focus_force()
         command._entry.icursor("end")
+def startrevolve():
+    global activecommand
+    if renderer is None:
+        return
+    command.delete(0, 'end')
+    command.configure(placeholder_text='')
+    if selectedobjectcount() == 0:
+        activecommand = 'revolve_select'
+        writehistory("> Revolve\nClick a closed shape to revolve")
+    else:
+        activecommand = 'revolve_input'
+        writehistory("> Revolve\nType an angle from =360 to 360, then press enter")
+    app.after_idle(command._entry.focus_force)
 def startextrude():
     global activecommand, extrude_drag_start_y
     if renderer is None:
@@ -609,6 +622,16 @@ def viewport_mouse_down(event):
     hidesnapindicator()
     viewport.focus_set()
     if renderer is None:
+        return
+    if activecommand == 'revolve_select':
+        selected = renderer.select_at(event.x, event.y, False)
+        if selected is None:
+            writehistory("Click directly on a closed shape")
+            return
+        activecommand = 'revolve_input'
+        command.delete(0, 'end')
+        command.configure("> Revolve\nType an angle from -360 to 360, then press enter")
+        app.after_idle(command._entry.focus_force)
         return
     if activecommand == "text_place":
         renderer.mouse_move(event.x, event.y)
@@ -1378,7 +1401,7 @@ def runnamedcommand(name):
         'txt': starttext,
         'distance': startdistance,
         "angle": startangle,
-        "revolve": lambda: startplaceholdercmd("Revolve", "Select objects to revolve"),
+        "revolve": startrevolve,
         "extrude": startextrude,
         "mirror": startmirror,
         "copy": startcopy,
@@ -1494,6 +1517,30 @@ def runcmd(event):
     global circle_center, circle_measure_mode
     global polarcenter
     global pending_text
+    if activecommand == 'revolve_input':
+        typed = command.get().strip()
+        try:
+            degrees = float(typed)
+        except ValueError:
+            writehistory("Enter a numeric revolve angle")
+            app.after_idle(command._entry.focus_force)
+            return 'break'
+        if not math.isfinite(degrees) or degrees == 0 or abs(degrees) > 360:
+            writehistory('Revolve angle must be between -360 and 360, but not zero')
+            app.after_idle(command._entry.focus_force)
+            return 'break'
+        created = renderer.revolve_selected(degrees)
+        renderer.render()
+        if created:
+            writehistory(f"Revolved {created} profiles(s) by {degrees:g} degrees")
+            activecommand = None
+            command.delete(0, 'end')
+            command.configure(placeholder_text="Command:")
+            viewport.focus_set()
+        else:
+            writehistory("Revolve needs a selected closed profile")
+            app.after_idle(command._entry.focus_force)
+        return 'break'
     if activecommand == "text_input":
         pending_text = command.get().strip()
         if not pending_text:
@@ -3746,7 +3793,6 @@ settingsave.bind("<Enter>", lambda event: (settingsave.itemconfig(settingsavebox
 settingsave.bind("<Leave>", lambda event: (settingsave.itemconfig(settingsavebox, fill='#242823'), settingsave.itemconfig(settingsavetext, fill='#F3E6C5')))
 settingsave.bind("<Button-1>", lambda event :savesettings())
 settingsave.place(relx=1, x=-125, y=232)
-
 settingsclose= Canvas(settingspanel, width=36, height=36, bg="#342719", highlightthickness=0, cursor='hand2')
 settingsclosetext = settingsclose.create_text(18, 18, text='×', fill='#F3E6C5',font=("Iceland", 24) )
 settingsclose.bind("<Enter>", lambda event: settingsclose.itemconfig(settingsclosetext, fill="#F4C95D"))
