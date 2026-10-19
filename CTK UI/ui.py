@@ -71,17 +71,28 @@ def createnewfile():
     writehistory("Created a new file")
     viewport.focus_set()
 extrude_drag_start_y = None
+def focusextrudeheight():
+    if activecommand in ("extrude_select", "extrude_input"):
+        command._entry.focus_force()
+        command._entry.icursor("end")
 def startextrude():
     global activecommand, extrude_drag_start_y
-    if renderer is None or selectedobjectcount() != 1:
-        writehistory("Select one closed shape, then start extrude")
+    if renderer is None:
         return
-    activecommand = 'extrude'
     extrude_drag_start_y = None
     command.delete(0, 'end')
-    command.configure(placeholder_text="Extrude: drag upward for height, release to finish")
+    if selectedobjectcount() == 0:
+        activecommand = 'extrude_select'
+        command.configure(placeholder_text="")
+        writehistory("> Extrude\nClick a closed shape, then type a positive or negative height and press Enter. Leave it blank and press Enter to drag.")
+    else:
+        activecommand = 'extrude_input'
+        command.configure(placeholder_text="")
+        writehistory("> Extrude\nType a positive or negative height and press Enter. To use drag, click and drag vertically in the viewport.")
     viewport.configure(cursor='crosshair')
-    viewport.focus_set()
+    app.after_idle(focusextrudeheight)
+def extrudeheightcommand():
+    startextrude()
 def start_circle(event=None):
     global activecommand, circle_center, circle_measure_mode
     if renderer is None:
@@ -664,14 +675,29 @@ def viewport_mouse_down(event):
                 writehistory("Circle created")
                 viewport.configure(cursor='arrow')
         return
-    if activecommand == 'extrude':
+    if activecommand == 'extrude_select':
+        selected_shape = renderer.select_at(event.x, event.y, False)
+        if selected_shape is None:
+            writehistory("Click directly on a closed shape")
+            command._entry.focus_set()
+            return
+        command.delete(0, 'end')
+        command.configure(placeholder_text="")
+        writehistory("Shape selected. Type a positive or negative height and press Enter, or leave it blank and press Enter to drag.")
+        app.after_idle(focusextrudeheight)
+        return
+    if activecommand in ("extrude_input", "extrude_ready"):
         renderer.mouse_move(event.x, event.y)
         if renderer.begin_extrude_drag():
+            activecommand = 'extrude_drag'
             extrude_drag_start_y = event.y
-            command.configure(placeholder_text= "Extrude: drag up or down, release to finish")
+            command.configure(placeholder_text="")
+            writehistory("Extruding: drag up or down, then release to finish")
+            viewport.focus_set()
         else:
-            writehistory("Extrude needs one selected closed shape")
-        return 
+            writehistory("Extrude requires one selected closed shape")
+            command._entry.focus_set()
+        return
     if activecommand is None:
         hide_selection_box()
         additive = bool(event.state & 0x0001)
@@ -715,10 +741,10 @@ def viewport_left_drag(event):
         renderer.mouse_move(event.x, event.y)
         updatepicturepreview()
         return
-    if activecommand == 'extrude' and extrude_drag_start_y is not None:
+    if activecommand == "extrude_drag" and extrude_drag_start_y is not None:
         height = (extrude_drag_start_y-event.y) * 0.02
         renderer.preview_extrude_drag(height)
-        command.configure(placeholder_text=f"Extrude height: {height:.3f}")
+        command.configure(placeholder_text="")
         return
     if moving_selection:
         if renderer is not None:
@@ -744,7 +770,7 @@ def viewport_mouse_up(event):
         return
     if activecommand in ("picture_first", "picture_second"):
         return
-    if activecommand == 'extrude':
+    if activecommand == "extrude_drag":
         global extrude_drag_start_y
         renderer.end_extrude_drag(True)
         extrude_drag_start_y = None
@@ -924,7 +950,6 @@ def resizethings(event):
     update_shadow(event.width, event.height, current_offset)
     if snapwindow is not None:
         canvas.itemconfig(snapwindow, height=max(25, event.height - 515))
-    # draw_grid(event.width, event.height)
 canvas.bind("<Configure>", resizethings)
 past_commands= []
 history_index = 0
@@ -1320,6 +1345,8 @@ def runnamedcommand(name):
         "hatch": starthatch,
         'curve': startcurve,
         'crv': startcurve,
+        "extrudeheight": extrudeheightcommand,
+        "extrudeh": extrudeheightcommand,
         "circle": start_circle,
         "join": startjoin,
         "explode": startexplode,
@@ -1373,6 +1400,8 @@ def closeactivecommand(commit=False):
     global activecommand, circle_center, circle_measure_mode
     global picturefirstpoint, picturefilename
     global anglefirstline
+    if activecommand == 'extrude_drag' and renderer is not None:
+        renderer.end_extrude_drag(False)
     if activecommand is None:
         return
     if activecommand == 'polar_center' and renderer is not None:
@@ -1445,6 +1474,52 @@ def runcmd(event):
     global history_index, activecommand
     global circle_center, circle_measure_mode
     global polarcenter
+    if activecommand in ("extrude_select", "extrude_input"):
+        typed = command.get().strip()
+        if not typed:
+            count_selected = selectedobjectcount()
+            if count_selected == 0:
+                writehistory("Click a closed shape first")
+                command.focus_set()
+                return 'break'
+            if count_selected != 1:
+                writehistory("Type a height to extrude multiple selected shapes")
+                command.focus_set()
+                return 'break'
+            if activecommand == "extrude_input":
+                writehistory("Type a positive or negative height and press Enter. To use drag, drag vertically in the viewport.")
+                app.after_idle(focusextrudeheight)
+                return 'break'
+            activecommand = 'extrude_ready'
+            command.delete(0, 'end')
+            command.configure(placeholder_text="")
+            writehistory("Extrude ready. Drag vertically, then release to finish.")
+            viewport.configure(cursor='crosshair')
+            viewport.focus_set()
+            return 'break'
+        try:
+            height = float(typed)
+        except ValueError:
+            writehistory("Enter a numeric extrusion height")
+            command.focus_set()
+            return 'break'
+        if not math.isfinite(height) or abs(height) > 100_000:
+            writehistory("Height must be between  -100000 and 100000")
+            command.focus_set()
+            return 'break'
+        count = renderer.extrude(height)
+        renderer.render()
+        if count:
+            writehistory(f"Extruded {count} closed shapes(s) to height {height:g}")
+            activecommand = None
+            command.delete(0, 'end')
+            command.configure(placeholder_text="Command:")
+            viewport.configure(cursor='arrow')
+            viewport.focus_set()
+        else:
+            writehistory("No selected closed shapes could be extruded")
+            command.focus_set()
+        return 'break'
     if activecommand == 'polar_select':
         confirmpolarselection()
         return 'break'
@@ -1556,7 +1631,7 @@ def runcmd(event):
     return "break"
 command.bind("<Return>", runcmd)
 commandnames = ["Polyline", "Curve", "Join", "Explode", "Rectangle", "Text", "File", "New", "Save", "Save as", '3DM', "PNG", "DXF", "Analyze", "Distance", "Angle", "Tools", "Revolve", "Extrude", "Mirror", "Copy",
-                'Circle', "Fillet", "Trim", "Arc", "Picture", "Import DXF", "Import", "hatch", "ArrayPolar", "PolarArray"]
+                'Circle', "Fillet", "Trim", "Arc", "Picture", "Import DXF", "Import", "hatch", "ArrayPolar", "PolarArray", "ExtrudeHeight"]
 
 
 def handlenewconfirmation(event):
@@ -1693,6 +1768,27 @@ def toggle2dshort(event=None):
     return "break"
 command.bind("<KeyPress-bracketright>", toggle2dshort)
 app.bind("<KeyPress-bracketright>", toggle2dshort)
+def insertextrudecharacter(char):
+    if getattr(command, "_placeholder_text_active", False):
+        command._deactivate_placeholder()
+    try:
+        if command._entry.selection_present():
+            command._entry.selection_clear()
+    except Exception:
+        pass
+    command._entry.insert("end", char)
+    command._entry.icursor("end")
+def handleextrudeentrykey(event):
+    if activecommand not in ("extrude_select", "extrude_input"):
+        return None
+    if event.keysym == "Return":
+        runcmd(event)
+        return "break"
+    if event.char and event.char in "0123456789+-.eE":
+        insertextrudecharacter(event.char)
+        return "break"
+    return None
+command._entry.bind("<KeyPress>", handleextrudeentrykey, add="+")
 def typecmduni(event):
     if event.state & 0x0004:
         return
@@ -1740,6 +1836,14 @@ def typecmduni(event):
             command.insert('end', event.char)
             command._entry.icursor("end")
             return 'break'
+        return
+    if activecommand in ("extrude_select", "extrude_input"):
+        if event.keysym == "Return":
+            return runcmd(event)
+        if event.char and event.char in "0123456789+-.eE":
+            command._entry.focus_force()
+            insertextrudecharacter(event.char)
+            return "break"
         return
     if activecommand is not None:
         return
@@ -2199,12 +2303,13 @@ canvas.tag_bind(analyze, "<Leave>", analyzeleave, add="+")
 app.bind_all("<Motion>", analyzepointermotion, add="+")
 
 tools = canvas.create_text(170, 8, text="Tools", font=("Lexend", 8), fill="#F3E6C5")
-toolsmenu = Canvas(app, width=160, height=136, bg="#342719", highlightthickness=1, highlightbackground="#A77A2F")
+toolsmenu = Canvas(app, width=160, height=168, bg="#342719", highlightthickness=1, highlightbackground="#A77A2F")
 toolsrows = []
-for i, name in enumerate(("Revolve", "Extrude", "Mirror", "Copy")):
-    y = 4+i *32
+tool_name = ("Revolve", "Extrude", "Extrude Height", "Mirror", "Copy")
+for i, name in enumerate(tool_name):
+    y = 4 + i * 32
     box = toolsmenu.create_rectangle(4, y, 155, y +30, fill='', outline='')
-    label = toolsmenu.create_text(12, y+15, text=name, anchor='w', fill='#F3E6C5', font=("Iceland", 13))
+    label = toolsmenu.create_text(12, y+15, text=name, anchor='w', fill="#F3E6C5", font=("Iceland", 13))
     toolsrows.append((box, label))
 def toolsmotion(event):
     hovered =(event.y - 4)// 32
@@ -2217,7 +2322,7 @@ def toolsmenuclick(event):
     if not (4<= event.x <= 155):
         return
     row = (event.y-4)//32
-    names = ("Revolve", "Extrude", "Mirror", "Copy")
+    names = ("Revolve", "Extrude", "Extrude Height", "Mirror", "Copy")
     if 0<= row < len(names):
         closetoolsmenu()
         runnamedcommand(names[row])
@@ -2230,7 +2335,7 @@ def opentoolsmenu():
     slidemenu(importmenu, 48, 72, False)
     slidemenu(filemenu, 8, 104, False)
     slidemenu(analyze_menu, 100, 72, False)
-    slidemenu(toolsmenu, 150, 136, True)
+    slidemenu(toolsmenu, 150, 168, True)
 def closetoolsmenu():
     global toolsclosejob
     toolsclosejob = None
@@ -3314,7 +3419,6 @@ def executeaiactions(actions):
             newly_created_ids.extend(sorted(after_ids - before_ids))
             results.append("Drew a closed shape" if closed else "Drew a line")
     return results
-
 def finishairesponse():
     global aibusy
     try:

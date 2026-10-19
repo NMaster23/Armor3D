@@ -326,8 +326,8 @@ impl ViewportRenderer {
     fn end_extrude_drag(&mut self, commit:bool) {
         self.state.viewport.end_extrude_drag(commit);
     }
-    fn extrude(&mut self, height: f32) {
-        self.state.viewport.extrude_selected(height);
+    fn extrude(&mut self, height: f32) -> usize {
+        self.state.viewport.extrude_selected(height)
     }
     fn extrude_object(&mut self, object_id: usize, height: f32) -> bool {
         self.state.viewport.extrude_object(object_id, height)

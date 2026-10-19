@@ -794,29 +794,23 @@ impl Viewport {
         self.hist_entities.current.push(shape);
         self.redraw = true;
     }
-    pub fn extrude(points: &[cgmath::Vector3<f32>], color: [f32; 4], height: f32) -> Vec<Vertex> {
+    pub fn extrude(
+        points: &[cgmath::Vector3<f32>],
+        color: [f32; 4],
+        height: f32,
+    ) -> Vec<Vertex> {
         let mut vertices = Vec::new();
-        if points.len() < 3 {
+        if points.len() < 3 || !height.is_finite() || height.abs() <= f32::EPSILON {
             return vertices;
         }
-        let bottom_vertices = Self::tessellate_fill(points, color);
-        for chunk in bottom_vertices.chunks_exact(3) {
-            vertices.push(chunk[0]);
-            vertices.push(chunk[2]);
-            vertices.push(chunk[1]);
-        }
-        let mut top_vertices = Self::tessellate_fill(points, color);
-        for vertex in &mut top_vertices {
-            vertex.position[1] += height;
-        }
-        vertices.extend(top_vertices);
         for window in points.windows(2) {
             let point0 = window[0];
             let point1 = window[1];
-            let product = (point1 - point0).cross(Vector3::new(0.0, height.signum(), 0.0));
+            let product =
+                (point1 - point0).cross(Vector3::new(0.0, height.signum(), 0.0));
             let wall_normal = if product.magnitude2() > f32::EPSILON {
-                let n = product.normalize();
-                [n.x, n.y, n.z]
+                let normal = product.normalize();
+                [normal.x, normal.y, normal.z]
             } else {
                 [0.0, 1.0, 0.0]
             };
@@ -824,38 +818,17 @@ impl Viewport {
             let bottom1 = [point1.x, point1.y, point1.z];
             let top0 = [point0.x, point0.y + height, point0.z];
             let top1 = [point1.x, point1.y + height, point1.z];
-            vertices.push(Vertex {
-                position: bottom0,
-                coords: wall_normal,
-                color,
-            });
-            vertices.push(Vertex {
-                position: bottom1,
-                coords: wall_normal,
-                color,
-            });
-            vertices.push(Vertex {
-                position: top1,
-                coords: wall_normal,
-                color,
-            });
-            vertices.push(Vertex {
-                position: bottom0,
-                coords: wall_normal,
-                color,
-            });
-            vertices.push(Vertex {
-                position: top1,
-                coords: wall_normal,
-                color,
-            });
-            vertices.push(Vertex {
-                position: top0,
-                coords: wall_normal,
-                color,
-            });
+            vertices.extend([
+                Vertex { position: bottom0, coords: wall_normal, color },
+                Vertex { position: bottom1, coords: wall_normal, color },
+                Vertex { position: top1, coords: wall_normal, color },
+                Vertex { position: bottom0, coords: wall_normal, color },
+                Vertex { position: top1, coords: wall_normal, color },
+                Vertex { position: top0, coords: wall_normal, color },
+            ]);
         }
-        vertices}
+        vertices
+    }
     fn hatch_plane(
         points: &[Vector3<f32>]
     ) -> Option<(Vector3<f32>, Vector3<f32>, Vector3<f32>, Vector3<f32>)> {
@@ -1728,18 +1701,29 @@ impl Viewport {
         self.rebuild_vertices();
         id
     }
-    pub fn extrude_selected(&mut self, height: f32) {
-        let entity = match self.selected_entity {
-            Some(selected_id) => self
-                .entities
-                .iter_mut()
-                .find(|entity| entity.id == selected_id),
-            None => self.entities.last_mut(),
-        };
-        if let Some(entity) = entity {
-            entity.height = height;
-            self.rebuild_vertices();
+    pub fn extrude_selected(&mut self, height: f32) -> usize {
+        if !height.is_finite() || height.abs() > 100_000.0 {
+            return 0;
         }
+        let selected_ids: Vec<usize> = self
+            .entities
+            .iter()
+            .filter(|entity| {
+                entity.selected && Self::is_closed_shape(&entity.vertices)
+            })
+            .map(|entity| entity.id)
+            .collect();
+        if selected_ids.is_empty() {
+            return 0;
+        }
+        self.save_undo_state();
+        for entity in &mut self.entities {
+            if selected_ids.contains(&entity.id) {
+                entity.height = height;
+            }
+        }
+        self.rebuild_vertices();
+        selected_ids.len()
     }
     pub fn extrude_object(&mut self, object_id: usize, height: f32) -> bool {
         if !height.is_finite() || height.abs() > 100_000.0 {
