@@ -19,7 +19,7 @@ ctk.set_appearance_mode('dark')
 HOVER_BG = "#754822"
 HOVER_BORDER = "#f2a65a"
 HOVER_TEXT = "#EBA119"
-
+pending_text = ''
 currentfilepath = None
 importedfiles = []
 circle_center = None
@@ -605,10 +605,27 @@ def show_selection_box(start_x, start_y, end_x, end_y):
 def viewport_mouse_down(event):
     global rectanglefirstpoint
     global left_drag_start, left_dragged, moving_selection, activecommand, extrude_drag_start_y
-    global circle_center, circle_measure_mode, activecommand
+    global circle_center, circle_measure_mode, activecommand, pending_text
     hidesnapindicator()
     viewport.focus_set()
     if renderer is None:
+        return
+    if activecommand == "text_place":
+        renderer.mouse_move(event.x, event.y)
+        position = renderer.cursor_world_position()
+        if position is None:
+            writehistory("Could not get a grid position; click in the viewport again")
+            return
+        created = renderer.draw_text( pending_text, tuple(position), 1.0, "Arial", "sans", None,)
+        if created:
+            renderer.render()
+            writehistory(f"Placed text: {pending_text}")
+            pending_text = ""
+            activecommand = None
+            command.configure(placeholder_text="Command:")
+            viewport.configure(cursor="arrow")
+        else:
+            writehistory("Could not place text there")
         return
     if activecommand in ("picture_first", "picture_second"):
         pickpicturecorner(event)
@@ -1306,11 +1323,13 @@ def startrectangle(event=None):
     viewport.focus_set()
 def starttext(event=None):
     global activecommand
-    activecommand = 'text'
+    if renderer is None:
+        return
+    activecommand = 'text_input'
     command.delete(0, 'end')
-    command.configure(placeholder_text='Choose text position')
-    writehistory("> Text\nChoose text position")
-    viewport.focus_set()
+    command.configure(placeholder_text='')
+    writehistory("> Text\nType your text in the command bar, then press enter")
+    app.after_idle(command._entry.focus_force)
 def startplaceholdercmd(name, message):
     global activecommand
     activecommand = name.lower().replace(" ", "")
@@ -1474,6 +1493,19 @@ def runcmd(event):
     global history_index, activecommand
     global circle_center, circle_measure_mode
     global polarcenter
+    global pending_text
+    if activecommand == "text_input":
+        pending_text = command.get().strip()
+        if not pending_text:
+            writehistory("Enter some text first")
+            app.after_idle(command._entry.focus_force)
+            return "break"
+        activecommand = "text_place"
+        command.delete(0, "end")
+        command.configure(placeholder_text="")
+        writehistory(f"Text: {pending_text}\nClick a position in the viewport to place it")
+        app.after_idle(viewport.focus_force)
+        return "break"
     if activecommand in ("extrude_select", "extrude_input"):
         typed = command.get().strip()
         if not typed:
@@ -1779,14 +1811,22 @@ def insertextrudecharacter(char):
     command._entry.insert("end", char)
     command._entry.icursor("end")
 def handleextrudeentrykey(event):
+    if activecommand == 'text_input':
+        if event.keysym == 'Return':
+            runcmd(event)
+            return 'break'
+        if event.char and event.char.isprintable():
+            insertextrudecharacter(event.char)
+            return 'break'
+        return None
     if activecommand not in ("extrude_select", "extrude_input"):
         return None
-    if event.keysym == "Return":
+    if event.keysym == 'Return':
         runcmd(event)
-        return "break"
+        return 'break'
     if event.char and event.char in "0123456789+-.eE":
         insertextrudecharacter(event.char)
-        return "break"
+        return 'break'
     return None
 command._entry.bind("<KeyPress>", handleextrudeentrykey, add="+")
 def typecmduni(event):
@@ -1799,8 +1839,7 @@ def typecmduni(event):
             and circle_center is not None
             and command._placeholder_text_active
             and event.char
-            and (event.char.isalpha() or event.char in "0123456789.")
-        ):
+            and (event.char.isalpha() or event.char in "0123456789.") ):
             command.insert(0, event.char)
             app.after_idle(updatecommandsuggestion)
             return "break"
@@ -1844,6 +1883,14 @@ def typecmduni(event):
             command._entry.focus_force()
             insertextrudecharacter(event.char)
             return "break"
+        return
+    if activecommand == 'text_input':
+        if event.keysym == 'Return':
+            return runcmd(event)
+        if event.char and event.char.isprintable():
+            command._entry.focus_force()
+            insertextrudecharacter(event.char)
+            return 'break'
         return
     if activecommand is not None:
         return

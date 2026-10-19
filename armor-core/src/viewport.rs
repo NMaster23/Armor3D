@@ -570,9 +570,6 @@ impl Viewport {
             self.rebuild_vertices();
         }
     }
-    // pub fn edit_shape(_point: cgmath::Vector3<f32>, _color: [f32; 4]) -> Vec<Vertex> {
-    //     Vec::new()
-    // }
     pub fn draw_text(
         &mut self,
         text: String,
