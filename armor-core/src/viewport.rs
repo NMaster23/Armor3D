@@ -149,6 +149,7 @@ impl<T: Clone> ShapeUndoStore<T> {
 pub struct Viewport {
     extrude_drag: Option<(usize, f32)>,
     pub hist_entities: ShapeUndoStore<PolyLine>,
+    pub hist_surfaces: ShapeUndoStore<NurbsSurfaceEntity>,
     pub entities: Vec<PolyLine>,
     pub active_polyline: Vec<Vector3<f32>>,
     pub preview_point: Option<Vector3<f32>>,
@@ -249,6 +250,38 @@ impl Viewport {
     fn is_closed_shape(vertices: &[Vector3<f32>]) -> bool {
         vertices.len() >= 4 && (vertices[0] - vertices[vertices.len() - 1]).magnitude2() < 0.0001
     }
+    pub fn revolve_object(&mut self, object_id: usize, degrees: f32, axis: &str) -> usize {
+        if !self.entities.iter().any(|entity| {
+            entity.id == object_id && Self::is_closed_shape(&entity.vertices)
+        }) {
+            return 0;
+        }
+
+        let previous_selection: Vec<usize> = self
+            .entities
+            .iter()
+            .filter(|entity| entity.selected)
+            .map(|entity| entity.id)
+            .collect();
+
+        for entity in &mut self.entities {
+            entity.selected = entity.id == object_id;
+        }
+
+        let created = self.revolve_selected(degrees, axis);
+
+        for entity in &mut self.entities {
+            entity.selected = previous_selection.contains(&entity.id);
+        }
+        self.selected_entity = previous_selection.first().copied().or_else(|| {
+            self.nurbs_surfaces
+                .iter()
+                .find(|surface| surface.selected)
+                .map(|surface| surface.id)
+        });
+        self.rebuild_vertices();
+        created
+    }
     pub fn hatch_selected(&mut self) -> usize {
         let ids: Vec<usize> = self
             .entities
@@ -294,7 +327,7 @@ impl Viewport {
         self.copy_sources.len()
     }
     pub fn revolve_selected(&mut self, degrees: f32, axis: &str) -> usize {
-        if axis != "x" && axis != "z" {
+        if axis != "x" && axis != "y" && axis != "z" {
             return 0;}
         if !degrees.is_finite() || degrees == 0.0 || degrees.abs() > 360.0 {
             return 0;
@@ -310,6 +343,7 @@ impl Viewport {
         if sources.is_empty() {
             return 0;
         }
+        self.save_undo_state();
         let angle_steps = ((degrees.abs() / 5.0).ceil() as usize).clamp(12, 144);
         let profile_angle = degrees.to_radians();
         let mut created = 0;
@@ -329,15 +363,20 @@ impl Viewport {
                     let angle = profile_angle * t;
                     let (sin_angle, cos_angle) = angle.sin_cos();
                     let revolved_point = match axis {
-                        "z" => Vector3::new(
-                            point.x * cos_angle,
-                            point.x * sin_angle,
-                            point.z,
-                        ),
                         "x" => Vector3::new(
                             point.x,
-                            -point.z * sin_angle,
-                            point.z * cos_angle,
+                            point.y * cos_angle - point.z * sin_angle,
+                            point.y * sin_angle + point.z * cos_angle,
+                        ),
+                        "y" => Vector3::new(
+                            point.x * cos_angle + point.z * sin_angle,
+                            point.y,
+                            -point.x * sin_angle + point.z * cos_angle,
+                        ),
+                        "z" => Vector3::new(
+                            point.x * cos_angle - point.y * sin_angle,
+                            point.x * sin_angle + point.y * cos_angle,
+                            point.z,
                         ),
                         _ => return 0,
                     };
@@ -443,17 +482,26 @@ impl Viewport {
     fn save_undo_state(&mut self) {
         self.hist_entities.current = self.entities.clone();
         self.hist_entities.save_undo();
+        self.hist_surfaces.current = self.nurbs_surfaces.clone();
+        self.hist_surfaces.save_undo();
     }
     fn restore_history_state(&mut self) {
         self.selected_entity = self
             .entities
             .iter()
             .find(|entity| entity.selected)
-            .map(|entity| entity.id);
+            .map(|entity| entity.id)
+            .or_else(|| {
+                self.nurbs_surfaces
+                    .iter()
+                    .find(|surface| surface.selected)
+                    .map(|surface| surface.id)
+            });
         self.next_entity = self
             .entities
             .iter()
             .map(|entity| entity.id)
+            .chain(self.nurbs_surfaces.iter().map(|surface| surface.id))
             .max()
             .map(|id| id + 1)
             .unwrap_or(0);
@@ -482,21 +530,27 @@ impl Viewport {
         }
 
         self.hist_entities.current = self.entities.clone();
+        self.hist_surfaces.current = self.nurbs_surfaces.clone();
 
         if !self.hist_entities.undo() {
             return false;
         }
+        let _ = self.hist_surfaces.undo();
         self.entities = self.hist_entities.current.clone();
+        self.nurbs_surfaces = self.hist_surfaces.current.clone();
         self.restore_history_state();
         true
     }
     pub fn redo_scene(&mut self) -> bool {
         self.hist_entities.current = self.entities.clone();
+        self.hist_surfaces.current = self.nurbs_surfaces.clone();
 
         if !self.hist_entities.redo() {
             return false;
         }
+        let _ = self.hist_surfaces.redo();
         self.entities = self.hist_entities.current.clone();
+        self.nurbs_surfaces = self.hist_surfaces.current.clone();
         self.restore_history_state();
         true
     }
@@ -588,6 +642,7 @@ impl Viewport {
         let camera_controller = CameraController::new(0.02);
         Self {
             hist_entities: ShapeUndoStore::new(Vec::new()),
+            hist_surfaces: ShapeUndoStore::new(Vec::new()),
             entities: Vec::new(),
             active_polyline: Vec::new(),
             preview_point: None,
@@ -687,6 +742,52 @@ impl Viewport {
         });
         self.rebuild_vertices();
         true
+    }
+    fn point_in_triangle(
+        p: cgmath::Vector2<f32>,
+        a: cgmath::Vector2<f32>,
+        b: cgmath::Vector2<f32>,
+        c: cgmath::Vector2<f32>,
+    ) -> bool {
+        let cross = |p1: cgmath::Vector2<f32>,
+                     p2: cgmath::Vector2<f32>,
+                     p3: cgmath::Vector2<f32>| {
+            (p2.x - p1.x) * (p3.y - p1.y) - (p2.y - p1.y) * (p3.x - p1.x)
+        };
+        let d1 = cross(a, b, p);
+        let d2 = cross(b, c, p);
+        let d3 = cross(c, a, p);
+        let has_negative = d1 < 0.0 || d2 < 0.0 || d3 < 0.0;
+        let has_positive = d1 > 0.0 || d2 > 0.0 || d3 > 0.0;
+        !(has_negative && has_positive)
+    }
+
+    fn surface_hit_test(
+        &self,
+        surface: &NurbsSurfaceEntity,
+        mouse: cgmath::Vector2<f32>,
+    ) -> bool {
+        let vertices = surface.surface.sample_mesh(
+            surface.u_subdivisions,
+            surface.v_subdivisions,
+            surface.color,
+        );
+        vertices.chunks_exact(3).any(|triangle| {
+            let screen: Option<Vec<cgmath::Vector2<f32>>> = triangle
+                .iter()
+                .map(|vertex| {
+                    self.world_to_screen(Vector3::new(
+                        vertex.position[0],
+                        vertex.position[1],
+                        vertex.position[2],
+                    ))
+                })
+                .collect();
+            let Some(screen) = screen else {
+                return false;
+            };
+            Self::point_in_triangle(mouse, screen[0], screen[1], screen[2])
+        })
     }
     pub fn render_text(
         entity: &TextEntity,
@@ -854,6 +955,8 @@ impl Viewport {
     }
     pub fn store_shape(&mut self, points: &[cgmath::Vector3<f32>], color: [f32; 4]) {
         self.hist_entities.save_undo();
+        self.hist_surfaces.current = self.nurbs_surfaces.clone();
+        self.hist_surfaces.save_undo();
         let shape = PolyLine {
             id: self.next_entity,
             vertices: points.to_vec(),
@@ -1153,16 +1256,29 @@ impl Viewport {
                 }
             }
         }
+        for surface in &self.nurbs_surfaces {
+            if self.surface_hit_test(surface, mouse_px) {
+                closest = Some(surface.id);
+                min_dist_sq = 0.0;
+            }
+        }
 
         if additive {
             if let Some(id) = closest {
                 if let Some(entity) = self.entities.iter_mut().find(|entity| entity.id == id) {
                     entity.selected = true;
+                } else if let Some(surface) =
+                    self.nurbs_surfaces.iter_mut().find(|surface| surface.id == id)
+                {
+                    surface.selected = true;
                 }
             }
         } else {
             for entity in &mut self.entities {
                 entity.selected = Some(entity.id) == closest;
+            }
+            for surface in &mut self.nurbs_surfaces {
+                surface.selected = Some(surface.id) == closest;
             }
         }
 
@@ -1170,7 +1286,13 @@ impl Viewport {
             .entities
             .iter()
             .find(|entity| entity.selected)
-            .map(|entity| entity.id);
+            .map(|entity| entity.id)
+            .or_else(|| {
+                self.nurbs_surfaces
+                    .iter()
+                    .find(|surface| surface.selected)
+                    .map(|surface| surface.id)
+            });
 
         self.rebuild_vertices();
         closest
@@ -1284,63 +1406,135 @@ impl Viewport {
             }
         }
 
-        for entity in &mut self.entities {
-            if additive {
-                if selected_ids.contains(&entity.id) {
-                    entity.selected = true;
-                }
+        for surface in &self.nurbs_surfaces {
+            let mesh = surface.surface.sample_mesh(
+                surface.u_subdivisions,
+                surface.v_subdivisions,
+                surface.color,
+            );
+            let screen_points: Vec<cgmath::Vector2<f32>> = mesh
+                .iter()
+                .filter_map(|vertex| {
+                    self.world_to_screen(Vector3::new(
+                        vertex.position[0],
+                        vertex.position[1],
+                        vertex.position[2],
+                    ))
+                })
+                .collect();
+
+            let selected = if window_selection {
+                !screen_points.is_empty()
+                    && screen_points
+                        .iter()
+                        .all(|point| Self::point_in_rect(*point, min, max))
             } else {
-                entity.selected = selected_ids.contains(&entity.id);
+                screen_points.chunks_exact(3).any(|triangle| {
+                    let a = triangle[0];
+                    let b = triangle[1];
+                    let c = triangle[2];
+                    Self::point_in_rect(a, min, max)
+                        || Self::point_in_rect(b, min, max)
+                        || Self::point_in_rect(c, min, max)
+                        || Self::segment_intersects_rect(a, b, min, max)
+                        || Self::segment_intersects_rect(b, c, min, max)
+                        || Self::segment_intersects_rect(c, a, min, max)
+                })
+            };
+
+            if selected {
+                selected_ids.push(surface.id);
             }
         }
 
+        for entity in &mut self.entities {
+            entity.selected = if additive {
+                entity.selected || selected_ids.contains(&entity.id)
+            } else {
+                selected_ids.contains(&entity.id)
+            };
+        }
+        for surface in &mut self.nurbs_surfaces {
+            surface.selected = if additive {
+                surface.selected || selected_ids.contains(&surface.id)
+            } else {
+                selected_ids.contains(&surface.id)
+            };
+        }
         self.selected_entity = self
             .entities
             .iter()
-            .find(|entity| entity.selected)
-            .map(|entity| entity.id);
-
-        let total_selected = self
-            .entities
+            .find(|item| item.selected)
+            .map(|item| item.id)
+            .or_else(|| {
+                self.nurbs_surfaces
+                    .iter()
+                    .find(|item| item.selected)
+                    .map(|item| item.id)
+            });
+        self.rebuild_vertices();
+        self.entities
             .iter()
             .filter(|entity| entity.selected)
-            .count();
-
-        self.rebuild_vertices();
-        total_selected
+            .count()
+            + self
+                .nurbs_surfaces
+                .iter()
+                .filter(|surface| surface.selected)
+                .count()
     }
 
     pub fn delete_selected(&mut self) -> usize {
-        let deleted = self
+        let deleted_polylines = self
             .entities
             .iter()
             .filter(|entity| entity.selected)
             .count();
+        let deleted_surfaces = self
+            .nurbs_surfaces
+            .iter()
+            .filter(|surface| surface.selected)
+            .count();
+        let deleted = deleted_polylines + deleted_surfaces;
         if deleted == 0 {
             return 0;
         }
         self.save_undo_state();
         self.entities.retain(|entity| !entity.selected);
+        self.nurbs_surfaces.retain(|surface| !surface.selected);
         self.selected_entity = None;
         self.rebuild_vertices();
         deleted
     }
     pub fn delete_objects(&mut self, ids: &[usize]) -> usize {
-        let deleted = self
+        let deleted_polylines = self
             .entities
             .iter()
             .filter(|entity| ids.contains(&entity.id))
             .count();
-        if deleted ==  0 {
+        let deleted_surfaces = self
+            .nurbs_surfaces
+            .iter()
+            .filter(|surface| ids.contains(&surface.id))
+            .count();
+        let deleted = deleted_polylines + deleted_surfaces;
+        if deleted == 0 {
             return 0;
         }
         self.save_undo_state();
         self.entities.retain(|entity| !ids.contains(&entity.id));
+        self.nurbs_surfaces.retain(|surface| !ids.contains(&surface.id));
         self.selected_entity = self
             .entities
             .iter()
             .find(|entity| entity.selected)
-            .map(|entity| entity.id);
+            .map(|entity| entity.id)
+            .or_else(|| {
+                self.nurbs_surfaces
+                    .iter()
+                    .find(|surface| surface.selected)
+                    .map(|surface| surface.id)
+            });
         self.rebuild_vertices();
         deleted
     }
@@ -1860,6 +2054,8 @@ impl Viewport {
             }
             self.hist_entities.undo.pop();
             self.hist_entities.current = self.entities.clone();
+            self.hist_surfaces.undo.pop();
+            self.hist_surfaces.current = self.nurbs_surfaces.clone();
         }
         self.rebuild_vertices();
     }

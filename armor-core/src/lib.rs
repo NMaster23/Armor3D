@@ -159,6 +159,11 @@ impl ViewportRenderer {
     fn revolve_selected(&mut self, degrees: f32, axis: &str) -> usize {
         self.state.viewport.revolve_selected(degrees, axis)
     }
+    fn revolve_object(&mut self, object_id: usize, degrees: f32, axis: &str) -> usize {
+        self.state
+            .viewport
+            .revolve_object(object_id, degrees, axis)
+    }
     fn start_rectangle(&mut self) {
         self.state.viewport.start_rectangle();
     }

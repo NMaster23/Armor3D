@@ -1565,7 +1565,6 @@ def runcmd(event):
             writehistory("Revolve needs a selected closed profile")
             app.after_idle(command._entry.focus_force)
         return 'break'
-    
     if activecommand == "text_input":
         pending_text = command.get().strip()
         if not pending_text:
@@ -1736,8 +1735,6 @@ def runcmd(event):
 command.bind("<Return>", runcmd)
 commandnames = ["Polyline", "Curve", "Join", "Explode", "Rectangle", "Text", "File", "New", "Save", "Save as", '3DM', "PNG", "DXF", "Analyze", "Distance", "Angle", "Tools", "Revolve", "Extrude", "Mirror", "Copy",
                 'Circle', "Fillet", "Trim", "Arc", "Picture", "Import DXF", "Import", "hatch", "ArrayPolar", "PolarArray", "ExtrudeHeight"]
-
-
 def handlenewconfirmation(event):
     if activecommand != "confirmnew":
         return
@@ -3492,6 +3489,36 @@ def executeaiactions(actions):
             else:
                 results.append(f"Object {target_id} was missing or is not a closed shape")
             continue
+        if action_type == "revolve":
+            target_id = action.get("object_id")
+            if action.get("target") == "last_created":
+                if not newly_created_ids:
+                    results.append("There is no newly drawn profile to revolve")
+                    continue
+                target_id = newly_created_ids[-1]
+
+            degrees = action.get("degrees")
+            # AI profiles use Y as vertical, so the default revolve axis is Y.
+            axis = action.get("axis", "y")
+            if (
+                type(target_id) is not int
+                or type(degrees) not in (int, float)
+                or not math.isfinite(degrees)
+                or degrees == 0
+                or abs(degrees) > 360
+                or axis not in ("x", "y", "z")
+            ):
+                results.append("Ignored an invalid revolve request")
+                continue
+
+            created = renderer.revolve_object(target_id, float(degrees), axis)
+            results.append(
+                f"Revolved profile {target_id} around {axis.upper()} "
+                f"by {degrees:g} degrees"
+                if created
+                else f"Object {target_id} was missing or is not a closed profile"
+            )
+            continue
         if action_type == "draw_line":
             points = [
                 validpoint(action.get("start")),
@@ -3506,11 +3533,6 @@ def executeaiactions(actions):
                 continue
             points = [validpoint(point) for point in raw_points]
             closed = action.get("closed", False)
-            if not isinstance(closed, bool):
-                results.append("Ignored an invalid polyline")
-                continue
-            points =[validpoint(point) for point in raw_points]
-            closed = action.get('closed', False)
             if not isinstance(closed, bool):
                 results.append("Ignored an invalid polyline")
                 continue

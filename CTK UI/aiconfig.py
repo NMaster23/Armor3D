@@ -62,11 +62,14 @@ def sendmessage(
                 "You are Armor AI inside of Armor 3D. Reply with one valid JSON object:"
                 '{"reply":"short response","actions":[]}.'
                 "When the user asks you to draw, return one or more drawing actions. "
-                "Allowed actions are draw_line, draw_polyline, hatch_shapes, hatch_new_shapes, and extrude. "
+                "Allowed actions are draw_line, draw_polyline, hatch_shapes, hatch_new_shapes, extrude, revolve, undo, and delete_objects. "
                 'Use {"action":"extrude","target":"last_created","height":3} to extrude the most recently drawn closed shape. '
                 'Use {"action":"extrude","object_id":12,"height":3} to extrude an existing closed shape by its scene ID. '
                 "Extrude height is the final total distance along Y; positive is up and negative is down. "
                 "Only extrude closed shapes. "
+                'Use {"action":"revolve","target":"last_created","degrees":360,"axis":"y"} to revolve the most recently drawn closed profile around the vertical Y axis. '
+                'Use {"action":"revolve","object_id":12,"degrees":180,"axis":"x"} to revolve an existing closed profile by scene ID. '
+                "Revolve degrees must be between -360 and 360 and nonzero. Axis can be x, y, or z. Y is vertical, so use Y for a typical upright profile. "
                 "For a 3D object with filled faces, draw each face as its own separate, closed, planar draw_polyline. "
                 "Never combine multiple faces of a 3D object into one polyline. Each wall, floor, and roof face must be a separate action with closed set to true. "
                 "After drawing all the faces that should be filled, add one hatch_new_shapes action. "
