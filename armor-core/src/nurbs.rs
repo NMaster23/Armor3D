@@ -33,12 +33,21 @@ pub struct NurbsSurface {
 
 impl NurbsSurface {
     pub fn de_boor_1d(degree: usize, knots: &[f32], points: &[Vector4<f32>], u: f32) -> Vector4<f32> {
-        let mut k = degree;
         let n = points.len();
-        for idx in degree..n {
-            if u >= knots[idx] && u < knots[idx + 1] {
-                k = idx;
-                break;
+        if n == 0 || degree >= n || knots.len() <= n {
+            return Vector4::new(0.0, 0.0, 0.0, 0.0);
+        }
+        let mut k = if u >= knots[n] {
+            n - 1
+        } else {
+            degree
+        };
+        if u < knots[n] {
+            for idx in degree..n {
+                if u >= knots[idx] && u < knots[idx + 1] {
+                    k = idx;
+                    break;
+                }
             }
         }
         let mut d: Vec<Vector4<f32>> = (0..=degree).map(|j| points[j + k - degree]).collect();
@@ -63,14 +72,26 @@ impl NurbsSurface {
         }
         let u = u.clamp(self.knots_u[self.degree_u], self.knots_u[self.control_points.len()]);
         let v = v.clamp(self.knots_v[self.degree_v], self.knots_v[self.control_points[0].len()]);
-        let col_points: Vec<Vector4<f32>> = self.control_points
+        let row_points: Vec<Vector4<f32>> = self
+            .control_points
             .iter()
-            .map(|r| {
-                let r_4d: Vec<Vector4<f32>> = r.iter().map(|cp| cp.to_homogeneous()).collect();
-                Self::de_boor_1d(self.degree_u, &self.knots_u, &r_4d, u)
+            .map(|row| {
+                let row_4d: Vec<Vector4<f32>> =
+                    row.iter().map(|cp| cp.to_homogeneous()).collect();
+                Self::de_boor_1d(
+                    self.degree_v,
+                    &self.knots_v,
+                    &row_4d,
+                    v,
+                )
             })
             .collect();
-        let pt4 = Self::de_boor_1d(self.degree_v, &self.knots_v, &col_points, v);
+        let pt4 = Self::de_boor_1d(
+            self.degree_u,
+            &self.knots_u,
+            &row_points,
+            u,
+        );
         if pt4.w.abs() > 1.0e-7 {
             Vector3::new(pt4.x / pt4.w, pt4.y / pt4.w, pt4.z / pt4.w)
         } else {

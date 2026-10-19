@@ -75,6 +75,14 @@ def focusextrudeheight():
     if activecommand in ("extrude_select", "extrude_input"):
         command._entry.focus_force()
         command._entry.icursor("end")
+def beginrevolveangleinput():
+    global activecommand
+    activecommand = 'revolve_input'
+    command.delete(0, 'end')
+    command.configure(placeholder_text='')
+    command.insert(0, '360')
+    command._entry.selection_range(0, 'end')
+    app.after_idle(command._entry.focus_force)
 def startrevolve():
     global activecommand
     if renderer is None:
@@ -85,9 +93,8 @@ def startrevolve():
         activecommand = 'revolve_select'
         writehistory("> Revolve\nClick a closed shape to revolve")
     else:
-        activecommand = 'revolve_input'
-        writehistory("> Revolve\nType an angle from =360 to 360, then press enter")
-    app.after_idle(command._entry.focus_force)
+        beginrevolveangleinput()
+        writehistory("> Revolve\nType an angle from -360 to 360, then press Enter.")
 def startextrude():
     global activecommand, extrude_drag_start_y
     if renderer is None:
@@ -630,7 +637,8 @@ def viewport_mouse_down(event):
             return
         activecommand = 'revolve_input'
         command.delete(0, 'end')
-        command.configure("> Revolve\nType an angle from -360 to 360, then press enter")
+        beginrevolveangleinput()
+        writehistory("> Revolve\nType an angle from -360 to 360, then press Enter. The selected 360 is editable.")
         app.after_idle(command._entry.focus_force)
         return
     if activecommand == "text_place":
@@ -1532,7 +1540,7 @@ def runcmd(event):
         created = renderer.revolve_selected(degrees)
         renderer.render()
         if created:
-            writehistory(f"Revolved {created} profiles(s) by {degrees:g} degrees")
+            writehistory(f"Revolved {created} profile(s) by {degrees:g} degrees")
             activecommand = None
             command.delete(0, 'end')
             command.configure(placeholder_text="Command:")
@@ -1858,14 +1866,6 @@ def insertextrudecharacter(char):
     command._entry.insert("end", char)
     command._entry.icursor("end")
 def handleextrudeentrykey(event):
-    if activecommand == 'text_input':
-        if event.keysym == 'Return':
-            runcmd(event)
-            return 'break'
-        if event.char and event.char.isprintable():
-            insertextrudecharacter(event.char)
-            return 'break'
-        return None
     if activecommand not in ("extrude_select", "extrude_input"):
         return None
     if event.keysym == 'Return':
@@ -1936,7 +1936,10 @@ def typecmduni(event):
             return runcmd(event)
         if event.char and event.char.isprintable():
             command._entry.focus_force()
-            insertextrudecharacter(event.char)
+            if command._placeholder_text_active:
+                command._deactivate_placeholder()
+            command._entry.insert('end', event.char)
+            command._entry.icursor("end")
             return 'break'
         return
     if activecommand is not None:
