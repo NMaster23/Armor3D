@@ -44,6 +44,15 @@ The Rust core uses wgpu for viewport rendering and geometry, and is exposed to t
 
 Additional smaller improvements and bug fixes are most likely documented in the commit history.
 
+## Week 5 Progress
+- added extrude
+- added AI creation ability
+- added revolve
+- added text
+- improved hatch
+
+Additional smaller improvements and bug fixes are most likely documented in the commit history.
+
 ## Current limitations
 Armor3D does not yet include the full feature set of Rhino. There may be many incomplete features in the works - will fix in due time. The available features may not be polished, as this project is still in BETA. 
 
@@ -89,9 +98,9 @@ The viewport and 3D handling is implemented in Rust through the use of the WGPU 
 The Rust side provides the 2D and 3D grid, camera, polyline drawing and preview, tessellation, end and near snapping, selection, and shape movement. Python forwards viewport input and manages the surrounding controls. More CAD tools are still in progress.
 
 ## Next Steps
-- Continue curve-drawing and renderer development.
-- Expand drawing, editing, and file-import/export tools.
-- Improve and complete the existing CAD commands.
+- Add more AI features
+- Add 3dm importing
+- Add more drawing features
 
 ## Week 1 theme
 Week 1 used a harvest-inspired palette of orange and green.
@@ -105,6 +114,8 @@ This week we could not implement the theme but next week we will try to include 
 - DXF importing and exporting currently supports a limited set of entities
 - Large drawings may reduce the overall viewport performance
 
+## Use AI features
+### To use the AI features, get a HACKAI API key, and input it into the settings page of the AI bar. 
 
 ## Where AI assistance has been used
 - Creating some of the UI animations
@@ -114,6 +125,7 @@ This week we could not implement the theme but next week we will try to include 
 - Merging controls between Python and Rust - and adding binds
 - Fixing Rust features
 - Fix curve logic - this part has been re-made with AI assistance
+- Fix revolve logic
 - Rest of AI usage that has not been mentioned here is most likely in the commits
 
 ## Credits
@@ -121,4 +133,6 @@ This week we could not implement the theme but next week we will try to include 
 - Nihaal Mysore Bharath - Rust viewport and grid work
 
 ## DEMO
-<img width="1099" height="728" alt="image" src="https://github.com/user-attachments/assets/83f01f06-dffd-4aa2-ad75-efb1b0462f7f" />
+<img width="1913" height="1029" alt="image" src="https://github.com/user-attachments/assets/a3359b00-53bb-49f3-9827-cd87609300cc" />
+
+
