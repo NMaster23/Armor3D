@@ -94,7 +94,7 @@ def startrevolve():
         writehistory("> Revolve\nClick a closed shape to revolve")
     else:
         beginrevolveangleinput()
-        writehistory("> Revolve\nType an angle from -360 to 360, then press Enter.")
+        writehistory("> Revolve\nEnter an angle (Z axis default), or type x 360 to use the X axis")
 def startextrude():
     global activecommand, extrude_drag_start_y
     if renderer is None:
@@ -638,7 +638,7 @@ def viewport_mouse_down(event):
         activecommand = 'revolve_input'
         command.delete(0, 'end')
         beginrevolveangleinput()
-        writehistory("> Revolve\nType an angle from -360 to 360, then press Enter. The selected 360 is editable.")
+        writehistory("> Revolve\nEnter an angle (Z axis default), or type x 360 to use the X axis")
         app.after_idle(command._entry.focus_force)
         return
     if activecommand == "text_place":
@@ -1526,29 +1526,46 @@ def runcmd(event):
     global polarcenter
     global pending_text
     if activecommand == 'revolve_input':
-        typed = command.get().strip()
+        parts = command.get().strip().lower().replace(',', "").split()
+        axis = 'z'
+        if len(parts) == 1:
+            angle_text = parts[0]
+        elif len(parts) == 2 and parts[0] in ('x', 'z'):
+            axis = parts[0]
+            angle_text = parts[1]
+        elif len(parts) == 2 and parts[1] in ("x", "z"):
+            angle_text = parts[0]
+            axis = parts[1]
+        else:
+            writehistory("Enter an angle, or use: x 360 / z 360")
+            app.after_idle(command._entry.focus_force)
+            return 'break'
         try:
-            degrees = float(typed)
+            degrees = float(angle_text)
         except ValueError:
-            writehistory("Enter a numeric revolve angle")
+            writehistory("Enter a numeric angle, e.g. 360 or x 360")
             app.after_idle(command._entry.focus_force)
             return 'break'
-        if not math.isfinite(degrees) or degrees == 0 or abs(degrees) > 360:
-            writehistory('Revolve angle must be between -360 and 360, but not zero')
+        if not math.isfinite(degrees) or degrees ==0 or abs(degrees) > 360:
+            writehistory("Revolve angle must be bewtween -360 and 360, but not zero")
             app.after_idle(command._entry.focus_force)
             return 'break'
-        created = renderer.revolve_selected(degrees)
+        created = renderer.revolve_selected(degrees, axis)
         renderer.render()
-        if created:
-            writehistory(f"Revolved {created} profile(s) by {degrees:g} degrees")
+        if created: 
+            writehistory(
+                f"Revolved {created} profiles(s) around the {axis.upper()} axis"
+                f" by {degrees:g} degrees"
+            )
             activecommand = None
             command.delete(0, 'end')
-            command.configure(placeholder_text="Command:")
+            command.configure(placeholder_text='Command:')
             viewport.focus_set()
         else:
             writehistory("Revolve needs a selected closed profile")
             app.after_idle(command._entry.focus_force)
         return 'break'
+    
     if activecommand == "text_input":
         pending_text = command.get().strip()
         if not pending_text:

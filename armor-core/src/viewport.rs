@@ -293,7 +293,9 @@ impl Viewport {
         self.rebuild_vertices();
         self.copy_sources.len()
     }
-    pub fn revolve_selected(&mut self, degrees: f32) -> usize {
+    pub fn revolve_selected(&mut self, degrees: f32, axis: &str) -> usize {
+        if axis != "x" && axis != "z" {
+            return 0;}
         if !degrees.is_finite() || degrees == 0.0 || degrees.abs() > 360.0 {
             return 0;
         }
@@ -326,11 +328,19 @@ impl Viewport {
                     let t = column as f32 / angle_steps as f32;
                     let angle = profile_angle * t;
                     let (sin_angle, cos_angle) = angle.sin_cos();
-                    let revolved_point = Vector3::new(
-                        point.x * cos_angle,
-                        point.x * sin_angle,
-                        point.z,
-                    );
+                    let revolved_point = match axis {
+                        "z" => Vector3::new(
+                            point.x * cos_angle,
+                            point.x * sin_angle,
+                            point.z,
+                        ),
+                        "x" => Vector3::new(
+                            point.x,
+                            -point.z * sin_angle,
+                            point.z * cos_angle,
+                        ),
+                        _ => return 0,
+                    };
                     angular_row.push(NurbsControlPoint {
                         point: revolved_point,
                         weight: 1.0,
