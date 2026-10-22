@@ -1,4 +1,4 @@
-use cgmath::{InnerSpace, Matrix3, Rad};
+use cgmath::{InnerSpace, Matrix3, Point3, Rad, SquareMatrix, Vector2, Vector4};
 use winit::event::MouseScrollDelta;
 use winit::keyboard::KeyCode;
 
@@ -13,7 +13,55 @@ pub struct Camera {
     pub orthographic: bool,
 }
 
+pub struct Ray {
+    pub origin: Point3<f32>,
+    pub direction: cgmath::Vector3<f32>,
+}
+
+impl Ray {
+    pub fn intersect_triangle(&self, v0: Point3<f32>, v1: Point3<f32>, v2: Point3<f32>) -> Option<f32> {
+        let e1 = v1 - v0;
+        let e2 = v2 - v0;
+        let cross_raydir = self.direction.cross(e2);
+        let det = e1.dot(e2);
+        let inv_det = 1.0/det;
+        let vector = self.origin - v0;
+        let u = vector.dot(e2) * inv_det;
+        let q = vector.cross(e1);
+        let v = self.direction.dot(q) * inv_det;
+        let t = e2.dot(q) * inv_det;
+        if t > 1e-5 {
+            Some(t)
+        } else if v < 0.0 || (u + v) > 1.0 {
+            None
+        } else if u < 0.0 || u > 1.0 {
+            None
+        } else if det.abs() < 1e-7 {
+            None
+        } else {
+            None
+        }
+    }
+}
+
 impl Camera {
+    pub fn screen_to_ray(&self, screen_pos: Vector2<f32>, screen_size: Vector2<f32>) -> Option<Ray> {
+        let ndc_x = ((2.0 * screen_pos.x) / screen_size.x) - 1.0;
+        let ndc_y = 1.0 - (2.0 * screen_pos.y / screen_size.y);
+        let near = Vector4::new(ndc_x, ndc_y, 0.0, 1.0);
+        let far = Vector4::new(ndc_x, ndc_y, 1.0, 1.0);
+        let view_proj = self.build_view_projection_matrix();
+        let inv_view_proj = SquareMatrix::invert(&view_proj)?;
+        let near_h = inv_view_proj * near;
+        let far_h = inv_view_proj * far;
+        let near_point = near_h.truncate() / near_h.w;
+        let far_point = far_h.truncate() / far_h.w;
+        let ray = Some(Ray {
+            origin: Point3::new(near_point.x, near_point.y, near_point.z),
+            direction: (far_point - near_point).normalize(),
+        });
+        ray
+    }
     pub fn build_view_projection_matrix(&self) -> cgmath::Matrix4<f32> {
         let view = cgmath::Matrix4::look_at_rh(self.eye, self.target, self.up);
         let proj = if self.orthographic {
