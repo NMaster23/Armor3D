@@ -84,17 +84,29 @@ def beginrevolveangleinput():
     command._entry.selection_range(0, 'end')
     app.after_idle(command._entry.focus_force)
 def startrevolve():
-    global activecommand
+    global activecommand, revolveaxissstart, revolveaxisend
     if renderer is None:
         return
+    revolveaxissstart = None
+    revolveaxisend = None
     command.delete(0, 'end')
-    command.configure(placeholder_text='')
     if selectedobjectcount() == 0:
         activecommand = 'revolve_select'
-        writehistory("> Revolve\nClick a closed shape to revolve")
+        writehistory("> Revolve\nClick a closed profile to revolve")
     else:
-        beginrevolveangleinput()
-        writehistory("> Revolve\nEnter an angle (Z axis default), or type x 360 to use the X axis")
+        startrevolveaxis()
+    viewport.configure(cursor='crosshair')
+    viewport.focus_set()
+def startrevolveaxis():
+    global activecommand, revolveaxisend, revolveaxissstart
+    revolveaxissstart = None
+    revolveaxisend = None
+    activecommand = 'revolve_axis_first'
+    command.delete(0, 'end')
+    command.configure(placeholder_text="Pick first point of revolve axis")
+    viewport.configure(cursor='crosshair')
+    viewport.focus_set()
+    
 def startextrude():
     global activecommand, extrude_drag_start_y
     if renderer is None:
@@ -635,11 +647,11 @@ def viewport_mouse_down(event):
         if selected is None:
             writehistory("Click directly on a closed shape")
             return
-        activecommand = 'revolve_input'
-        command.delete(0, 'end')
-        beginrevolveangleinput()
-        writehistory("> Revolve\nEnter an angle (Z axis default), or type x 360 to use the X axis")
-        app.after_idle(command._entry.focus_force)
+        startrevolveaxis()
+        return
+    if activecommand in ("revolve_axis_first", "revolve_axis_second"):
+        renderer.mouse_move(event.x, event.y)
+        pickrevolveaxispoint()
         return
     if activecommand == "text_place":
         renderer.mouse_move(event.x, event.y)
@@ -1018,6 +1030,8 @@ def selectedobjectcount():
 def startmirror(event=None):
     global activecommand, mirrorpoint1
     mirrorpoint1 = None
+    revolveaxisstart = None
+    revolveaxisend = None
     command.delete(0, 'end')
     if selectedobjectcount() == 0:
         activecommand = "mirror_select"
@@ -1051,6 +1065,33 @@ def confirmmirrorselection():
     )
     writehistory("Pick first point of mirror line")
     viewport.focus_set()
+def pickrevolveaxispoint():
+    global activecommand, revolveaxissstart, revolveaxisend
+    position= renderer.cursor_world_position()
+    if position is None:
+        writehistory("Could not get a point there. Click again")
+        return
+    point = (float(position[0]), float(position[1]), float(position[2]))
+    if activecommand == 'revolve_axis_first':
+        revolveaxissstart = point
+        activecommand = 'revolve_axis_second'
+        command.configure(placeholder_text='Pick second point of revolve axis')
+        writehistory("Pick second point of revolve axis")
+    elif activecommand == 'revolve_axis_second':
+        if revolveaxissstart is None:
+            startrevolveaxis()
+            return
+        if sum((point[i] - revolveaxissstart[i]) ** 2 for i in range(3)) < 0.000001:
+            writehistory("The two axis points must be different. Pick the second point again")
+            return
+        revolveaxisend = point
+        activecommand = "revolve_input"
+        command.delete(0, 'end')
+        command.insert(0, '360')
+        command._entry.selection_range(0, 'end')
+        command.configure(placeholder_text='')
+        writehistory("Enter a revolve angle and press Enter (360 makes a full turn)")
+        app.after_idle(command._entry.focus_force)
 def pickmirrorpoint():
     global activecommand, mirrorpoint1
     position = renderer.cursor_world_position()
@@ -1079,6 +1120,8 @@ def pickmirrorpoint():
         )
         activecommand = None
         mirrorpoint1 = None
+        revolveaxisstart = None
+        revolveaxisend = None
         command.configure(placeholder_text='Command:')
         viewport.configure(cursor='arrow')
         writehistory(
@@ -1445,6 +1488,7 @@ def repeatlastcommand():
     previous = lastcommand
     runnamedcommand(previous)
 def closeactivecommand(commit=False):
+    global revolveaxissstart, revolveaxisend
     global rectanglefirstpoint
     global polarcenter
     global activecommand, circle_center, circle_measure_mode
@@ -1492,6 +1536,9 @@ def closeactivecommand(commit=False):
     circle_center = None
     circle_measure_mode = None
     writehistory("Command ended")
+    if activecommand in ("revolve_select", "revolve_axis_first", 'revolve_axis_second', 'revolve_input'):
+        revolveaxissstart = None
+        revolveaxisend = None
     activecommand = None
     command.delete(0, 'end')
     command.configure(placeholder_text = "Command:")
@@ -1526,43 +1573,37 @@ def runcmd(event):
     global polarcenter
     global pending_text
     if activecommand == 'revolve_input':
-        parts = command.get().strip().lower().replace(',', "").split()
-        axis = 'z'
-        if len(parts) == 1:
-            angle_text = parts[0]
-        elif len(parts) == 2 and parts[0] in ('x', 'z'):
-            axis = parts[0]
-            angle_text = parts[1]
-        elif len(parts) == 2 and parts[1] in ("x", "z"):
-            angle_text = parts[0]
-            axis = parts[1]
-        else:
-            writehistory("Enter an angle, or use: x 360 / z 360")
-            app.after_idle(command._entry.focus_force)
+        global revolveaxissstart, revolveaxisend
+        if revolveaxissstart is None or revolveaxisend is None:
+            writehistory("Pick two points for the revolve axis first")
+            startrevolveaxis()
             return 'break'
         try:
-            degrees = float(angle_text)
+            degrees = float(command.get().strip())
         except ValueError:
-            writehistory("Enter a numeric angle, e.g. 360 or x 360")
+            writehistory("Enter a numeric angle, such as 360")
             app.after_idle(command._entry.focus_force)
             return 'break'
-        if not math.isfinite(degrees) or degrees ==0 or abs(degrees) > 360:
-            writehistory("Revolve angle must be bewtween -360 and 360, but not zero")
+        if not math.isfinite(degrees) or degrees == 0 or abs(degrees) > 360:
+            writehistory("Revolve angle must be between -360 and 360, and not zero")
             app.after_idle(command._entry.focus_force)
             return 'break'
-        created = renderer.revolve_selected(degrees, axis)
+        created = renderer.revolve_selected_around(
+            degrees,
+            revolveaxissstart, revolveaxisend
+        )
         renderer.render()
         if created: 
-            writehistory(
-                f"Revolved {created} profiles(s) around the {axis.upper()} axis"
-                f" by {degrees:g} degrees"
-            )
+            writehistory(f"Revolved {created} profiles(s) aroudn the picked line by {degrees:g} degrees")
             activecommand = None
+            revolveaxissstart = None
+            revolveaxisend = None
             command.delete(0, 'end')
             command.configure(placeholder_text='Command:')
+            viewport.configure(cursor='arrow')
             viewport.focus_set()
         else:
-            writehistory("Revolve needs a selected closed profile")
+            writehistory("Revolve needs a selected closed profile and two different axis points")
             app.after_idle(command._entry.focus_force)
         return 'break'
     if activecommand == "text_input":

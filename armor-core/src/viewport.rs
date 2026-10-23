@@ -427,15 +427,13 @@ impl Viewport {
             return 0;
         }
         let axis = axis_delta / axis_length;
-        let sources: Vec<Polyline>  = self
+        let sources: Vec<PolyLine> = self
             .entities
             .iter()
             .filter(|entity| entity.selected && Self::is_closed_shape(&entity.vertices))
             .cloned()
             .collect();
-        if source.is_empty() {
-            return 0;
-        }
+        if sources.is_empty() {return 0;}
         self.save_undo_state();
         let angle_steps = ((degrees.abs() / 5.0).ceil() as usize).clamp(12, 144);
         let profile_angle = degrees.to_radians();
@@ -481,7 +479,7 @@ impl Viewport {
             created += 1;
         }
         if created > 0 {
-            sefl.rebuild_vertices();
+            self.rebuild_vertices();
         }
         created
     }
