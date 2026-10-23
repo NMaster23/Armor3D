@@ -410,6 +410,81 @@ impl Viewport {
         }
         created
     }
+    pub fn revolve_selected_around(
+        &mut self,
+        degrees: f32,
+        axis_start: Vector3<f32>,
+        axis_end: Vector3<f32>,
+    ) -> usize {
+        let axis_delta = axis_end - axis_start;
+        let axis_length = axis_delta.magnitude();
+        if !degrees.is_finite()
+            || degrees == 0.0
+            || degrees.abs() > 360.0
+            || !axis_length.is_finite()
+            || axis_length <= 0.0001
+        {
+            return 0;
+        }
+        let axis = axis_delta / axis_length;
+        let sources: Vec<Polyline>  = self
+            .entities
+            .iter()
+            .filter(|entity| entity.selected && Self::is_closed_shape(&entity.vertices))
+            .cloned()
+            .collect();
+        if source.is_empty() {
+            return 0;
+        }
+        self.save_undo_state();
+        let angle_steps = ((degrees.abs() / 5.0).ceil() as usize).clamp(12, 144);
+        let profile_angle = degrees.to_radians();
+        let mut created = 0;
+        for source in sources {
+            let profile_count = source.vertices.len() - 1;
+            if profile_count < 3 {
+                continue;
+            }
+            let profile_rows = profile_count + 1;
+            let angular_columns = angle_steps + 1;
+            let mut control_points = Vec::with_capacity(profile_rows);
+            for row in 0..profile_rows {
+                let point = source.vertices[row % profile_count];
+                let relative = point - axis_start;
+                let mut angular_row = Vec::with_capacity(angular_columns);
+                for column in 0..angular_columns {
+                    let angle = profile_angle * (column as f32 / angle_steps as f32);
+                    let (sin_angle, cos_angle) = angle.sin_cos();
+                    let rotated = relative * cos_angle
+                        + axis.cross(relative) * sin_angle
+                        + axis * (axis.dot(relative) * (1.0 - cos_angle));
+                    angular_row.push(NurbsControlPoint {
+                        point: axis_start + rotated,
+                        weight: 1.0,
+                    });
+                }
+                control_points.push(angular_row);
+            }
+            let surface = NurbsSurface {
+                degree_u: 1,
+                degree_v: 1,
+                knots_u: NurbsCurve::clamped_knot_vector(profile_rows, 1),
+                knots_v: NurbsCurve::clamped_knot_vector(angular_columns, 1),
+                control_points
+            };
+            let id = self.next_entity;
+            self.next_entity += 1;
+            self.nurbs_surfaces.push(NurbsSurfaceEntity {
+                id, surface, color: source.color,
+                selected: false, u_subdivisions: (profile_rows * 4).clamp(12, 128), v_subdivisions: angle_steps
+            });
+            created += 1;
+        }
+        if created > 0 {
+            sefl.rebuild_vertices();
+        }
+        created
+    }
     pub fn set_copy_base(&mut self, x: f32, y: f32) -> bool {
         let screen = PhysicalPosition::new(x as f64, y as f64);
         let Some(raw_point) = self.fetch_point(screen) else {
