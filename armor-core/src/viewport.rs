@@ -179,6 +179,7 @@ pub struct Viewport {
     pub saved_perspective_view: Option<(cgmath::Point3<f32>, cgmath::Point3<f32>,Vector3<f32>,)>,
     pub camera_controller: CameraController,
     pub width: u32,
+    pub front_view: bool,
     pub height: u32,
     pub redraw: bool,
     pub grab_mode: bool,
@@ -731,6 +732,7 @@ impl Viewport {
             int_snap_enabled: false,
             construction_snap_enabled: false,
             saved_perspective_view: None,
+            front_view: false,
             grid_snap_enabled: false,
             grid_spacing: 0.1,
             ortho_enabled: false,
@@ -785,29 +787,47 @@ impl Viewport {
             self.saved_perspective_view = Some((
                 self.camera.eye,
                 self.camera.target,
-                self.camera.up,
+                self.camera.up
             ));
         }
-        let distance = (self.camera.eye - self.camera.target)
-            .magnitude()
-            .max(2.0);
+        self.front_view = false;
+        let distance = (self.camera.eye - self.camera.target).magnitude().max(2.0);
         self.camera.eye = cgmath::Point3::new(
             self.camera.target.x,
             self.camera.target.y + distance,
-            self.camera.target.z,
+            self.camera.target.z
         );
         self.camera.up = -Vector3::unit_z();
         self.camera.orthographic = true;
         self.rebuild_vertices();
     }
+    pub fn set_front_view(&mut self) {
+        if !self.camera.orthographic {
+            self.saved_perspective_view = Some((
+                self.camera.eye,
+                self.camera.target, self.camera.up
+            ));
+        }
+        self.front_view = true;
+        let distance = (self.camera.eye - self.camera.target).magnitude().max(2.0);
+        self.camera.eye = cgmath::Point3::new(
+            self.camera.target.x,
+            self.camera.target.y,
+            self.camera.target.z + distance
+        );
+        self.camera.up = Vector3::unit_y();
+        self.camera.orthographic = true;
+        self.rebuild_vertices();
+    }
     pub fn set_perspective_view(&mut self) {
+        self.front_view = false;
         if let Some((eye, target, up)) = self.saved_perspective_view.take() {
             self.camera.eye = eye;
             self.camera.target = target;
             self.camera.up = up;
         } else {
             self.camera.eye = self.camera.target + Vector3::new(0.0, 2.0, 4.0);
-            self.camera.up = Vector3::unit_y();
+            self.camera.up = Vector3::unit_y()
         }
         self.camera.orthographic = false;
         self.rebuild_vertices();
@@ -1903,7 +1923,7 @@ impl Viewport {
                     entity.vertices.len()
                 };
                 for point in entity.vertices.iter().take(marker_count) {
-                    new_vertices.extend(Self::tessellate_vertex_circle(
+                    new_vertices.extend(self.tessellate_vertex_circle(
                         *point,
                         marker_radius,
                         marker_color,
@@ -1919,7 +1939,7 @@ impl Viewport {
                 self.polyline_color,
             ));
             for point in rectangle.iter().take(4) {
-                new_vertices.extend(Self::tessellate_vertex_circle(
+                new_vertices.extend(self.tessellate_vertex_circle(
                     *point,
                     marker_radius,
                     marker_color,
@@ -1946,7 +1966,7 @@ impl Viewport {
             }
 
             for point in [center, target] {
-                new_vertices.extend(Self::tessellate_vertex_circle(
+                new_vertices.extend(self.tessellate_vertex_circle(
                     point,
                     marker_radius,
                     marker_color,
@@ -2030,7 +2050,7 @@ impl Viewport {
             ));
         }
         for point in &preview_controls {
-            new_vertices.extend(Self::tessellate_vertex_circle(
+            new_vertices.extend(self.tessellate_vertex_circle(
                 *point,
                 marker_radius,
                 marker_color,
@@ -2066,7 +2086,7 @@ impl Viewport {
                 }
                 for row in &entity.surface.control_points {
                     for cp in row {
-                        new_vertices.extend(Self::tessellate_vertex_circle(cp.point, marker_radius, pt_color));
+                        new_vertices.extend(self.tessellate_vertex_circle(cp.point, marker_radius, pt_color));
                     }
                 }
             }
@@ -2079,7 +2099,7 @@ impl Viewport {
                 let cp_points: Vec<Vector3<f32>> = entity.curve.control_points.iter().map(|cp| cp.point).collect();
                 new_vertices.extend(self.tessellate_polyline(&cp_points, 1.0, [0.8, 0.8, 0.8, 0.5]));
                 for pt in &cp_points {
-                    new_vertices.extend(Self::tessellate_vertex_circle(*pt, marker_radius, [1.0, 0.5, 0.0, 1.0]));
+                    new_vertices.extend(self.tessellate_vertex_circle(*pt, marker_radius, [1.0, 0.5, 0.0, 1.0]));
                 }
             }
         }
@@ -2229,14 +2249,26 @@ impl Viewport {
         }
 
         let half_width = self.world_width_for_pixels(thickness) * 0.5;
-        let lift = Vector3::new(0.0, POLYLINE_HEIGHT, 0.0);
+        let lift = if self.front_view {
+            Vector3::new(0.0, 0.0, POLYLINE_HEIGHT)
+        } else {
+            Vector3::new(0.0, POLYLINE_HEIGHT, 0.0)
+        };
         let normal_for = |segment: Vector3<f32>| {
-            let flat = Vector3::new(segment.x, 0.0, segment.z);
+            let flat = if self.front_view {
+                Vector3::new(segment.x, segment.y, 0.0)
+            } else {
+                Vector3::new(segment.x, 0.0, segment.z)
+            };
             if flat.magnitude2() <= f32::EPSILON {
                 None
             } else {
                 let direction = flat.normalize();
-                Some(Vector3::new(-direction.z, 0.0, direction.x))
+                if self.front_view {
+                    Some(Vector3::new(-direction.y, direction.x, 0.0))
+                } else {
+                    Some(Vector3::new(-direction.z, 0.0, direction.x))
+                }
             }
         };
 
@@ -2351,26 +2383,51 @@ impl Viewport {
             },
         ]
     }
-    fn tessellate_vertex_circle(point: Vector3<f32>, radius: f32, color: [f32; 4]) -> Vec<Vertex> {
+    fn tessellate_vertex_circle(
+        &self,
+        point: Vector3<f32>,
+        radius: f32,
+        color: [f32; 4],
+    ) -> Vec<Vertex> {
         const SEGMENTS: usize = 16;
 
         let mut vertices = Vec::with_capacity(SEGMENTS * 3);
-        let center = Vector3::new(point.x, point.y + POLYLINE_HEIGHT * 2.0, point.z);
+        let center = if self.front_view {
+            Vector3::new(point.x, point.y, point.z + POLYLINE_HEIGHT * 2.0)
+        } else {
+            Vector3::new(point.x, point.y + POLYLINE_HEIGHT * 2.0, point.z)
+        };
 
         for index in 0..SEGMENTS {
             let angle1 = index as f32 / SEGMENTS as f32 * std::f32::consts::TAU;
             let angle2 = (index + 1) as f32 / SEGMENTS as f32 * std::f32::consts::TAU;
 
-            let point1 = Vector3::new(
-                center.x + angle1.cos() * radius,
-                center.y,
-                center.z + angle1.sin() * radius,
-            );
-            let point2 = Vector3::new(
-                center.x + angle2.cos() * radius,
-                center.y,
-                center.z + angle2.sin() * radius,
-            );
+            let point1 = if self.front_view {
+                Vector3::new(
+                    center.x + angle1.cos() * radius,
+                    center.y + angle1.sin() * radius,
+                    center.z,
+                )
+            } else {
+                Vector3::new(
+                    center.x + angle1.cos() * radius,
+                    center.y,
+                    center.z + angle1.sin() * radius,
+                )
+            };
+            let point2 = if self.front_view {
+                Vector3::new(
+                    center.x + angle2.cos() * radius,
+                    center.y + angle2.sin() * radius,
+                    center.z,
+                )
+            } else {
+                Vector3::new(
+                    center.x + angle2.cos() * radius,
+                    center.y,
+                    center.z + angle2.sin() * radius,
+                )
+            };
 
             for position in [center, point1, point2] {
                 vertices.push(Vertex {
@@ -2608,33 +2665,57 @@ impl Viewport {
             return None;
         }
         let anchor = *self.active_polyline.last()?;
-        let difference = point - anchor;
-        if difference.x.abs() >= difference.z.abs() {
-            Some(Vector3::new(point.x, point.y, anchor.z))
+        if self.front_view {
+            let difference = point-anchor;
+            if difference.x.abs() >= difference.y.abs() {
+                Some(Vector3::new(point.x, anchor.y, anchor.z))
+            } else {
+                Some(Vector3::new(anchor.x, point.y, anchor.z))
+            }
         } else {
-            Some(Vector3::new(anchor.x, point.y, point.z))
+            let difference = point - anchor;
+            if difference.x.abs() >= difference.z.abs() {
+                Some(Vector3::new(point.x, anchor.y, anchor.z))
+            } else {
+                Some(Vector3::new(anchor.x, anchor.y, point.z))
+            }
         }
     }
     fn grid_snap_point(&self, point: Vector3<f32>) -> Vector3<f32> {
         if !self.grid_snap_enabled {
             return point;
         }
-        Vector3::new(
-            (point.x / self.grid_spacing).round() * self.grid_spacing,
-            0.0,
-            (point.z / self.grid_spacing).round() * self.grid_spacing,
-        )
+        if self.front_view {
+            Vector3::new(
+                (point.x / self.grid_spacing).round() * self.grid_spacing,
+                (point.y / self.grid_spacing).round() * self.grid_spacing,
+                0.0
+            )
+        } else {
+            Vector3::new(
+                (point.x / self.grid_spacing).round() * self.grid_spacing,
+                0.0,
+                (point.z / self.grid_spacing).round() * self.grid_spacing
+            )
+        }
     }
 
     fn grid_snap_offset(&self, offset: Vector3<f32>) -> Vector3<f32> {
         if !self.grid_snap_enabled {
             return offset;
         }
-        Vector3::new(
-            (offset.x / self.grid_spacing).round() * self.grid_spacing,
-            offset.y,
-            (offset.z / self.grid_spacing).round() * self.grid_spacing,
-        )
+        if self.front_view {
+            Vector3::new(
+                (offset.x / self.grid_spacing).round() * self.grid_spacing,
+                (offset.y / self.grid_spacing).round() * self.grid_spacing,
+                offset.z
+            )
+        } else {
+            Vector3::new(
+                (offset.x / self.grid_spacing).round() * self.grid_spacing, offset.y,
+                (offset.z / self.grid_spacing).round() * self.grid_spacing,
+            )
+        }
     }
 
     pub fn snap_cursor_position(&mut self) -> Option<(f32, f32)> {
@@ -2719,6 +2800,7 @@ impl Viewport {
             first_start.z + rz * t,
         ))
     }
+
     pub fn get_snap_pos(&self, point: Vector3<f32>) -> (Vector3<f32>, bool, Option<&'static str>) {
         if self.end_snap_enabled || self.construction_snap_enabled {
             let radius = self.world_width_for_pixels(END_SNAP_RADIUS_PIXELS);
@@ -2894,9 +2976,14 @@ impl Viewport {
         let ray_origin = near_world.truncate() / near_world.w;
         let far_point = far_world.truncate() / far_world.w;
         let ray_dir = (far_point - ray_origin).normalize();
-        if ray_dir.y.abs() > 1e-6 {
+        if self.front_view {
+            if ray_dir.z.abs() > 1e-6 {
+                let t = -ray_origin.z / ray_dir.z;
+                return Some(ray_origin + ray_dir * t);
+            }
+        } else if ray_dir.y.abs() > 1e-6 {
             let t = -ray_origin.y / ray_dir.y;
-            return Some(ray_origin + ray_dir * t);
+            return Some(ray_origin+ ray_dir * t);
         }
         Some(Vector3::zero())
     }

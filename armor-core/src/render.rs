@@ -865,16 +865,19 @@ impl State {
             });
             render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
             self.reference_image.draw(&mut render_pass);
-            if !self.viewport.point_vertices.is_empty() {
-                render_pass.set_pipeline(&self.render_pipeline);
-                render_pass.set_vertex_buffer(0, self.point_buffer.slice(..));
-                render_pass.draw(0..self.viewport.point_vertices.len() as u32, 0..1);
-            }
+            // Draw the grid before scene geometry. In Front view the grid's XY
+            // plane is coplanar with the drawing plane, so drawing it afterward
+            // can blend over the active polyline preview.
             render_pass.set_pipeline(&self.graph_pipeline);
             render_pass.set_vertex_buffer(0, self.graph_vertex_buffer.slice(..));
             render_pass
                 .set_index_buffer(self.graph_index_buffer.slice(..), wgpu::IndexFormat::Uint16);
             render_pass.draw_indexed(0..self.num_indices, 0, 0..1);
+            if !self.viewport.point_vertices.is_empty() {
+                render_pass.set_pipeline(&self.render_pipeline);
+                render_pass.set_vertex_buffer(0, self.point_buffer.slice(..));
+                render_pass.draw(0..self.viewport.point_vertices.len() as u32, 0..1);
+            }
             self.text_renderer
                 .render(&mut self.text_atlas, &self.text_viewport, &mut render_pass)
                 .map_err(|error| anyhow::anyhow!("Rendering text failed: {error} "))?;
@@ -982,6 +985,7 @@ impl State {
         });
         depth_stencil
     }
+
 }
 
 pub struct Renderer {

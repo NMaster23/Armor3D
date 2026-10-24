@@ -957,7 +957,7 @@ def viewport_key(event, pressed):
     if pressed and event.keysym == "Return" and activecommand =='polar_select':
         confirmpolarselection()
         return 'break'
-    if event.keysym in ("2", "K_2", 'bracketright'):
+    if event.keysym in ("2", "K_2"):
         return
     if pressed and event.keysym in ("Delete", "BackSpace"):
         if renderer is not None and activecommand is None:
@@ -1905,14 +1905,6 @@ command._entry.bind("<KeyRelease>", updatecommandsuggestion, add='+')
 command._entry.bind("<KeyPress-BackSpace>", commandbackspace, add="+")
 command._entry.bind("<KeyPress>", handlenewconfirmation, add='+')
 command._entry.bind("<KeyRelease>", updatepolylinedistance, add='+')
-def toggle2dshort(event=None):
-    if renderer is not None:
-        renderer.key_event("2", True)
-        renderer.key_event("2", False)
-    viewport.focus_set()
-    return "break"
-command.bind("<KeyPress-bracketright>", toggle2dshort)
-app.bind("<KeyPress-bracketright>", toggle2dshort)
 def insertextrudecharacter(char):
     if getattr(command, "_placeholder_text_active", False):
         command._deactivate_placeholder()
@@ -2985,7 +2977,7 @@ gridsetbutton.bind("<Button-1>", applygridspacing)
 gridspacingentry.bind("<Return>", applygridspacing)
 gridsnapon = bool(uisettings.get("grid_snap", False))
 def showgridsnap(hovering=False):
-    color = "#666666" if hovering else "#FFFFFF" if gridsnapon else "#EAEAEA"
+    color = "#555555" if hovering else "#777777" if gridsnapon else "#EAEAEA"
     canvas.itemconfig(gridsnaptext, fill=color)
 def gridsnapmotion(event):
     hovering = 8 <= event.x <= 68 and 297 <= event.y <= 333
@@ -2995,11 +2987,12 @@ def gridsnapclick(event):
     if 8 <= event.x <= 68 and 297 <= event.y <= 333:
         gridsnapon = not gridsnapon
         syncgridsnaprenderer()
-        showgridsnap(True)
+        showgridsnap()
         saveuisettings()
 canvas.bind("<Motion>", gridsnapmotion, add="+")
 canvas.bind("<Button-1>", gridsnapclick, add="+")
 canvas.bind("<Leave>", lambda event: showgridsnap(False), add="+")
+showgridsnap()
 
 orthotext = canvas.create_text(50, 355, text='Ortho', font=("Iceland", 13), fill='#EAEAEA', anchor='center')
 orthoon = bool(uisettings.get("ortho", False))
@@ -3022,7 +3015,7 @@ canvas.bind("<Leave>", lambda event: showortho(False), add="+")
 osnaptext = canvas.create_text(50, 395, text='Osnap', font=("Iceland", 13), fill='#EAEAEA', anchor='center')
 onsapon = bool(uisettings.get("osnap", False))
 def showosnap(hovering=False):
-    color = "#666666" if hovering else "#FFFFFF" if onsapon else "#EAEAEA"
+    color = "#555555" if hovering else "#777777" if onsapon else "#EAEAEA"
     canvas.itemconfig(osnaptext, fill=color)
 def onsapmotion(event):
     hovering = 8 <= event.x <= 92 and 377 <= event.y <= 413
@@ -3031,12 +3024,13 @@ def osnapclick(event):
     global onsapon
     if 8 <= event.x <= 92 and 377 <= event.y <= 413:
         onsapon = not onsapon
-        showosnap(True)
+        showosnap()
         refreshosnap()
         saveuisettings()
 canvas.bind("<Motion>", onsapmotion, add="+")
 canvas.bind("<Button-1>", osnapclick, add="+")
 canvas.bind("<Leave>", lambda event: showosnap(False), add="+")
+showosnap()
 
 canvas.create_line(0, 292, 100, 292, fill="#383838", width=2)
 canvas.create_line(0, 422, 100, 422, fill="#383838", width=2)
@@ -3257,9 +3251,9 @@ viewbutton_text = viewbutton.create_text(
     fill="#EAEAEA", font=("Iceland", 12))
 viewbutton.place(x=101, y=101)
 viewmenu = Canvas(
-    app, width=112, height=68, bg="#111111", highlightthickness=1, highlightbackground="#555555")
+    app, width=112, height=99, bg="#111111", highlightthickness=1, highlightbackground="#555555")
 view_rows = []
-for index, name in enumerate(("Perspective", "Top")):
+for index, name in enumerate(("Perspective", "Top", "Front")):
     y = 3+ index * 31
     box = viewmenu.create_rectangle(
         3, y, 108, y+29, fill='', outline='')
@@ -3282,11 +3276,11 @@ def open_view_menu():
     slidemenu(importmenu, 48, 72, False)
     slidemenu(analyze_menu, 100, 72, False)
     slidemenu(toolsmenu, 150, 136, False)
-    slidemenu(viewmenu, 101, 68, True, top=129, start_y=33)
+    slidemenu(viewmenu, 101, 99, True, top=129, start_y=33)
 def closeviewmenu():
     global view_close_job
     view_close_job = None
-    slidemenu(viewmenu, 101, 68, False)
+    slidemenu(viewmenu, 101, 99, False)
 def viewbuttonenter(event=None):
     global view_hover_job
     if view_hover_job is not None:
@@ -3306,12 +3300,17 @@ def view_button_click(event=None):
 def choose_view(event):
     global current_view
     index = (event.y - 3) // 31
-    if index not in (0, 1):
+    views = ('perspective', 'top', 'front')
+    if not 0 <= index < len(views):
         return
-    view = 'perspective' if index == 0 else 'top'
+    view = views[index]
     if renderer is not None and renderer.set_view(view):
         current_view = view
-        label = 'Perspective' if view == 'perspective' else "Top"
+        label = {
+            "perspective": "Perspective",
+            "top": "Top",
+            'front': "Front"
+        } [view]
         viewbutton.itemconfig(viewbutton_text, text=f"{label}  v")
         renderer.render()
     closeviewmenu()
@@ -3319,7 +3318,7 @@ def pointeronviewmenu(event):
     x = event.x_root - app.winfo_rootx()
     y = event.y_root - app.winfo_rooty()
     onbutton = 101 <= x <= 213 and 101 <= y <= 129
-    onmenu = 101 <= x <= 213 and 129 <= y <= 197
+    onmenu = 101 <= x <= 213 and 129 <= y <= 228
     return onbutton or onmenu
 def viewpointermotion(event):
     global view_close_job
@@ -3566,8 +3565,6 @@ def executeaiactions(actions):
     results = []
     existing_object_ids = {object_id for object_id, *_ in renderer.scene_data()}
     newly_created_ids = []
-    # AI-generated models may need more than eight faces/actions for a full
-    # object. Keep a generous cap so a multi-part creation is not truncated.
     for action in actions[:64]:
         if not isinstance(action, dict):
             continue
@@ -3660,9 +3657,7 @@ def executeaiactions(actions):
                     results.append("There is no newly drawn profile to revolve")
                     continue
                 target_id = newly_created_ids[-1]
-
             degrees = action.get("degrees")
-            # AI profiles use Y as vertical, so the default revolve axis is Y.
             axis = action.get("axis", "y")
             if (
                 type(target_id) is not int
@@ -3670,11 +3665,9 @@ def executeaiactions(actions):
                 or not math.isfinite(degrees)
                 or degrees == 0
                 or abs(degrees) > 360
-                or axis not in ("x", "y", "z")
-            ):
+                or axis not in ("x", "y", "z")):
                 results.append("Ignored an invalid revolve request")
                 continue
-
             created = renderer.revolve_object(target_id, float(degrees), axis)
             results.append(
                 f"Revolved profile {target_id} around {axis.upper()} "
