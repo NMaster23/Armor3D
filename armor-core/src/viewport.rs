@@ -727,6 +727,7 @@ impl Viewport {
             mid_snap_enabled: false,
             int_snap_enabled: false,
             construction_snap_enabled: false,
+            saved_perspective_view: None,
             grid_snap_enabled: false,
             grid_spacing: 0.1,
             ortho_enabled: false,
@@ -774,6 +775,43 @@ impl Viewport {
             entity.height += step;
             self.rebuild_vertices();
         }
+    }
+    pub saved_perspective_view: Option<(
+        cgmath::Point3<f32>,
+        cgmath::Point3<f32>,
+        Vector3<f32>
+    )>
+    pub fn set_top_view(&mut self) {
+        if !self.camera.orthographic {
+            self.saved_perspective_view = Some((
+                self.camera.eye,
+                self.camera.target,
+                self.camera.up,
+            ));
+        }
+        let distance = (self.camera.eye - self.camera.target)
+            .magnitude()
+            .max(2.0);
+        self.camera.eye = cgmath::Point3::new(
+            self.camera.target.x,
+            self.camera.target.y + distance,
+            self.camera.target.z,
+        );
+        self.camera.up = -Vector3::unit_z();
+        self.camera.orthographic = true;
+        self.rebuild_vertices();
+    }
+    pub fn set_perspective_view(&mut self) {
+        if let Some((eye, target, up)) = self.saved_perspective_view.take() [
+            self.camera.eye = eye;
+            self.camera.target = target;
+            self.camera.up = up;
+        ] else {
+            self.camera.eye = self.camera.target + Vector3::new(0.0, 2.0, 4.0);
+            self.camera.up = Vector3::unit_y();
+        }
+        self.camera_orthographic =false;
+        self.rebuild_vertices();
     }
     pub fn draw_text(
         &mut self,

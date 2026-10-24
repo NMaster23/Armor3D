@@ -3214,14 +3214,14 @@ def saveuisettings():
 
 menujobs = {}
 menusliding = set()
-def slidemenu(menu, x, height, opening):
+def slidemenu(menu, x, height, opening, top=20):
     oldjob = menujobs.pop(menu, None)
     if oldjob is not None:
         app.after_cancel(oldjob)
     if not opening and not menu.winfo_manager():
         return
     start = menu.winfo_y() if menu.winfo_manager() else -height
-    end = 20 if opening else -height
+    end = top if opening else -height
     menusliding.add(menu)
     def step(number):
         progress = 1 - (1-number /12) ** 3

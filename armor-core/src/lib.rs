@@ -146,7 +146,15 @@ impl ViewportRenderer {
         self.state.get_all_fonts()
     }
     fn undo(&mut self) -> bool {
-        self.state.undo_scene()
+        self.state.undo_scene()#[pymethods]
+    }
+    fn set_view(&mut self, view: &str) -> bool {
+        match view {
+            "top" => self.state.viewport.set_top_view(),
+            "perspective" => self.state.viewport.set_perspective_view(),
+            _=> return false,
+        }
+        true
     }
     fn import_reference_image(&mut self, path: &str, opacity: f32) -> PyResult<()> {
         self.state
