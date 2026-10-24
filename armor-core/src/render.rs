@@ -1,3 +1,4 @@
+use crate::gumball::Gumball;
 use crate::camera::{Camera, CameraUniform};
 use crate::reference_image::ReferenceImageLayer;
 use crate::viewport::{PolyLine, TextEntity, Viewport};

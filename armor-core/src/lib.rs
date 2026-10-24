@@ -3,6 +3,7 @@ mod reference_image;
 mod render;
 mod viewport;
 pub mod nurbs;
+pub mod gumball;
 
 use cgmath::{Quaternion, Vector3};
 use glyphon::Family;

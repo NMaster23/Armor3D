@@ -1,4 +1,5 @@
 use crate::Vertex;
+use crate::gumball::Gumball;
 use crate::camera::{Camera, CameraController};
 use crate::nurbs::{NurbsControlPoint, NurbsCurve, NurbsSurface};
 use anyhow::Ok;
@@ -193,6 +194,7 @@ pub struct Viewport {
     pub text_entities: Vec<TextEntity>,
     pub nurbs_curves: Vec<NurbsCurveEntity>,
     pub nurbs_surfaces: Vec<NurbsSurfaceEntity>,
+    pub gumball: Option<Gumball>,
 }
 
 impl Viewport {
@@ -761,6 +763,7 @@ impl Viewport {
             text_entities: Vec::new(),
             nurbs_curves: Vec::new(),
             nurbs_surfaces: Vec::new(),
+            gumball: None,
         }
     }
 }
@@ -1407,7 +1410,35 @@ impl Viewport {
                     .find(|surface| surface.selected)
                     .map(|surface| surface.id)
             });
-
+        if let Some(s) = self.nurbs_surfaces.iter().find(|s| s.selected) {
+            let mut sum = Vector3::new(0.0, 0.0, 0.0);
+            let mut count = 0.0;
+            for row in &s.surface.control_points {
+                for cp in row {
+                    sum += cp.point;
+                    count += 1.0;
+                }
+            }
+            let centroid = if count > 0.0 {
+                sum / count
+            } else {
+                Vector3::new(0.0, 0.0, 0.0)
+            };
+            self.gumball = Some(Gumball::new(Point3::new(centroid.x, centroid.y, centroid.z), 2.0));
+        } else if let Some(e) = self.entities.iter().find(|e| e.selected) {
+            if !e.vertices.is_empty() {
+                let mut sum = Vector3::new(0.0, 0.0, 0.0);
+                for v in &e.vertices {
+                    sum += *v;
+                }
+                let centroid = sum / e.vertices.len() as f32;
+                self.gumball = Some(Gumball::new(Point3::new(centroid.x, centroid.y, centroid.z), 2.0))
+            } else {
+                self.gumball = None;
+            }
+        } else {
+            self.gumball = None;
+        }
         self.rebuild_vertices();
         closest
     }
@@ -2051,6 +2082,9 @@ impl Viewport {
                     new_vertices.extend(Self::tessellate_vertex_circle(*pt, marker_radius, [1.0, 0.5, 0.0, 1.0]));
                 }
             }
+        }
+        if let Some(g) = &self.gumball {
+            new_vertices.extend(g.build_vertices());
         }
         self.point_vertices = new_vertices;
         self.redraw = true;

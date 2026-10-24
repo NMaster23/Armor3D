@@ -171,6 +171,10 @@ impl Gumball {
         closest_hit.map(|(_, handle)| handle)
     }
     pub fn compute_drag_delta(&self, handle: GumballHandle, ray: &Ray) -> Option<Vector3<f32>> {
-        todo!()
+        let normal = Vector3::new(0.0, 0.0, 0.0);
+        let translate_x = self.origin + Vector3::new(0.0, 0.0, 1.0);
+        let translate_z = self.origin + Vector3::new(0.0, 1.0, 0.0);
+        let t = (self.origin - ray.origin) / ray.direction;
+        let p = ray.origin + (t * ray.direction);
     }
 }
