@@ -128,6 +128,9 @@ This week we could not implement the theme but next week we will try to include 
 - Fix revolve logic
 - Rest of AI usage that has not been mentioned here is most likely in the commits
 
+## AI-Updates.md
+- Any mention of this file is just an update log of all github commits. It is added to the gitignore. It just auto pulls the latest updates and adds an ai summary of it in the file. This is only on the main machine working on the rust backend. This is on no other machine.
+
 ## Credits
 - Nishanth Prabhu - UI, design, and app integration
 - Nihaal Mysore Bharath - Rust viewport and grid work
