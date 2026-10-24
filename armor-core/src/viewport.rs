@@ -2,7 +2,7 @@ use crate::Vertex;
 use crate::camera::{Camera, CameraController};
 use crate::nurbs::{NurbsControlPoint, NurbsCurve, NurbsSurface};
 use anyhow::Ok;
-use cgmath::{InnerSpace, Quaternion, Rotation, SquareMatrix, Vector3, Vector4, Zero};
+use cgmath::{InnerSpace, Point3, Quaternion, Rotation, SquareMatrix, Vector2, Vector3, Vector4, Zero};
 use glyphon::fontdb::Query;
 use lyon::lyon_tessellation::{
     BuffersBuilder, FillOptions, FillRule, FillTessellator, FillVertex, VertexBuffers,
@@ -873,28 +873,32 @@ impl Viewport {
         &self,
         surface: &NurbsSurfaceEntity,
         mouse: cgmath::Vector2<f32>,
-    ) -> bool {
+    ) -> Option<f32> {
+        let ray = self.camera.screen_to_ray(
+            mouse,
+            Vector2::new(self.width as f32, self.height as f32)
+        )?;
         let vertices = surface.surface.sample_mesh(
             surface.u_subdivisions,
             surface.v_subdivisions,
             surface.color,
         );
-        vertices.chunks_exact(3).any(|triangle| {
-            let screen: Option<Vec<cgmath::Vector2<f32>>> = triangle
-                .iter()
-                .map(|vertex| {
-                    self.world_to_screen(Vector3::new(
-                        vertex.position[0],
-                        vertex.position[1],
-                        vertex.position[2],
-                    ))
-                })
-                .collect();
-            let Some(screen) = screen else {
-                return false;
-            };
-            Self::point_in_triangle(mouse, screen[0], screen[1], screen[2])
-        })
+        let mut min_t: Option<f32> = None;
+        for triangle in vertices.chunks_exact(3) {
+            let p0 = Point3::new(triangle[0].position[0], triangle[0].position[1], triangle[0].position[2]);
+            let p1 = Point3::new(triangle[1].position[0], triangle[1].position[1], triangle[1].position[2]);
+            let p2 = Point3::new(triangle[2].position[0], triangle[2].position[1], triangle[2].position[2]);
+            if let Some(t) = ray.intersect_triangle(p0, p1, p2) {
+                if let Some(cur) = min_t {
+                    if t < cur {
+                        min_t = Some(t);
+                    }
+                } else {
+                    min_t = Some(t);
+                }
+            }
+        }
+        min_t
     }
     pub fn render_text(
         entity: &TextEntity,
@@ -1363,13 +1367,16 @@ impl Viewport {
                 }
             }
         }
-        for surface in &self.nurbs_surfaces {
-            if self.surface_hit_test(surface, mouse_px) {
-                closest = Some(surface.id);
-                min_dist_sq = 0.0;
+        let mut closest_3d_dist = f32::MAX;
+        for s in &self.nurbs_surfaces {
+            if let Some(t) = self.surface_hit_test(s, mouse_px) {
+                if t < closest_3d_dist {
+                    closest_3d_dist = t;
+                    closest = Some(s.id);
+                    min_dist_sq = 0.0;
+                }
             }
         }
-
         if additive {
             if let Some(id) = closest {
                 if let Some(entity) = self.entities.iter_mut().find(|entity| entity.id == id) {

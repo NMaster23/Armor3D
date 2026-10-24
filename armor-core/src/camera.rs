@@ -23,21 +23,24 @@ impl Ray {
         let e1 = v1 - v0;
         let e2 = v2 - v0;
         let cross_raydir = self.direction.cross(e2);
-        let det = e1.dot(e2);
+        let det = e1.dot(cross_raydir);
+        if det.abs() < 1e-7 {
+            return None;
+        }
         let inv_det = 1.0/det;
         let vector = self.origin - v0;
-        let u = vector.dot(e2) * inv_det;
+        let u = vector.dot(cross_raydir) * inv_det;
+        if u < 0.0 || u > 1.0 {
+            return None;
+        }
         let q = vector.cross(e1);
         let v = self.direction.dot(q) * inv_det;
+        if v < 0.0 || (u + v) > 1.0 {
+            return None;
+        }
         let t = e2.dot(q) * inv_det;
         if t > 1e-5 {
             Some(t)
-        } else if v < 0.0 || (u + v) > 1.0 {
-            None
-        } else if u < 0.0 || u > 1.0 {
-            None
-        } else if det.abs() < 1e-7 {
-            None
         } else {
             None
         }
