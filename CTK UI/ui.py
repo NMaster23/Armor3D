@@ -15,7 +15,10 @@ from pathlib import Path
 import os
 from armor_core import ViewportRenderer
 ctk.set_appearance_mode('dark')
-
+CONTROL_HOVER_BG = "#080808"
+CONTROL_ACTIVE_BG = "#030303"
+CONTROL_HOVER_BORDER = "#777777"
+CONTROL_ACTIVE_BORDER = "#FFFFFF"
 HOVER_BG = "#262626"
 HOVER_BORDER = "#D8D8D8"
 HOVER_TEXT = "#FFFFFF"
@@ -591,7 +594,6 @@ def viewport_mouse_move(event):
             hidesnapindicator()
     else:
         hideallsnap()
-    
 selection_lines = [Frame(viewport, bg=HOVER_BORDER, bd=0) for _ in range(4)]
 selection_fill = Toplevel(app)
 selection_fill.withdraw()
@@ -983,7 +985,8 @@ viewport.bind("<KeyRelease>", lambda event: viewport_key(event, False))
 viewport.bind("<FocusOut>", viewport_focus_out)
 viewport.bind("<Leave>", hideallsnap)
 
-shadow_lines= [canvas.create_line(0, 0, 0, 0, fill=color, width=2,  smooth=True, splinesteps=20, state="hidden") for color in ("#283328", "#1D281F", "#152019")]
+shadow_lines = [canvas.create_line(0, 0, 0, 0, fill=color, width=2, smooth=True, splinesteps=20, state="hidden",)
+    for color in ("#282828", "#1D1D1D", "#151515")]
 current_offset = 16
 panel_ratio = max(0.25, min(0.8, float(uisettings.get("panel_ratio", 0.5))))
 animating=False
@@ -2181,7 +2184,7 @@ def openpngdialog():
     refresh()
         
 filez = canvas.create_text(24, 8, text="File", font=("Lexend", 8), fill='#EAEAEA')
-canvas.tag_bind(filez, "<Enter>", lambda event: canvas.itemconfig(filez, fill="#FFFFFF"))
+canvas.tag_bind(filez, "<Enter>", lambda event: canvas.itemconfig(filez, fill="#777777"))
 canvas.tag_bind(filez, "<Leave>", lambda event: canvas.itemconfig(filez, fill="#EAEAEA"))
 filemenu = Canvas(app, width=160, height=104, bg="#111111",  highlightthickness=1, highlightbackground="#555555")
 menu_rows = []
@@ -2194,7 +2197,7 @@ def menu_motion(event):
     hovered = (event.y - 4) // 32
     for i, (box, label) in enumerate(menu_rows):
         active = i == hovered and 4 <= event.x <= 155
-        filemenu.itemconfig(box, fill=HOVER_BG if active else "")
+        filemenu.itemconfig(box, fill="#080808" if active else "")
         filemenu.itemconfig(label, fill=HOVER_TEXT if active else "#EAEAEA")
 filemenu.bind("<Motion>", menu_motion)
 filepage = "main"
@@ -2305,7 +2308,7 @@ def importmenumotion(event):
     hovered = (event.y - 4) // 32
     for index, (box, label) in enumerate(importrows):
         active = index == hovered and 4 <= event.x <= 155
-        importmenu.itemconfig( box, fill=HOVER_BG if active else "" )
+        importmenu.itemconfig( box, fill="#080808" if active else "" )
         importmenu.itemconfig( label, fill=HOVER_TEXT if active else "#EAEAEA" )
 def importmenuclick(event):
     if not 4<= event.x <= 155:
@@ -2330,7 +2333,7 @@ importhoverjob = None
 importclosejob = None
 def importenter(event):
     global importhoverjob
-    canvas.itemconfig(importz, fill="#FFFFFF")
+    canvas.itemconfig(importz, fill="#777777")
     if importhoverjob is not None:
         app.after_cancel(importhoverjob)
     importhoverjob = app.after(500, openimportmenu)
@@ -2388,7 +2391,7 @@ def analyzemenumotion(event):
     hovered = (event.y - 4) // 32
     for i, (box, label) in enumerate(analyze_rows):
         active = i == hovered and 4 <= event.x <= 155
-        analyze_menu.itemconfig(box, fill=HOVER_BG if active else "")
+        analyze_menu.itemconfig(box, fill="#080808" if active else "")
         analyze_menu.itemconfig(label, fill=HOVER_TEXT if active else "#EAEAEA")
 analyze_menu.bind("<Motion>", analyzemenumotion)
 def analyzemenuclick(event):
@@ -2411,7 +2414,7 @@ def openanalyzemenu():
     slidemenu(analyze_menu, 100, 72, True)
 def analyze_enter(event):
     global analyzehoverjob
-    canvas.itemconfig(analyze, fill="#FFFFFF")
+    canvas.itemconfig(analyze, fill="#777777")
     if analyzehoverjob is not None:
         app.after_cancel(analyzehoverjob)
     analyzehoverjob = app.after(500, openanalyzemenu)
@@ -2467,7 +2470,7 @@ def toolsmotion(event):
     hovered =(event.y - 4)// 32
     for i, (box, label) in enumerate(toolsrows):
         active = i == hovered and 4 <= event.x <=155
-        toolsmenu.itemconfig(box, fill=HOVER_BG if active else "")
+        toolsmenu.itemconfig(box,fill="#080808" if active else "")
         toolsmenu.itemconfig(label, fill=HOVER_TEXT if active else "#EAEAEA")
 toolsmenu.bind("<Motion>", toolsmotion)
 def toolsmenuclick(event):
@@ -2534,8 +2537,11 @@ app.bind_all("<Motion>", toolspointermotion, add="+")
 app.bind_all("<Button-1>", toolsoutsideclick, add="+")
 
 AI  = canvas.create_text(226, 8, text='AI Creation', font=("Lexend", 8), fill='#EAEAEA')
-canvas.tag_bind(AI, "<Enter>", lambda event: canvas.itemconfig(AI, fill='#FFFFFF'))
-canvas.tag_bind(AI, "<Leave>", lambda event: canvas.itemconfig(AI, fill='#EAEAEA'))
+def ai_creation_hover(event):
+    hovering = 194 <= event.x <= 258 and 0 <= event.y <= 18
+    canvas.itemconfig(AI, fill="#777777" if hovering else "#EAEAEA")
+canvas.bind("<Motion>", ai_creation_hover, add="+")
+canvas.bind("<Leave>", lambda event: canvas.itemconfig(AI, fill="#EAEAEA"), add="+")
 
 
 sidebar = ctk.CTkFrame(app, width=520, corner_radius=16, fg_color="#111111", border_color="#555555", border_width=4)
@@ -2875,10 +2881,9 @@ toolbarbuttons = [(8, 103, 52, 147, polyline_square, polyline_icon,
 explode_normal, explode_hover), (8, 193, 52, 237, rectangle_sqaure, rectangle_icon, rectangle_normal, rectangle_hover), (53, 193, 97, 237, text_square, text_icon,text_normal, text_hover),]
 def toolbarhover(event):
     overbutton = False
-
     for left, top, right, bottom, box, icon, normal, hover in toolbarbuttons:
         hovering = left <= event.x <= right and top <= event.y <= bottom
-        canvas.itemconfig(box, fill=HOVER_BG if hovering else "", outline=HOVER_BORDER if hovering else "")
+        canvas.itemconfig(box, fill="#4A4A4A" if hovering else "", outline="#FFFFFF" if hovering else "", width=2 if hovering else 1,)
         canvas.itemconfig(icon, image=hover if hovering else normal)
         if hovering:
             canvas.tag_raise(icon)
@@ -2963,7 +2968,7 @@ def togglegridpopup(event=None):
         return
     gridspacingentry.delete(0,'end')
     gridspacingentry.insert(0, str(gridspacing))
-    gridspacingentry.configure(border_color='#80602b')
+    gridspacingentry.configure(border_color="#555555")
     gridpopup.place(x=102, y=286)
     gridpopup.lift()
     gridspacingentry.focus_set()
@@ -2980,7 +2985,7 @@ gridsetbutton.bind("<Button-1>", applygridspacing)
 gridspacingentry.bind("<Return>", applygridspacing)
 gridsnapon = bool(uisettings.get("grid_snap", False))
 def showgridsnap(hovering=False):
-    color = "#FFFFFF" if gridsnapon else HOVER_TEXT if hovering else "#EAEAEA"
+    color = "#666666" if hovering else "#FFFFFF" if gridsnapon else "#EAEAEA"
     canvas.itemconfig(gridsnaptext, fill=color)
 def gridsnapmotion(event):
     hovering = 8 <= event.x <= 68 and 297 <= event.y <= 333
@@ -2999,7 +3004,7 @@ canvas.bind("<Leave>", lambda event: showgridsnap(False), add="+")
 orthotext = canvas.create_text(50, 355, text='Ortho', font=("Iceland", 13), fill='#EAEAEA', anchor='center')
 orthoon = bool(uisettings.get("ortho", False))
 def showortho(hovering=False):
-    color = "#FFFFFF" if orthoon else HOVER_TEXT if hovering else "#EAEAEA"
+    color = "#666666" if hovering else "#FFFFFF" if orthoon else "#EAEAEA"
     canvas.itemconfig(orthotext, fill=color)
 def orthomotion(event):
     showortho(8 <= event.x <= 92 and 337 <= event.y <= 373)
@@ -3017,10 +3022,11 @@ canvas.bind("<Leave>", lambda event: showortho(False), add="+")
 osnaptext = canvas.create_text(50, 395, text='Osnap', font=("Iceland", 13), fill='#EAEAEA', anchor='center')
 onsapon = bool(uisettings.get("osnap", False))
 def showosnap(hovering=False):
-    color = "#FFFFFF" if onsapon else HOVER_TEXT if hovering else "#EAEAEA"
+    color = "#666666" if hovering else "#FFFFFF" if onsapon else "#EAEAEA"
     canvas.itemconfig(osnaptext, fill=color)
 def onsapmotion(event):
-    showosnap(8 <= 8 <= event.x <= 92 and 377 <= event.y <= 413)
+    hovering = 8 <= event.x <= 92 and 377 <= event.y <= 413
+    showosnap(hovering)
 def osnapclick(event):
     global onsapon
     if 8 <= event.x <= 92 and 377 <= event.y <= 413:
@@ -3560,7 +3566,9 @@ def executeaiactions(actions):
     results = []
     existing_object_ids = {object_id for object_id, *_ in renderer.scene_data()}
     newly_created_ids = []
-    for action in actions[:8]:
+    # AI-generated models may need more than eight faces/actions for a full
+    # object. Keep a generous cap so a multi-part creation is not truncated.
+    for action in actions[:64]:
         if not isinstance(action, dict):
             continue
         action_type = action.get("action")
@@ -3710,6 +3718,8 @@ def executeaiactions(actions):
             after_ids = {object_id for object_id, *_ in renderer.scene_data()}
             newly_created_ids.extend(sorted(after_ids - before_ids))
             results.append("Drew a closed shape" if closed else "Drew a line")
+        else:
+            results.append("Could not create the requested shape")
     return results
 def finishairesponse():
     global aibusy
