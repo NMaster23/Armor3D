@@ -16,9 +16,9 @@ import os
 from armor_core import ViewportRenderer
 ctk.set_appearance_mode('dark')
 
-HOVER_BG = "#754822"
-HOVER_BORDER = "#f2a65a"
-HOVER_TEXT = "#EBA119"
+HOVER_BG = "#262626"
+HOVER_BORDER = "#D8D8D8"
+HOVER_TEXT = "#FFFFFF"
 pending_text = ''
 currentfilepath = None
 importedfiles = []
@@ -363,7 +363,7 @@ DEFAULTSETTINGS = {
         "Mid": False,
         "Cen": False
     },
-    "layer_color": "#D6A640",
+    "layer_color": "#FFFFFF",
     "panel_ratio": 0.5
 }
 def loaduisettings():
@@ -459,16 +459,16 @@ from tkinter import font
 app.title("Armor 3D - New File")
 app.geometry("1100x700")
 app.minsize(850, 730)
-canvas = Canvas(app, bg="#191D1A", highlightthickness=0)
+canvas = Canvas(app, bg="#0B0B0B", highlightthickness=0)
 canvas.pack(fill='both', expand=True)
-command = ctk.CTkEntry(canvas, placeholder_text="Command:", font=("Lexend", 12), fg_color="#342719", border_color="#80602B")
-history = ctk.CTkTextbox( canvas, font=("Lexend", 11), fg_color="#342719", border_color="#80602B",  border_width=2)
+command = ctk.CTkEntry(canvas, placeholder_text="Command:", font=("Lexend", 12), fg_color="#111111", border_color="#383838")
+history = ctk.CTkTextbox( canvas, font=("Lexend", 11), fg_color="#111111", border_color="#383838",  border_width=2)
 history_window = canvas.create_window(8, 19, window=history, anchor='nw', height=45)
 history.configure(state="disabled")
 command_window = canvas.create_window(8, 70, window=command, anchor='nw', height=20)
-horizontal = canvas.create_line(100, 100, 1200, 100, fill="#80602B", width=3)
-vertical = canvas.create_line(100, 100, 100, 850, fill="#80602B", width=3)
-viewport = Frame(canvas, bg="#111310", bd=0, highlightthickness=0, takefocus=1)
+horizontal = canvas.create_line(100, 100, 1200, 100, fill="#383838", width=3)
+vertical = canvas.create_line(100, 100, 100, 850, fill="#383838", width=3)
+viewport = Frame(canvas, bg="#080808", bd=0, highlightthickness=0, takefocus=1)
 viewport_window = canvas.create_window(101,  101,  window=viewport, anchor="nw", width=700, height=500,)
 snapindicator = ctk.CTkLabel(
     viewport,
@@ -476,8 +476,8 @@ snapindicator = ctk.CTkLabel(
     width=40,
     height=18,
     corner_radius=3,
-    fg_color="#342719",
-    text_color="#F4C95D",
+    fg_color="#111111",
+    text_color="#FFFFFF",
     font=("Iceland", 12),
 )
 
@@ -504,8 +504,8 @@ app.bind_all("<Control-z>", undoaction, add="+")
 app.bind_all("<Control-y>", redoaction, add="+")
 app.bind_all("<Control-Shift-Z>", redoaction, add="+")
 
-snapcursorhorizontal = Frame(viewport, bg="#F4C95D", bd=0)
-snapcursorvertical = Frame(viewport, bg="#F4C95D", bd=0)
+snapcursorhorizontal = Frame(viewport, bg="#FFFFFF", bd=0)
+snapcursorvertical = Frame(viewport, bg="#FFFFFF", bd=0)
 def hidesnapcursor():
     snapcursorhorizontal.place_forget()
     snapcursorvertical.place_forget()
@@ -1788,7 +1788,7 @@ def handlenewconfirmation(event):
         cancelnewfile()
     return 'break'
 command.bind("<KeyPress>", handlenewconfirmation, add="+")
-command._entry.configure(selectbackground="#666666", selectforeground="#F3E6C5")
+command._entry.configure(selectbackground="#666666", selectforeground="#EAEAEA")
 def updatepolylinedistance(event=None):
     if activecommand != 'polyline' or renderer is None:
         return
@@ -2042,11 +2042,11 @@ def openpngdialog():
     shade.pack(fill='both', expand=True)
     diaglog  = ctk.CTkToplevel(app)
     diaglog.overrideredirect(True)
-    diaglog.configure(fg_color='#191D1A')
+    diaglog.configure(fg_color='#0B0B0B')
     dx = app.winfo_rootx() + (app.winfo_width()-560)//2
     dy = app.winfo_rooty() + (app.winfo_height()-320)//2
     diaglog.geometry(f"560x320+{dx}+{dy}")
-    panel = ctk.CTkFrame(diaglog, fg_color="#342719", corner_radius=8, border_color="#A77A2F", border_width=2)
+    panel = ctk.CTkFrame(diaglog, fg_color="#111111", corner_radius=8, border_color="#555555", border_width=2)
     panel.pack(fill='both', expand=True, padx=4, pady=4)
     diaglog.lift()
     def follow_app(event):
@@ -2062,12 +2062,12 @@ def openpngdialog():
         diaglog.destroy()
         overlay.destroy()
     def textbutton(text, width, height, command, fontsize=18):
-        button=Canvas(panel, width=width, height=height, bg="#342719", highlightthickness=0, cursor='hand2')
-        label = button.create_text(width//2, height//2, text=text, fill='#F3E6C5', font=("Iceland", fontsize))
+        button=Canvas(panel, width=width, height=height, bg="#111111", highlightthickness=0, cursor='hand2')
+        label = button.create_text(width//2, height//2, text=text, fill='#EAEAEA', font=("Iceland", fontsize))
         button.label_id = label
         button.enabled = True
-        button.bind("<Enter>", lambda e: button.itemconfig(label, fill='#F4C95D' if button.enabled else "#777777"))
-        button.bind("<Leave>", lambda e: button.itemconfig(label, fill='#F3E6C5' if button.enabled else "#777777"))
+        button.bind("<Enter>", lambda e: button.itemconfig(label, fill='#FFFFFF' if button.enabled else "#777777"))
+        button.bind("<Leave>", lambda e: button.itemconfig(label, fill='#EAEAEA' if button.enabled else "#777777"))
         button.bind("<Button-1>", lambda e: command() if button.enabled else None)
         return button
     def pixelbox():
@@ -2079,7 +2079,7 @@ def openpngdialog():
     scale_entry = ctk.CTkEntry(panel, width=95, textvariable=scale)
     scale_entry.place(x=24, y=106)
     ctk.CTkLabel(panel, text="Preview", font=("Lexend", 12)).place(x=230, y=42)
-    preview = ctk.CTkLabel(panel, text="", width=290, height=170, fg_color="#191D1A" )
+    preview = ctk.CTkLabel(panel, text="", width=290, height=170, fg_color="#0B0B0B" )
     preview.place(x=230, y=70)
     dimensions = ctk.CTkLabel(panel, text='', font=("Lexend", 11))
     dimensions.place(x=230, y=245)
@@ -2091,7 +2091,7 @@ def openpngdialog():
         valid = 1 <= percent <= 100
         scale_entry.configure(border_color = HOVER_BORDER if valid else "#B9533C" )
         save_button.enabled = valid
-        save_button.itemconfig(save_button.label_id, fill="#F3E6C5" if valid else "#777777")
+        save_button.itemconfig(save_button.label_id, fill="#EAEAEA" if valid else "#777777")
         save_button.configure(cursor="hand2" if valid else "arrow")
         if not valid:
             return
@@ -2123,7 +2123,7 @@ def openpngdialog():
         if not (vx <= event.x<=  vx +w and vy <= event.y <= vy+h):
             return
         dragstart[0] = position(event)
-        dragbox[0] = shade.create_rectangle( event.x, event.y, event.x, event.y, outline="#F4C95D", width=3)
+        dragbox[0] = shade.create_rectangle( event.x, event.y, event.x, event.y, outline="#FFFFFF", width=3)
     def movedrag(event):
         if not selecting[0] or dragstart[0] is None:
             return
@@ -2180,22 +2180,22 @@ def openpngdialog():
     scale.trace_add("write", refresh)
     refresh()
         
-filez = canvas.create_text(24, 8, text="File", font=("Lexend", 8), fill='#F3E6C5')
-canvas.tag_bind(filez, "<Enter>", lambda event: canvas.itemconfig(filez, fill="#F4C95D"))
-canvas.tag_bind(filez, "<Leave>", lambda event: canvas.itemconfig(filez, fill="#F3E6C5"))
-filemenu = Canvas(app, width=160, height=104, bg="#342719",  highlightthickness=1, highlightbackground="#A77A2F")
+filez = canvas.create_text(24, 8, text="File", font=("Lexend", 8), fill='#EAEAEA')
+canvas.tag_bind(filez, "<Enter>", lambda event: canvas.itemconfig(filez, fill="#FFFFFF"))
+canvas.tag_bind(filez, "<Leave>", lambda event: canvas.itemconfig(filez, fill="#EAEAEA"))
+filemenu = Canvas(app, width=160, height=104, bg="#111111",  highlightthickness=1, highlightbackground="#555555")
 menu_rows = []
 for i, name in enumerate(("New", "Save", "Save As")): 
     y=4 + i * 32
     box = filemenu.create_rectangle(4, y, 155, y +30, fill="", outline="")
-    label = filemenu.create_text(12, y+15, text=name, anchor='w', fill="#F3E6C5", font=("Iceland", 13))
+    label = filemenu.create_text(12, y+15, text=name, anchor='w', fill="#EAEAEA", font=("Iceland", 13))
     menu_rows.append((box, label))
 def menu_motion(event):
     hovered = (event.y - 4) // 32
     for i, (box, label) in enumerate(menu_rows):
         active = i == hovered and 4 <= event.x <= 155
         filemenu.itemconfig(box, fill=HOVER_BG if active else "")
-        filemenu.itemconfig(label, fill=HOVER_TEXT if active else "#F3E6C5")
+        filemenu.itemconfig(label, fill=HOVER_TEXT if active else "#EAEAEA")
 filemenu.bind("<Motion>", menu_motion)
 filepage = "main"
 def showfilepage(page):
@@ -2204,7 +2204,7 @@ def showfilepage(page):
     names = ("New", "Save", "Save As") if page == "main" else ("3DM", "PNG", "DXF")
     for (box, label), name in zip(menu_rows, names):
         filemenu.itemconfig(box, fill='')
-        filemenu.itemconfig(label, text=name, fill="#F3E6C5")
+        filemenu.itemconfig(label, text=name, fill="#EAEAEA")
 def filemenuclick(event):
     if not (4 <= event.x <= 155):
         return
@@ -2283,7 +2283,7 @@ canvas.tag_bind(filez, "<Leave>", cancelfilehover, add="+")
 canvas.tag_bind(filez, "<Button-1>", file_click)
 
 
-coords_text = canvas.create_text(275, 8, text="X:  --  Y:  --  Z:  --", anchor='w', font=("Lexend", 8), fill="#F3E6C5")
+coords_text = canvas.create_text(275, 8, text="X:  --  Y:  --  Z:  --", anchor='w', font=("Lexend", 8), fill="#EAEAEA")
 def updatecoords():
     if renderer is None:
         return
@@ -2293,20 +2293,20 @@ def updatecoords():
     x, y, z = position
     canvas.itemconfig(coords_text, text=f"X: {x:.3f}   Y: {y:.3f}   Z: {z:.3f}")
 
-importz = canvas.create_text(68, 8, text='Import', font=("Lexend", 8), fill="#F3E6C5")
-importmenu = Canvas(app, width=160, height=72, bg="#342719", highlightthickness=1, highlightbackground="#A77A2f")
+importz = canvas.create_text(68, 8, text='Import', font=("Lexend", 8), fill="#EAEAEA")
+importmenu = Canvas(app, width=160, height=72, bg="#111111", highlightthickness=1, highlightbackground="#555555")
 importrows = []
 for index, name in enumerate(("DXF", "Picture")):
     y = 4 + index * 32
     box = importmenu.create_rectangle(4, y, 155, y+30, fill='', outline='')
-    label = importmenu.create_text(12, y+15, text=name, anchor='w', fill='#F3E6C5', font=("Iceland", 13))
+    label = importmenu.create_text(12, y+15, text=name, anchor='w', fill='#EAEAEA', font=("Iceland", 13))
     importrows.append((box, label))
 def importmenumotion(event):
     hovered = (event.y - 4) // 32
     for index, (box, label) in enumerate(importrows):
         active = index == hovered and 4 <= event.x <= 155
         importmenu.itemconfig( box, fill=HOVER_BG if active else "" )
-        importmenu.itemconfig( label, fill=HOVER_TEXT if active else "#F3E6C5" )
+        importmenu.itemconfig( label, fill=HOVER_TEXT if active else "#EAEAEA" )
 def importmenuclick(event):
     if not 4<= event.x <= 155:
         return
@@ -2330,13 +2330,13 @@ importhoverjob = None
 importclosejob = None
 def importenter(event):
     global importhoverjob
-    canvas.itemconfig(importz, fill="#F4C95d")
+    canvas.itemconfig(importz, fill="#FFFFFF")
     if importhoverjob is not None:
         app.after_cancel(importhoverjob)
     importhoverjob = app.after(500, openimportmenu)
 def importleave(event):
     global importhoverjob
-    canvas.itemconfig(importz, fill="#F3E6C5")
+    canvas.itemconfig(importz, fill="#EAEAEA")
     if importhoverjob is not None:
         app.after_cancel(importhoverjob)
         importhoverjob= None
@@ -2376,20 +2376,20 @@ app.bind_all("<Motion>", importpointermotion, add="+")
 app.bind_all("<Button-1>", importoutsideclick, add="+")
 
 
-analyze = canvas.create_text(120, 8, text='Analyze', font=("Lexend", 8), fill='#F3E6C5')
-analyze_menu = Canvas(app, width=160, height=72, bg="#3B332A", highlightthickness=1, highlightbackground="#A77A2F")
+analyze = canvas.create_text(120, 8, text='Analyze', font=("Lexend", 8), fill='#EAEAEA')
+analyze_menu = Canvas(app, width=160, height=72, bg="#111111", highlightthickness=1, highlightbackground="#555555")
 analyze_rows = []
 for i, name in enumerate(("Distance", "Angle")):
     y = 4 + i *32
     box = analyze_menu.create_rectangle(4, y, 155, y +30, fill='', outline='')
-    label = analyze_menu.create_text(12, y+15, text=name, anchor='w', fill='#F3E6C5', font=("Iceland", 12))
+    label = analyze_menu.create_text(12, y+15, text=name, anchor='w', fill='#EAEAEA', font=("Iceland", 12))
     analyze_rows.append((box, label))
 def analyzemenumotion(event):
     hovered = (event.y - 4) // 32
     for i, (box, label) in enumerate(analyze_rows):
         active = i == hovered and 4 <= event.x <= 155
         analyze_menu.itemconfig(box, fill=HOVER_BG if active else "")
-        analyze_menu.itemconfig(label, fill=HOVER_TEXT if active else "#F3E6C5")
+        analyze_menu.itemconfig(label, fill=HOVER_TEXT if active else "#EAEAEA")
 analyze_menu.bind("<Motion>", analyzemenumotion)
 def analyzemenuclick(event):
     if not (4<= event.x<= 155):
@@ -2411,13 +2411,13 @@ def openanalyzemenu():
     slidemenu(analyze_menu, 100, 72, True)
 def analyze_enter(event):
     global analyzehoverjob
-    canvas.itemconfig(analyze, fill="#F4C95D")
+    canvas.itemconfig(analyze, fill="#FFFFFF")
     if analyzehoverjob is not None:
         app.after_cancel(analyzehoverjob)
     analyzehoverjob = app.after(500, openanalyzemenu)
 def analyzeleave(event):
     global analyzehoverjob
-    canvas.itemconfig(analyze, fill="#F3E6C5")
+    canvas.itemconfig(analyze, fill="#EAEAEA")
     if analyzehoverjob is not None:
         app.after_cancel(analyzehoverjob)
         analyzehoverjob = None
@@ -2454,21 +2454,21 @@ canvas.tag_bind(analyze, "<Enter>", analyze_enter, add="+")
 canvas.tag_bind(analyze, "<Leave>", analyzeleave, add="+")
 app.bind_all("<Motion>", analyzepointermotion, add="+")
 
-tools = canvas.create_text(170, 8, text="Tools", font=("Lexend", 8), fill="#F3E6C5")
-toolsmenu = Canvas(app, width=160, height=168, bg="#342719", highlightthickness=1, highlightbackground="#A77A2F")
+tools = canvas.create_text(170, 8, text="Tools", font=("Lexend", 8), fill="#EAEAEA")
+toolsmenu = Canvas(app, width=160, height=168, bg="#111111", highlightthickness=1, highlightbackground="#555555")
 toolsrows = []
 tool_name = ("Revolve", "Extrude", "Extrude Height", "Mirror", "Copy")
 for i, name in enumerate(tool_name):
     y = 4 + i * 32
     box = toolsmenu.create_rectangle(4, y, 155, y +30, fill='', outline='')
-    label = toolsmenu.create_text(12, y+15, text=name, anchor='w', fill="#F3E6C5", font=("Iceland", 13))
+    label = toolsmenu.create_text(12, y+15, text=name, anchor='w', fill="#EAEAEA", font=("Iceland", 13))
     toolsrows.append((box, label))
 def toolsmotion(event):
     hovered =(event.y - 4)// 32
     for i, (box, label) in enumerate(toolsrows):
         active = i == hovered and 4 <= event.x <=155
         toolsmenu.itemconfig(box, fill=HOVER_BG if active else "")
-        toolsmenu.itemconfig(label, fill=HOVER_TEXT if active else "#F3E6C5")
+        toolsmenu.itemconfig(label, fill=HOVER_TEXT if active else "#EAEAEA")
 toolsmenu.bind("<Motion>", toolsmotion)
 def toolsmenuclick(event):
     if not (4<= event.x <= 155):
@@ -2494,13 +2494,13 @@ def closetoolsmenu():
     slidemenu(toolsmenu, 150, 136, False)
 def toolsenter(event):
     global toolshoverjob
-    canvas.itemconfig(tools, fill='#F4C95D')
+    canvas.itemconfig(tools, fill='#FFFFFF')
     if toolshoverjob is not None:
         app.after_cancel(toolshoverjob)
     toolshoverjob = app.after(500, opentoolsmenu)
 def toolsleave(event):
     global toolshoverjob
-    canvas.itemconfig(tools, fill='#F3E6C5')
+    canvas.itemconfig(tools, fill='#EAEAEA')
     if toolshoverjob is not None:
         app.after_cancel(toolshoverjob)
         toolshoverjob = None
@@ -2533,26 +2533,26 @@ canvas.tag_bind(tools, "<Button-1>", toolsclick)
 app.bind_all("<Motion>", toolspointermotion, add="+")
 app.bind_all("<Button-1>", toolsoutsideclick, add="+")
 
-AI  = canvas.create_text(226, 8, text='AI Creation', font=("Lexend", 8), fill='#F3E6C5')
-canvas.tag_bind(AI, "<Enter>", lambda event: canvas.itemconfig(AI, fill='#F4C95D'))
-canvas.tag_bind(AI, "<Leave>", lambda event: canvas.itemconfig(AI, fill='#F3E6C5'))
+AI  = canvas.create_text(226, 8, text='AI Creation', font=("Lexend", 8), fill='#EAEAEA')
+canvas.tag_bind(AI, "<Enter>", lambda event: canvas.itemconfig(AI, fill='#FFFFFF'))
+canvas.tag_bind(AI, "<Leave>", lambda event: canvas.itemconfig(AI, fill='#EAEAEA'))
 
 
-sidebar = ctk.CTkFrame(app, width=520, corner_radius=16, fg_color="#342719", border_color="#A77A2F", border_width=4)
+sidebar = ctk.CTkFrame(app, width=520, corner_radius=16, fg_color="#111111", border_color="#555555", border_width=4)
 sidebar.pack_propagate(False)
 prompt_label = ctk.CTkLabel(sidebar, text="", font=("Iceland", 35), width=300, height=82, justify='center')
 prompt_label.pack(pady=(24, 10))
-ai_input = ctk.CTkEntry( sidebar, placeholder_text="Start typing...", font=("Lexend", 12), fg_color="#342719", border_color=HOVER_BORDER,  text_color="#F3E6C5", placeholder_text_color="#C5B29A")
+ai_input = ctk.CTkEntry( sidebar, placeholder_text="Start typing...", font=("Lexend", 12), fg_color="#111111", border_color=HOVER_BORDER,  text_color="#EAEAEA", placeholder_text_color="#A0A0A0")
 ai_input.configure(height=38)
-aichat = ctk.CTkTextbox(sidebar, font=("Lexend", 12), fg_color="#191D1A", border_color=HOVER_BG, border_width = 2, text_color="#F3E6C5", wrap='word')
+aichat = ctk.CTkTextbox(sidebar, font=("Lexend", 12), fg_color="#0B0B0B", border_color=HOVER_BG, border_width = 2, text_color="#EAEAEA", wrap='word')
 aichat.configure(state='disabled')
 def roundedrectangle(canvas, x1, y1, x2, y2, radius, **options):
     points = [ x1 + radius, y1, x2 - radius, y1,  x2, y1,  x2, y1 + radius, x2, y2 - radius,  x2, y2, x2 - radius, y2, x1 + radius, y2,x1, y2,  x1, y2 - radius, x1, y1 + radius, x1, y1]
     return canvas.create_polygon(points, smooth=True, splinesteps=24, **options)
-sendbutton = Canvas(sidebar, width=44, height=40, bg="#342719", highlightthickness=0, cursor='hand2')
-sendbox = roundedrectangle(sendbutton, 3, 2, 41, 38, radius=9, fill='#191D1A', outline="#A77A2F", width=2)
-sendtext = sendbutton.create_text(22, 20, text="↑", fill="#F3E6C5", font=("Segoe UI Symbol", 18, "bold"))
-senddots = [sendbutton.create_oval( x - 2, 18, x + 2, 22, fill="#F4C95D", outline="",  state="hidden" ) for x in (15, 22, 29)]
+sendbutton = Canvas(sidebar, width=44, height=40, bg="#111111", highlightthickness=0, cursor='hand2')
+sendbox = roundedrectangle(sendbutton, 3, 2, 41, 38, radius=9, fill='#0B0B0B', outline="#555555", width=2)
+sendtext = sendbutton.create_text(22, 20, text="↑", fill="#EAEAEA", font=("Segoe UI Symbol", 18, "bold"))
+senddots = [sendbutton.create_oval( x - 2, 18, x + 2, 22, fill="#FFFFFF", outline="",  state="hidden" ) for x in (15, 22, 29)]
 sendanimation = {"job": None, "frame": 0}
 def updatesendanimation():
     if sendanimation["job"] is None:
@@ -2580,8 +2580,8 @@ def stopsendanimation():
     for dot in senddots:
         sendbutton.itemconfig(dot, state="hidden")
     sendbutton.itemconfig( sendtext, text="↑",  state="normal")
-aichat._textbox.tag_configure( "thinkingtext", foreground="#C5B29A", font=("Lexend", 11, "italic"), lmargin1=8)
-aichat._textbox.tag_configure("thinkingdots", foreground="#F4C95D", font=("Lexend", 12, "bold"))
+aichat._textbox.tag_configure( "thinkingtext", foreground="#A0A0A0", font=("Lexend", 11, "italic"), lmargin1=8)
+aichat._textbox.tag_configure("thinkingdots", foreground="#FFFFFF", font=("Lexend", 12, "bold"))
 thinkinganimation = {"job": None,  "dots": 1}
 def updatethinkingdots():
     if thinkinganimation["job"] is None:
@@ -2625,16 +2625,16 @@ def finishthinkingmessage(message, error=False):
         aichat._textbox.mark_unset(mark)
     aichat.see("end")
     aichat.configure(state="disabled")
-aichat._textbox.tag_configure("userlabel", foreground="#F4C95D", font=("Iceland", 13), spacing1=8)
-aichat._textbox.tag_configure("ailabel", foreground="#75B98A", font=("Iceland", 13), spacing1=8)
-aichat._textbox.tag_configure("message", foreground="#F3E6C5", font=("Lexend", 11), lmargin1=8, lmargin2=8, rmargin=8, spacing3=12)
+aichat._textbox.tag_configure("userlabel", foreground="#FFFFFF", font=("Iceland", 13), spacing1=8)
+aichat._textbox.tag_configure("ailabel", foreground="#D0D0D0", font=("Iceland", 13), spacing1=8)
+aichat._textbox.tag_configure("message", foreground="#EAEAEA", font=("Lexend", 11), lmargin1=8, lmargin2=8, rmargin=8, spacing3=12)
 aichat._textbox.tag_configure("error", foreground=HOVER_BORDER, font=("Lexend", 11), lmargin1=8, lmargin2=8, spacing3=12)
 
-aichat._textbox.tag_configure('mdbold', foreground="#F3E6C5", font=("Lexend", 11, 'bold'))
-aichat._textbox.tag_configure('mditalic', foreground="#F3E6C5", font=("Lexend", 11, 'italic'))
-aichat._textbox.tag_configure('mdheading', foreground="#F4C95D", font=("Iceland", 16))
-aichat._textbox.tag_configure('mdcode', foreground="#75B98A", background='#20231B', font=("Consolas", 10))
-aichat._textbox.tag_configure('mdcodeblock', foreground="#75B98A", background='#20231B', font=("Consolas", 10), lmargin1=12, lmargin2=12, rmargin=12)
+aichat._textbox.tag_configure('mdbold', foreground="#EAEAEA", font=("Lexend", 11, 'bold'))
+aichat._textbox.tag_configure('mditalic', foreground="#EAEAEA", font=("Lexend", 11, 'italic'))
+aichat._textbox.tag_configure('mdheading', foreground="#FFFFFF", font=("Iceland", 16))
+aichat._textbox.tag_configure('mdcode', foreground="#D0D0D0", background='#171717', font=("Consolas", 10))
+aichat._textbox.tag_configure('mdcodeblock', foreground="#D0D0D0", background='#171717', font=("Consolas", 10), lmargin1=12, lmargin2=12, rmargin=12)
 
 def positionaicomposer(event=None):
     width  = sidebar.winfo_width()
@@ -2708,17 +2708,17 @@ def toggleai(event=None):
                     canvas.itemconfigure(line, state="hidden")
                 resize_cmd_boxes(canvas.winfo_width())
     animate(0)
-close_canvas = Canvas(sidebar, width=32, height=32, bg="#342719", highlightthickness=0)
+close_canvas = Canvas(sidebar, width=32, height=32, bg="#111111", highlightthickness=0)
 close_canvas.place(x=12, y=12)
 close_x = close_canvas.create_text(16, 16, text="×", fill='white', font=("Lexend", 20))
 close_canvas.tag_bind(close_x, "<Button-1>", toggleai)
 canvas.tag_bind(AI, "<Button-1>", toggleai)
-resize_handle = Canvas(sidebar, width=12, bg="#342719", highlightthickness=0, cursor="sb_h_double_arrow")
+resize_handle = Canvas(sidebar, width=12, bg="#111111", highlightthickness=0, cursor="sb_h_double_arrow")
 resize_handle.place(x=0, y=18, relheight=1, height=-36)
 resizeguide = Toplevel(app)
 resizeguide.withdraw()
 resizeguide.overrideredirect(True)
-resizeguide.configure(bg="#f4c95d")
+resizeguide.configure(bg="#FFFFFF")
 resizeguide.attributes('-topmost', True)
 resizeguide.transient(app)
 resizepreviewratio = panel_ratio
@@ -2753,11 +2753,11 @@ def finishsidebarresize(event):
 resize_handle.bind("<ButtonPress-1>", startsidebarresize)
 resize_handle.bind("<B1-Motion>", dragsidebar)
 resize_handle.bind("<ButtonRelease-1>", finishsidebarresize)
-settingsbutton = Canvas(sidebar, width=32, height=34, bg="#342719", highlightthickness=0, cursor='hand2')
-settingsicon = settingsbutton.create_text(17, 17, text="⚙", fill="#F3E6C5", font=("Segoe UI Symbol", 18))
+settingsbutton = Canvas(sidebar, width=32, height=34, bg="#111111", highlightthickness=0, cursor='hand2')
+settingsicon = settingsbutton.create_text(17, 17, text="⚙", fill="#EAEAEA", font=("Segoe UI Symbol", 18))
 settingsbutton.place(relx=1, x=-48, y=12)
-settingsbutton.bind("<Enter>", lambda event: settingsbutton.itemconfig(settingsicon, fill="#F4C95D"))
-settingsbutton.bind("<Leave>", lambda event: settingsbutton.itemconfig(settingsicon, fill="#F3E6C5"))
+settingsbutton.bind("<Enter>", lambda event: settingsbutton.itemconfig(settingsicon, fill="#FFFFFF"))
+settingsbutton.bind("<Leave>", lambda event: settingsbutton.itemconfig(settingsicon, fill="#EAEAEA"))
 
 icon = Image.open(getpath("Assets/polylinez.png")).convert("RGBA")
 bounds = icon.getbbox()
@@ -2855,14 +2855,14 @@ text_square = canvas.create_rectangle(53, 193, 97, 237, fill="", outline="")
 text_icon = canvas.create_image(75, 215, image=text_normal)
 canvas.tag_bind(text_square, "<Button-1>", lambda event: runnamedcommand("Text"))
 canvas.tag_bind(text_icon, "<Button-1>", lambda event: runnamedcommand("Text"))
-extrabox = canvas.create_rectangle(8, 248, 92, 284, fill='#191D1A', outline='', width=2)
-extratext = canvas.create_text(50, 266, text="Extra", font=("Iceland", 14), fill="#F3E6C5")
+extrabox = canvas.create_rectangle(8, 248, 92, 284, fill='#0B0B0B', outline='', width=2)
+extratext = canvas.create_text(50, 266, text="Extra", font=("Iceland", 14), fill="#EAEAEA")
 def extraenter(event):
     canvas.itemconfig(extrabox, fill=HOVER_BG, outline=HOVER_BORDER)
-    canvas.itemconfig(extratext, fill='#F4C95D')
+    canvas.itemconfig(extratext, fill='#FFFFFF')
 def extraleave(event):
-    canvas.itemconfig(extrabox, fill="#191D1A", outline="")
-    canvas.itemconfig(extratext, fill='#F3E6C5')
+    canvas.itemconfig(extrabox, fill="#0B0B0B", outline="")
+    canvas.itemconfig(extratext, fill='#EAEAEA')
 for item in (extrabox, extratext):
     canvas.tag_bind(item, "<Enter>", extraenter)
     canvas.tag_bind(item, "<Leave>", extraleave)
@@ -2902,8 +2902,8 @@ def showtooltip(name, top):
     tooltipwindow = ctk.CTkToplevel(app)
     tooltipwindow.overrideredirect(True)
     tooltipwindow.attributes("-topmost", True)
-    tooltipwindow.configure(fg_color = "#2B2417")
-    label = ctk.CTkLabel(tooltipwindow, text=name, font=("Iceland", 14), text_color="#F3E6C5", fg_color="#2B2417", corner_radius=5)
+    tooltipwindow.configure(fg_color = "#111111")
+    label = ctk.CTkLabel(tooltipwindow, text=name, font=("Iceland", 14), text_color="#EAEAEA", fg_color="#111111", corner_radius=5)
     label.pack(ipadx=9, ipady=5)
     tooltipwindow.update_idletasks()
     x = canvas.winfo_rootx() + 108
@@ -2930,12 +2930,12 @@ def tooltipmotion(event):
         tooltip_job = app.after(650, lambda current=target: showtooltip(*current))
 canvas.bind("<Motion>", tooltipmotion, add="+")
 canvas.bind("<Leave>", hidetooltip, add="+")
-gridsnaptext = canvas.create_text(38, 315, text="Grid Snap",font=("Iceland", 13), fill="#F3E6C5", anchor="center")
+gridsnaptext = canvas.create_text(38, 315, text="Grid Snap",font=("Iceland", 13), fill="#EAEAEA", anchor="center")
 gridarrow = canvas.create_line(80, 311,88, 319, 96, 311,fill=HOVER_BORDER,width=2, capstyle="round", joinstyle="round")
-gridpopup = ctk.CTkFrame(app, width=220, height=104, corner_radius=8, fg_color="#342719", border_color="#A77A2f", border_width=2)
+gridpopup = ctk.CTkFrame(app, width=220, height=104, corner_radius=8, fg_color="#111111", border_color="#555555", border_width=2)
 gridpopup.pack_propagate(False)
-ctk.CTkLabel(gridpopup, text="Grid spacing", font=("Iceland", 18), text_color="#F3E6C5").place(x=12, y=10)
-gridspacingentry = ctk.CTkEntry(gridpopup, width=132, height=34, font=("Lexend", 11), fg_color="#191D1A", border_color="#80602b")
+ctk.CTkLabel(gridpopup, text="Grid spacing", font=("Iceland", 18), text_color="#EAEAEA").place(x=12, y=10)
+gridspacingentry = ctk.CTkEntry(gridpopup, width=132, height=34, font=("Lexend", 11), fg_color="#0B0B0B", border_color="#555555")
 gridspacingentry.place(x=12, y=54)
 def applygridspacing(event=None):
     global gridspacing
@@ -2948,14 +2948,14 @@ def applygridspacing(event=None):
         gridspacingentry.configure(border_color="#b84a3a")
         return 'break'
     gridspacing = value
-    gridspacingentry.configure(border_color="#80602b")
+    gridspacingentry.configure(border_color="#555555")
     syncgridsnaprenderer()
     saveuisettings()
     gridpopup.place_forget()
     return 'break'
-gridsetbutton = Canvas(gridpopup, height=36, bg="#342719", highlightthickness=0, cursor='hand2')
-gridsetbox = gridsetbutton.create_rectangle(2, 2, 60, 34, fill="#191D1A", outline="#A77A2F", width=2)
-gridsettext = gridsetbutton.create_text(31, 18, text="Set", fill="#F3E6C5", font=("Iceland", 15))
+gridsetbutton = Canvas(gridpopup, height=36, bg="#111111", highlightthickness=0, cursor='hand2')
+gridsetbox = gridsetbutton.create_rectangle(2, 2, 60, 34, fill="#0B0B0B", outline="#555555", width=2)
+gridsettext = gridsetbutton.create_text(31, 18, text="Set", fill="#EAEAEA", font=("Iceland", 15))
 gridsetbutton.place(x=146, y=53)
 def togglegridpopup(event=None):
     if gridpopup.winfo_manager():
@@ -2980,7 +2980,7 @@ gridsetbutton.bind("<Button-1>", applygridspacing)
 gridspacingentry.bind("<Return>", applygridspacing)
 gridsnapon = bool(uisettings.get("grid_snap", False))
 def showgridsnap(hovering=False):
-    color = "#F4C95D" if gridsnapon else HOVER_TEXT if hovering else "#F3E6C5"
+    color = "#FFFFFF" if gridsnapon else HOVER_TEXT if hovering else "#EAEAEA"
     canvas.itemconfig(gridsnaptext, fill=color)
 def gridsnapmotion(event):
     hovering = 8 <= event.x <= 68 and 297 <= event.y <= 333
@@ -2996,10 +2996,10 @@ canvas.bind("<Motion>", gridsnapmotion, add="+")
 canvas.bind("<Button-1>", gridsnapclick, add="+")
 canvas.bind("<Leave>", lambda event: showgridsnap(False), add="+")
 
-orthotext = canvas.create_text(50, 355, text='Ortho', font=("Iceland", 13), fill='#F3E6C5', anchor='center')
+orthotext = canvas.create_text(50, 355, text='Ortho', font=("Iceland", 13), fill='#EAEAEA', anchor='center')
 orthoon = bool(uisettings.get("ortho", False))
 def showortho(hovering=False):
-    color = "#F4C95D" if orthoon else HOVER_TEXT if hovering else "#F3E6C5"
+    color = "#FFFFFF" if orthoon else HOVER_TEXT if hovering else "#EAEAEA"
     canvas.itemconfig(orthotext, fill=color)
 def orthomotion(event):
     showortho(8 <= event.x <= 92 and 337 <= event.y <= 373)
@@ -3014,10 +3014,10 @@ canvas.bind("<Motion>", orthomotion, add="+")
 canvas.bind("<Button-1>", orthoclick, add="+")
 canvas.bind("<Leave>", lambda event: showortho(False), add="+")
 
-osnaptext = canvas.create_text(50, 395, text='Osnap', font=("Iceland", 13), fill='#F3E6C5', anchor='center')
+osnaptext = canvas.create_text(50, 395, text='Osnap', font=("Iceland", 13), fill='#EAEAEA', anchor='center')
 onsapon = bool(uisettings.get("osnap", False))
 def showosnap(hovering=False):
-    color = "#F4C95D" if onsapon else HOVER_TEXT if hovering else "#F3E6C5"
+    color = "#FFFFFF" if onsapon else HOVER_TEXT if hovering else "#EAEAEA"
     canvas.itemconfig(osnaptext, fill=color)
 def onsapmotion(event):
     showosnap(8 <= 8 <= event.x <= 92 and 377 <= event.y <= 413)
@@ -3032,37 +3032,46 @@ canvas.bind("<Motion>", onsapmotion, add="+")
 canvas.bind("<Button-1>", osnapclick, add="+")
 canvas.bind("<Leave>", lambda event: showosnap(False), add="+")
 
-canvas.create_line(0, 292, 100, 292, fill="#80602B", width=2)
-canvas.create_line(0, 422, 100, 422, fill="#80602B", width=2)
-canvas.create_line(0, 510, 100, 510, fill="#80602B", width=2)
-canvas.create_text(50, 445, text="Layers", font=("Iceland", 15), fill="#F3E6C5", anchor="center")
-layername = canvas.create_text(60, 485, text="Gold", font=("Iceland", 11), fill="#F3E6C5", anchor="center")
-
-layer_color = uisettings.get("layer_color", "#D6A640")
-layer_swatch = canvas.create_rectangle(17, 477, 33, 493, fill=layer_color, outline="#80602B", width=1)
+canvas.create_line(0, 292, 100, 292, fill="#383838", width=2)
+canvas.create_line(0, 422, 100, 422, fill="#383838", width=2)
+canvas.create_line(0, 510, 100, 510, fill="#383838", width=2)
+canvas.create_text(50, 445, text="Layers", font=("Iceland", 15), fill="#EAEAEA", anchor="center")
 def swatch_enter(event):
     canvas.itemconfig(layer_swatch, outline=HOVER_BORDER, width=2)
 def swatch_leave(event):
-    canvas.itemconfig(layer_swatch, outline="#80602B", width=1)
-colors = ( ("Gold", "#D6A640"), ("Green", "#3E8A63"),  ("Brown", "#64350B"), ("White", "#F3E6C5"))
-savelayername = next(
-    (name for name, color in colors if color == layer_color), 'Gold'
-)
+    canvas.itemconfig(layer_swatch, outline="#383838", width=1)
+colors = (
+    ("White",   "#FFFFFF"),
+    ("Red",     "#FF0000"),
+    ("Yellow",  "#FFFF00"),
+    ("Green",   "#00FF00"),
+    ("Blue",    "#0000FF"),
+    ("Magenta", "#FF00FF"),
+    ("Black",   "#000000"),)
+layer_color = uisettings.get("layer_color", "#FFFFFF")
+if layer_color not in {color for _, color in colors}:
+    layer_color = "#FFFFFF"
+savelayername = next( name for name, color in colors if color == layer_color)
+layername = canvas.create_text( 60, 485, text=savelayername, font=("Iceland", 11), fill="#EAEAEA", anchor="center",)
+layer_swatch = canvas.create_rectangle(17, 477, 33, 493, fill=layer_color, outline="#D8D8D8", width=1,)
+if layer_color not in {color for name, color in colors}:
+    layer_color = colors[0][1]
+savelayername = next((name for name, color in colors if color == layer_color), colors[0][0],)
 canvas.itemconfig(layername, text=savelayername)
-layermenu = Canvas(app, width=152, height=128, bg="#342719", highlightthickness=1, highlightbackground="#A77A2F")
+layermenu = Canvas(app, width=152, height=214, bg="#111111", highlightthickness=1, highlightbackground="#555555")
 layer_rows = []
 for i, (name, color) in enumerate(colors):
     y = 4+i *30
     background = layermenu.create_rectangle(4, y, 148, y+28, fill='', outline='')
-    layermenu.create_rectangle(12, y+7, 26, y+21, fill=color, outline="#F3E6C5")
-    label = layermenu.create_text(36, y+14, text=name, anchor='w', fill='#F3E6C5', font=("Iceland", 12))
+    layermenu.create_rectangle(12, y+7, 26, y+21, fill=color, outline="#D8D8D8", width=1)
+    label = layermenu.create_text(36, y+14, text=name, anchor='w', fill='#EAEAEA', font=("Iceland", 12))
     layer_rows.append((background, label))
 def layermenumotion(event):
     hovered = (event.y-4)//30
     for i, (background, label) in enumerate(layer_rows):
         active = i == hovered and 4 <= event.x <=148
         layermenu.itemconfig(background, fill=HOVER_BG if active else "")
-        layermenu.itemconfig(label, fill='#F4C95D' if active else "#F3E6C5")
+        layermenu.itemconfig(label, fill='#FFFFFF' if active else "#EAEAEA")
 def chooselayercolor(event):
     global layer_color
     index = (event.y-4) // 30
@@ -3081,12 +3090,16 @@ def synclayerrenderer():
     green = int(color[2:4], 16) / 255
     blue = int(color[4:6], 16) / 255
     renderer.set_polyline_color(red, green, blue, 1.0)
-def toggle_layer_menu(event):
+    renderer.render()
+def toggle_layer_menu(event=None):
     if layermenu.winfo_manager():
         layermenu.place_forget()
-    else:
-        menu_y = 497 if app.winfo_height() >= 635 else 298
-        layermenu.place(x=8, y=menu_y)
+        return
+    app.update_idletasks()
+    menu_height = layermenu.winfo_reqheight()
+    menu_y = max(8, app.winfo_height() - menu_height - 12)
+    layermenu.place(x=8, y=menu_y)
+    app.tk.call("raise", layermenu._w)
 def close_layer_outside(event):
     if event.widget == layermenu:
         return
@@ -3100,9 +3113,9 @@ layermenu.bind("<Motion>", layermenumotion)
 layermenu.bind("<Button-1>", chooselayercolor)
 app.bind_all("<Button-1>", close_layer_outside, add="+")
 
-snapcanvas = Canvas(canvas, bg="#191D1A", highlightthickness=0)
+snapcanvas = Canvas(canvas, bg="#0B0B0B", highlightthickness=0)
 snapwindow = canvas.create_window(0, 515, window=snapcanvas, anchor="nw", width=100, height=230)
-snapheading = snapcanvas.create_text(50, 15, text="Osnap", fill="#F3E6C5", font=("Iceland", 14))
+snapheading = snapcanvas.create_text(50, 15, text="Osnap", fill="#EAEAEA", font=("Iceland", 14))
 snapnames = ("End", "Near", "Int", "Mid", "Cen", "Disable")
 snapenabled = {}
 snapitems = {}
@@ -3145,21 +3158,21 @@ def syncosnaprenderer():
     )):
         hidesnapindicator()
 def refreshosnap():
-    snapcanvas.itemconfig(snapheading, fill="#F3E6C5" if onsapon else "#777777" )
+    snapcanvas.itemconfig(snapheading, fill="#EAEAEA" if onsapon else "#777777" )
     for name, (box, mark, label) in snapitems.items():
         available = onsapon or name == "Disable"
-        snapcanvas.itemconfig( box, fill="#342719", outline=HOVER_BORDER if available else "#555555")
-        snapcanvas.itemconfig(label, fill="#F3E6C5" if available else "#777777")
+        snapcanvas.itemconfig( box, fill="#111111", outline=HOVER_BORDER if available else "#555555")
+        snapcanvas.itemconfig(label, fill="#EAEAEA" if available else "#777777")
         if name == "Disable":snapcanvas.itemconfig( mark, state="hidden" if onsapon else "normal"  )
         else:
-            snapcanvas.itemconfig( mark,  fill="#F4C95D" if onsapon else "#777777",  state="normal" if snapenabled[name] else "hidden" )
+            snapcanvas.itemconfig( mark,  fill="#FFFFFF" if onsapon else "#777777",  state="normal" if snapenabled[name] else "hidden" )
     syncosnaprenderer()
 for i, name in enumerate(snapnames):
     y = 48 + i * 30
     snapenabled[name] = ( False if name == "Disable"  else bool(uisettings["snap_modes"].get(name, False)))
-    box = snapcanvas.create_rectangle( 18, y - 7, 32, y + 7, fill="#342719", outline=HOVER_BORDER, width=2)
-    mark = snapcanvas.create_text(  25, y, text="✓",  fill="#F4C95D", font=("Iceland", 13), state="hidden")
-    label = snapcanvas.create_text( 60, y, text=name, fill="#F3E6C5", font=("Iceland", 13) )
+    box = snapcanvas.create_rectangle( 18, y - 7, 32, y + 7, fill="#111111", outline=HOVER_BORDER, width=2)
+    mark = snapcanvas.create_text(  25, y, text="✓",  fill="#FFFFFF", font=("Iceland", 13), state="hidden")
+    label = snapcanvas.create_text( 60, y, text=name, fill="#EAEAEA", font=("Iceland", 13) )
     snapitems[name] = (box, mark, label)
     for item in (box, mark, label):
         snapcanvas.tag_bind( item,  "<Button-1>", lambda event, option=name: togglesnap(option))
@@ -3169,9 +3182,9 @@ def snapcanvasmotion(event=None):
         center_y = 48 + i * 30
         hovering = (event is not None and 8 <= event.x <= 92 and abs(event.y - center_y) <= 13 )
         available = onsapon or name == "Disable"
-        snapcanvas.itemconfig(box, fill=HOVER_BG if hovering and available else "#342719")
+        snapcanvas.itemconfig(box, fill=HOVER_BG if hovering and available else "#111111")
         snapcanvas.itemconfig(label, fill=HOVER_TEXT if hovering and available
-            else "#F3E6C5" if available  else "#777777")
+            else "#EAEAEA" if available  else "#777777")
 snapcanvas.bind("<Motion>", snapcanvasmotion)
 snapcanvas.bind("<Leave>", lambda event: snapcanvasmotion())
 snapcanvas.bind("<MouseWheel>", lambda event: snapcanvas.yview_scroll(-1 if event.delta > 0 else 1, "units"))
@@ -3248,11 +3261,11 @@ extraoverlay.transient(app)
 extradialog = ctk.CTkToplevel(app)
 extradialog.withdraw()
 extradialog.overrideredirect(True)
-extradialog.configure(fg_color="#342719")
+extradialog.configure(fg_color="#111111")
 extradialog.transient(app)
-extrapanel = ctk.CTkFrame(extradialog, fg_color="#342719",  border_color="#A77A2F", border_width=2, corner_radius=8)
+extrapanel = ctk.CTkFrame(extradialog, fg_color="#111111",  border_color="#555555", border_width=2, corner_radius=8)
 extrapanel.pack(fill="both", expand=True, padx=3, pady=3)
-extratitle = ctk.CTkLabel(extrapanel, text="Extra Tools", font=("Iceland", 24), text_color="#F3E6C5")
+extratitle = ctk.CTkLabel(extrapanel, text="Extra Tools", font=("Iceland", 24), text_color="#EAEAEA")
 extratitle.place(x=28, y=20)
 def positionextramenu(event=None):
     if event is not None and event.widget is not app:
@@ -3304,15 +3317,15 @@ def openextramenu(event=None):
     extraclosejob = app.after(180, enableextraclose)
     return 'break'
 def extratoolbutton(name, x, y):
-    button = Canvas( extrapanel,  width=112, height=44, bg="#342719",  highlightthickness=0, cursor="hand2")
-    background = button.create_rectangle(2, 2, 110, 42, fill="#191D1A", outline=HOVER_BG, width=2)
-    label = button.create_text(56, 22, text=name, fill="#F3E6C5", font=("Iceland", 15))
+    button = Canvas( extrapanel,  width=112, height=44, bg="#111111",  highlightthickness=0, cursor="hand2")
+    background = button.create_rectangle(2, 2, 110, 42, fill="#0B0B0B", outline=HOVER_BG, width=2)
+    label = button.create_text(56, 22, text=name, fill="#EAEAEA", font=("Iceland", 15))
     def enter(event):
         button.itemconfig(background, fill=HOVER_BG, outline=HOVER_BORDER)
-        button.itemconfig(label, fill="#F4C95D")
+        button.itemconfig(label, fill="#FFFFFF")
     def leave(event):
-        button.itemconfig( background, fill="#191D1A", outline=HOVER_BG)
-        button.itemconfig(label, fill="#F3E6C5")
+        button.itemconfig( background, fill="#0B0B0B", outline=HOVER_BG)
+        button.itemconfig(label, fill="#EAEAEA")
     def clicked(event):
         closeextramenu()
         runnamedcommand(name)
@@ -3335,11 +3348,11 @@ for index, tool_name in enumerate(extratools):
         24+ column * 132,
         85 + row * 58
     )
-closeextra = Canvas(extrapanel,  width=38, height=38,  bg="#342719", highlightthickness=0, cursor="hand2")
-closeextralabel = closeextra.create_text( 19, 19,  text="×", fill="#F3E6C5", font=("Iceland", 25))
+closeextra = Canvas(extrapanel,  width=38, height=38,  bg="#111111", highlightthickness=0, cursor="hand2")
+closeextralabel = closeextra.create_text( 19, 19,  text="×", fill="#EAEAEA", font=("Iceland", 25))
 closeextra.place(relx=1, x=-52, y=14)
-closeextra.bind(  "<Enter>",lambda event: closeextra.itemconfig(closeextralabel, fill="#F4C95D"))
-closeextra.bind(  "<Leave>",lambda event: closeextra.itemconfig(closeextralabel, fill="#F3E6C5"))
+closeextra.bind(  "<Enter>",lambda event: closeextra.itemconfig(closeextralabel, fill="#FFFFFF"))
+closeextra.bind(  "<Leave>",lambda event: closeextra.itemconfig(closeextralabel, fill="#EAEAEA"))
 closeextra.bind("<Button-1>", closeextramenu)
 def openextramenu(event=None):
     positionextramenu()
@@ -3800,11 +3813,11 @@ def sendai(event=None):
     return 'break'
 def sendenter(event):
     if not aibusy:
-        sendbutton.itemconfig(sendbox, fill='#D6A640', outline="#F4C95D")
-        sendbutton.itemconfig(sendtext, fill="#191D1A")
+        sendbutton.itemconfig(sendbox, fill='#D6A640', outline="#FFFFFF")
+        sendbutton.itemconfig(sendtext, fill="#0B0B0B")
 def sendleave(event):
-    sendbutton.itemconfig(sendbox, fill="#191D1A", outline='#A77A2F')
-    sendbutton.itemconfig(sendtext, fill="#F3E6C5")
+    sendbutton.itemconfig(sendbox, fill="#0B0B0B", outline='#555555')
+    sendbutton.itemconfig(sendtext, fill="#EAEAEA")
 sendbutton.bind("<Enter>", sendenter)
 sendbutton.bind("<Leave>", sendleave)
 sendbutton.bind("<Button-1>", sendai)
@@ -3824,21 +3837,21 @@ settingshade.attributes("-alpha", 0.55)
 settingsdialog = ctk.CTkToplevel(app)
 settingsdialog.withdraw()
 settingsdialog.overrideredirect(True)
-settingsdialog.configure(fg_color="#342719")
-settingspanel = ctk.CTkFrame(settingsdialog, fg_color="#342719", border_color="#A77A2F", border_width=2, corner_radius=8)
+settingsdialog.configure(fg_color="#111111")
+settingspanel = ctk.CTkFrame(settingsdialog, fg_color="#111111", border_color="#555555", border_width=2, corner_radius=8)
 settingspanel.pack(fill='both', expand=True, padx=3, pady=3)
-ctk.CTkLabel(settingspanel, text='AI Settings', font=("Iceland", 26), text_color="#F3E6C5").place(x=25, y=20)
-ctk.CTkLabel(settingspanel, text='API key', font=("Lexend", 12), text_color="#F3E6C5").place(x=25, y=80)
-apikeyentry= ctk.CTkEntry(settingspanel, width=460,height=36, show='*', placeholder_text="Enter API key", font=("Lexend", 12), fg_color="#191D1A", border_color=HOVER_BG)
+ctk.CTkLabel(settingspanel, text='AI Settings', font=("Iceland", 26), text_color="#EAEAEA").place(x=25, y=20)
+ctk.CTkLabel(settingspanel, text='API key', font=("Lexend", 12), text_color="#EAEAEA").place(x=25, y=80)
+apikeyentry= ctk.CTkEntry(settingspanel, width=460,height=36, show='*', placeholder_text="Enter API key", font=("Lexend", 12), fg_color="#0B0B0B", border_color=HOVER_BG)
 apikeyentry.place(x=25, y=105)
-ctk.CTkLabel(settingspanel, text="Model", font=("Lexend", 12), text_color="#F3E6C5").place(x=25, y=160)
-modelmenu = ctk.CTkOptionMenu(settingspanel, width=220, height=36, values=["openai/gpt-6-sol-pro","openai/gpt-4o-mini", "qwen/qwen3-32b", "google/gemini-2.5-flash", "moonshotai/kimi-k2", ], font=("Lexend", 12), fg_color=HOVER_BG, button_color="#A77A2F", button_hover_color=HOVER_BORDER, dropdown_fg_color="#342719")
+ctk.CTkLabel(settingspanel, text="Model", font=("Lexend", 12), text_color="#EAEAEA").place(x=25, y=160)
+modelmenu = ctk.CTkOptionMenu(settingspanel, width=220, height=36, values=["openai/gpt-6-sol-pro","openai/gpt-4o-mini", "qwen/qwen3-32b", "google/gemini-2.5-flash", "moonshotai/kimi-k2", ], font=("Lexend", 12), fg_color=HOVER_BG, button_color="#555555", button_hover_color=HOVER_BORDER, dropdown_fg_color="#111111")
 modelmenu.set("voyageai/voyage-4")
 modelmenu.place(x=25, y=185)
-clearhistorybutton = Canvas(settingspanel, width=180, height=38, bg="#342719", highlightthickness=0, cursor="hand2",)
-clearhistorytext = clearhistorybutton.create_text(90, 19, text="Clear AI History", fill="#F3E6C5", font=("Iceland", 16))
-clearhistorybutton.bind("<Enter>", lambda event: clearhistorybutton.itemconfig(clearhistorytext, fill="#F4C95D"))
-clearhistorybutton.bind("<Leave>", lambda event: clearhistorybutton.itemconfig(clearhistorytext, fill="#F3E6C5"))
+clearhistorybutton = Canvas(settingspanel, width=180, height=38, bg="#111111", highlightthickness=0, cursor="hand2",)
+clearhistorytext = clearhistorybutton.create_text(90, 19, text="Clear AI History", fill="#EAEAEA", font=("Iceland", 16))
+clearhistorybutton.bind("<Enter>", lambda event: clearhistorybutton.itemconfig(clearhistorytext, fill="#FFFFFF"))
+clearhistorybutton.bind("<Leave>", lambda event: clearhistorybutton.itemconfig(clearhistorytext, fill="#EAEAEA"))
 clearhistorybutton.bind("<Button-1>", lambda event: clearaihistory(), )
 clearhistorybutton.place(x=5, y=228)
 def positionsettings(event=None):
@@ -3869,17 +3882,17 @@ def opensettings(event=None):
     settingsdialog.deiconify()
     settingsdialog.lift()
     apikeyentry.focus_set()
-settingsave=Canvas(settingspanel, width=100, height=38, bg="#342719", highlightthickness=0, cursor='hand2')
-settingsavebox = settingsave.create_rectangle(2, 2, 98, 36, fill="#191D1A", outline="#A77A2F", width=2)
-settingsavetext =settingsave.create_text(50, 19, text='Save', fill='#F3E6C5', font=("Iceland", 17))
-settingsave.bind("<Enter>", lambda event: (settingsave.itemconfig(settingsavebox, fill=HOVER_BG), settingsave.itemconfig(settingsavetext, fill="#F4C95D")))
-settingsave.bind("<Leave>", lambda event: (settingsave.itemconfig(settingsavebox, fill='#242823'), settingsave.itemconfig(settingsavetext, fill='#F3E6C5')))
+settingsave=Canvas(settingspanel, width=100, height=38, bg="#111111", highlightthickness=0, cursor='hand2')
+settingsavebox = settingsave.create_rectangle(2, 2, 98, 36, fill="#0B0B0B", outline="#555555", width=2)
+settingsavetext =settingsave.create_text(50, 19, text='Save', fill='#EAEAEA', font=("Iceland", 17))
+settingsave.bind("<Enter>", lambda event: (settingsave.itemconfig(settingsavebox, fill=HOVER_BG), settingsave.itemconfig(settingsavetext, fill="#FFFFFF")))
+settingsave.bind("<Leave>", lambda event: (settingsave.itemconfig(settingsavebox, fill='#242823'), settingsave.itemconfig(settingsavetext, fill='#EAEAEA')))
 settingsave.bind("<Button-1>", lambda event :savesettings())
 settingsave.place(relx=1, x=-125, y=232)
-settingsclose= Canvas(settingspanel, width=36, height=36, bg="#342719", highlightthickness=0, cursor='hand2')
-settingsclosetext = settingsclose.create_text(18, 18, text='×', fill='#F3E6C5',font=("Iceland", 24) )
-settingsclose.bind("<Enter>", lambda event: settingsclose.itemconfig(settingsclosetext, fill="#F4C95D"))
-settingsclose.bind("<Leave>", lambda event: settingsclose.itemconfig(settingsclosetext, fill="#F3E6C5"))
+settingsclose= Canvas(settingspanel, width=36, height=36, bg="#111111", highlightthickness=0, cursor='hand2')
+settingsclosetext = settingsclose.create_text(18, 18, text='×', fill='#EAEAEA',font=("Iceland", 24) )
+settingsclose.bind("<Enter>", lambda event: settingsclose.itemconfig(settingsclosetext, fill="#FFFFFF"))
+settingsclose.bind("<Leave>", lambda event: settingsclose.itemconfig(settingsclosetext, fill="#EAEAEA"))
 settingsclose.bind("<Button-1>", closesettings)
 settingsclose.place(relx=1, x=-50, y=14)
 settingsbutton.bind("<Button-1>", opensettings)

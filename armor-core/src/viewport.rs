@@ -2609,16 +2609,14 @@ impl Viewport {
             red.clamp(0.0, 1.0),
             green.clamp(0.0, 1.0),
             blue.clamp(0.0, 1.0),
-            alpha.clamp(0.0, 1.0),
-        ];
+            alpha.clamp(0.0, 1.0),];
         self.polyline_color = color;
         for entity in &mut self.entities {
-            if entity.selected {
-                entity.color = color;
+            entity.color = color;}
+        for curve in &mut self.nurbs_curves {curve.color = color;}
+        for surface in &mut self.nurbs_surfaces { surface.color = color; }
+                self.rebuild_vertices();
             }
-        }
-        self.rebuild_vertices();
-    }
     fn segment_intersection_xz(
         first_start: Vector3<f32>,
         first_end: Vector3<f32>,

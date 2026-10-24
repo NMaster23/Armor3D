@@ -32,8 +32,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let n = normalize(in.normal);
         let n_light_dir = normalize(vec3<f32>(0.45, 0.8, 0.35));
         let diffuse_term = abs(dot(n, n_light_dir));
-        let final_brightness = 0.35 + 0.65 * diffuse_term;
-        return vec4<f32>(in.color.rgb * final_brightness, in.color.a);
+        let brightness = 0.35 + 0.65 * diffuse_term;
+        return vec4<f32>(in.color.rgb * brightness, in.color.a);
     } else {
         return in.color;
     }
