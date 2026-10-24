@@ -3214,13 +3214,16 @@ def saveuisettings():
 
 menujobs = {}
 menusliding = set()
-def slidemenu(menu, x, height, opening, top=20):
+def slidemenu(menu, x, height, opening, top=20, start_y=None):
     oldjob = menujobs.pop(menu, None)
     if oldjob is not None:
         app.after_cancel(oldjob)
     if not opening and not menu.winfo_manager():
         return
-    start = menu.winfo_y() if menu.winfo_manager() else -height
+    if menu.winfo_manager():
+        start = menu.winfo_y()
+    else:
+        start = -height if start_y is None else start_y
     end = top if opening else -height
     menusliding.add(menu)
     def step(number):
@@ -3235,6 +3238,105 @@ def slidemenu(menu, x, height, opening, top=20):
             if not opening:
                 menu.place_forget()
     step(0)
+
+current_view = 'perspective'
+view_hover_job = None
+view_close_job = None
+viewbutton = Canvas(
+    app, width=112, height=28, bg="#0B0B0B",
+    highlightthickness=1, highlightbackground="#555555",
+    cursor="hand2",)
+viewbutton_text = viewbutton.create_text(
+    56, 14, text="Perspective  v",
+    fill="#EAEAEA", font=("Iceland", 12))
+viewbutton.place(x=101, y=101)
+viewmenu = Canvas(
+    app, width=112, height=68, bg="#111111", highlightthickness=1, highlightbackground="#555555")
+view_rows = []
+for index, name in enumerate(("Perspective", "Top")):
+    y = 3+ index * 31
+    box = viewmenu.create_rectangle(
+        3, y, 108, y+29, fill='', outline='')
+    label = viewmenu.create_text(
+        11, y+14, text=name, anchor='w', fill="#EAEAEA", font=("Iceland", 12))
+    view_rows.append((box, label))
+def viewmenumotion(event):
+    hovered = (event.y - 3) // 31
+    for index, (box, label) in enumerate(view_rows):
+        active = index == hovered and 3 <= event.x <= 108
+        viewmenu.itemconfig(box, fill=HOVER_BG if active else '')
+        viewmenu.itemconfig(label, fill=HOVER_TEXT if active else "#EAEAEA")
+def open_view_menu():
+    global view_hover_job, view_close_job
+    view_close_job = None
+    if view_close_job is not None:
+        app.after_cancel(view_close_job)
+        view_close_job = None
+    slidemenu(filemenu, 8, 104, False)
+    slidemenu(importmenu, 48, 72, False)
+    slidemenu(analyze_menu, 100, 72, False)
+    slidemenu(toolsmenu, 150, 136, False)
+    slidemenu(viewmenu, 101, 68, True, top=129, start_y=33)
+def closeviewmenu():
+    global view_close_job
+    view_close_job = None
+    slidemenu(viewmenu, 101, 68, False)
+def viewbuttonenter(event=None):
+    global view_hover_job
+    if view_hover_job is not None:
+        app.after_cancel(view_hover_job)
+    view_hover_job = app.after(500, open_view_menu)
+def viewbuttonleave(event=None):
+    global view_hover_job
+    if view_hover_job is not None:
+        app.after_cancel(view_hover_job)
+        view_hover_job = None
+def view_button_click(event=None):
+    viewbuttonleave()
+    if viewmenu.winfo_manager():
+        closeviewmenu()
+    else:
+        open_view_menu()
+def choose_view(event):
+    global current_view
+    index = (event.y - 3) // 31
+    if index not in (0, 1):
+        return
+    view = 'perspective' if index == 0 else 'top'
+    if renderer is not None and renderer.set_view(view):
+        current_view = view
+        label = 'Perspective' if view == 'perspective' else "Top"
+        viewbutton.itemconfig(viewbutton_text, text=f"{label}  v")
+        renderer.render()
+    closeviewmenu()
+def pointeronviewmenu(event):
+    x = event.x_root - app.winfo_rootx()
+    y = event.y_root - app.winfo_rooty()
+    onbutton = 101 <= x <= 213 and 101 <= y <= 129
+    onmenu = 101 <= x <= 213 and 129 <= y <= 197
+    return onbutton or onmenu
+def viewpointermotion(event):
+    global view_close_job
+    if not viewmenu.winfo_manager():
+        return
+    if pointeronviewmenu(event):
+        if view_close_job is not None:
+            app.after_cancel(view_close_job)
+            view_close_job = None
+    elif view_close_job is None:
+        view_close_job = app.after(180, closeviewmenu)
+def viewoutsideclick(event):
+    if viewmenu.winfo_manager() and not pointeronviewmenu(event):
+        closeviewmenu()
+viewbutton.bind("<Enter>", viewbuttonenter)
+viewbutton.bind("<Leave>", viewbuttonleave)
+viewbutton.bind("<Button-1>", view_button_click)
+viewmenu.bind("<Motion>", viewmenumotion)
+viewmenu.bind("<Button-1>", choose_view)
+app.bind_all("<Motion>", viewpointermotion, add='+')
+app.bind_all("<Button-1>", viewoutsideclick, add='+')
+
+
 
 def opensaveascommand():
     global activecommand

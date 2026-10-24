@@ -175,6 +175,7 @@ pub struct Viewport {
     pub point_vertices: Vec<Vertex>,
     pub next_entity: usize,
     pub camera: Camera,
+    pub saved_perspective_view: Option<(cgmath::Point3<f32>, cgmath::Point3<f32>,Vector3<f32>,)>,
     pub camera_controller: CameraController,
     pub width: u32,
     pub height: u32,
@@ -776,11 +777,6 @@ impl Viewport {
             self.rebuild_vertices();
         }
     }
-    pub saved_perspective_view: Option<(
-        cgmath::Point3<f32>,
-        cgmath::Point3<f32>,
-        Vector3<f32>
-    )>
     pub fn set_top_view(&mut self) {
         if !self.camera.orthographic {
             self.saved_perspective_view = Some((
@@ -802,15 +798,15 @@ impl Viewport {
         self.rebuild_vertices();
     }
     pub fn set_perspective_view(&mut self) {
-        if let Some((eye, target, up)) = self.saved_perspective_view.take() [
+        if let Some((eye, target, up)) = self.saved_perspective_view.take() {
             self.camera.eye = eye;
             self.camera.target = target;
             self.camera.up = up;
-        ] else {
+        } else {
             self.camera.eye = self.camera.target + Vector3::new(0.0, 2.0, 4.0);
             self.camera.up = Vector3::unit_y();
         }
-        self.camera_orthographic =false;
+        self.camera.orthographic = false;
         self.rebuild_vertices();
     }
     pub fn draw_text(

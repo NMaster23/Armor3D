@@ -146,7 +146,7 @@ impl ViewportRenderer {
         self.state.get_all_fonts()
     }
     fn undo(&mut self) -> bool {
-        self.state.undo_scene()#[pymethods]
+        self.state.undo_scene()
     }
     fn set_view(&mut self, view: &str) -> bool {
         match view {
