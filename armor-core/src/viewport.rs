@@ -75,6 +75,7 @@ pub struct PolyLine {
     pub thickness: f32,
     pub selected: bool,
     pub height: f32,
+    pub extrude_axis: Vector3<f32>,
     pub show_markers: bool,
 }
 
@@ -148,7 +149,7 @@ impl<T: Clone> ShapeUndoStore<T> {
     }
 }
 pub struct Viewport {
-    extrude_drag: Option<(usize, f32)>,
+    extrude_drag: Option<(usize, f32, Vector3<f32>)>,
     pub hist_entities: ShapeUndoStore<PolyLine>,
     pub hist_surfaces: ShapeUndoStore<NurbsSurfaceEntity>,
     pub entities: Vec<PolyLine>,
@@ -238,6 +239,7 @@ impl Viewport {
                 thickness: source.thickness,
                 selected: true,
                 height: source.height,
+                extrude_axis: source.extrude_axis,
                 show_markers: source.show_markers,
                 hatched: source.hatched,
             });
@@ -253,6 +255,28 @@ impl Viewport {
     }
     fn is_closed_shape(vertices: &[Vector3<f32>]) -> bool {
         vertices.len() >= 4 && (vertices[0] - vertices[vertices.len() - 1]).magnitude2() < 0.0001
+    }
+    fn extrusion_axis_for_vertices(
+        vertices: &[Vector3<f32>],
+        view_direction: Vector3<f32>,
+        fallback_axis: Vector3<f32>,
+    ) -> Vector3<f32> {
+    let origin = vertices[0];
+    for i in 1..vertices.len() - 1 {
+        for j in i + 1..vertices.len() {
+            let cross = (vertices[i] - origin).cross(vertices[j] - origin);
+            if cross.magnitude2() > f32::EPSILON {
+                let mut normal = cross.normalize();
+                if view_direction.magnitude2() > f32::EPSILON
+                    && normal.dot(view_direction) < 0.0
+                {
+                    normal = -normal;
+                }
+                return normal;
+            }
+        }
+        }
+        fallback_axis
     }
     pub fn revolve_object(&mut self, object_id: usize, degrees: f32, axis: &str) -> usize {
         if !self.entities.iter().any(|entity| {
@@ -540,6 +564,7 @@ impl Viewport {
                 thickness: source.thickness,
                 selected: false,
                 height: source.height,
+                extrude_axis: source.extrude_axis,
                 show_markers: source.show_markers,
                 hatched: source.hatched,
             });
@@ -692,6 +717,7 @@ impl Viewport {
                 thickness: source.thickness,
                 selected: true,
                 height: source.height,
+                extrude_axis: source.extrude_axis,
                 show_markers: source.show_markers,
                 hatched: source.hatched,
             });
@@ -772,15 +798,31 @@ impl Viewport {
 
 impl Viewport {
     pub fn extrude_step(&mut self, step: f32) {
-        let target = if let Some(selected_id) = self.selected_entity {
-            self.entities.iter_mut().find(|e| e.id == selected_id)
+        let index = if let Some(selected_id) = self.selected_entity {
+            self.entities
+                .iter()
+                .position(|entity| entity.id == selected_id)
         } else {
-            self.entities.last_mut()
+            self.entities.len().checked_sub(1)
         };
-        if let Some(entity) = target {
-            entity.height += step;
-            self.rebuild_vertices();
-        }
+        let Some(index) = index else {
+            return;
+        };
+        let fallback_axis = if self.front_view {
+            Vector3::unit_z()
+        } else {
+            Vector3::unit_y()  
+        };
+        let view_direction = self.camera.eye - self.camera.target;
+        let axis = Self::extrusion_axis_for_vertices(
+            &self.entities[index].vertices,
+            view_direction,
+            fallback_axis
+        );
+        let entity = &mut self.entities[index];
+        entity.extrude_axis = axis;
+        entity.height += step;
+        self.rebuild_vertices();
     }
     pub fn set_top_view(&mut self) {
         if !self.camera.orthographic {
@@ -1098,6 +1140,7 @@ impl Viewport {
             thickness: 1.0,
             selected: false,
             height: 0.0,
+            extrude_axis: Vector3::unit_y(),
             show_markers: true,
             hatched: false,
         };
@@ -1109,26 +1152,38 @@ impl Viewport {
         points: &[cgmath::Vector3<f32>],
         color: [f32; 4],
         height: f32,
+        axis: Vector3<f32>,
     ) -> Vec<Vertex> {
         let mut vertices = Vec::new();
-        if points.len() < 3 || !height.is_finite() || height.abs() <= f32::EPSILON {
+        if points.len() < 3
+            || !height.is_finite()
+            || height.abs() <= f32::EPSILON
+            || !axis.x.is_finite()
+            || !axis.y.is_finite()
+            || !axis.z.is_finite()
+            || axis.magnitude2() <= f32::EPSILON
+        {
             return vertices;
         }
+        let offset = axis.normalize() * height;
+        let signed_axis = axis.normalize() * height.signum();
         for window in points.windows(2) {
             let point0 = window[0];
             let point1 = window[1];
-            let product =
-                (point1 - point0).cross(Vector3::new(0.0, height.signum(), 0.0));
+            let product = (point1 - point0).cross(signed_axis);
             let wall_normal = if product.magnitude2() > f32::EPSILON {
                 let normal = product.normalize();
                 [normal.x, normal.y, normal.z]
             } else {
-                [0.0, 1.0, 0.0]
+                let normal = signed_axis;
+                [normal.x, normal.y, normal.z]
             };
             let bottom0 = [point0.x, point0.y, point0.z];
             let bottom1 = [point1.x, point1.y, point1.z];
-            let top0 = [point0.x, point0.y + height, point0.z];
-            let top1 = [point1.x, point1.y + height, point1.z];
+            let top_point0 = point0 + offset;
+            let top_point1 = point1 + offset;
+            let top0 = [top_point0.x, top_point0.y, top_point0.z];
+            let top1 = [top_point1.x, top_point1.y, top_point1.z];
             vertices.extend([
                 Vertex { position: bottom0, coords: wall_normal, color },
                 Vertex { position: bottom1, coords: wall_normal, color },
@@ -1911,7 +1966,12 @@ impl Viewport {
                 }
             }
             if closed && entity.height.abs() > f32::EPSILON {
-                new_vertices.extend(Self::extrude(&entity.vertices, draw_color, entity.height));
+                new_vertices.extend(Self::extrude(
+                    &entity.vertices,
+                    draw_color,
+                    entity.height,
+                    entity.extrude_axis,
+                ));
             }
             let entity_vertices =
                 self.tessellate_polyline(&entity.vertices, entity.thickness, draw_color);
@@ -2137,7 +2197,7 @@ impl Viewport {
         self.rebuild_vertices();
         id
     }
-    pub fn extrude_selected(&mut self, height: f32) -> usize {
+    pub fn extrude_selected(&mut self, height:f32) -> usize {
         if !height.is_finite() || height.abs() > 100_000.0 {
             return 0;
         }
@@ -2152,9 +2212,20 @@ impl Viewport {
         if selected_ids.is_empty() {
             return 0;
         }
+        let fallback_axis = if self.front_view {
+            Vector3::unit_z()
+        } else {
+            Vector3::unit_y()
+        };
+        let view_direction = self.camera.eye - self.camera.target;
         self.save_undo_state();
         for entity in &mut self.entities {
             if selected_ids.contains(&entity.id) {
+                entity.extrude_axis = Self::extrusion_axis_for_vertices(
+                    &entity.vertices,
+                    view_direction,
+                    fallback_axis
+                );
                 entity.height = height;
             }
         }
@@ -2165,17 +2236,37 @@ impl Viewport {
         if !height.is_finite() || height.abs() > 100_000.0 {
             return false;
         }
-        let Some(entity) = self.entities.iter().find(|entity| entity.id == object_id) else{
+        let Some(existing) = self
+            .entities
+            .iter()
+            .find(|entity| entity.id == object_id)
+        else {
             return false;
         };
-        if !Self::is_closed_shape(&entity.vertices) {
+        if !Self::is_closed_shape(&existing.vertices) {
             return false;
         }
+        let fallback_axis = if self.front_view {
+            Vector3::unit_z()
+        } else {
+            Vector3::unit_y()
+        };
+        let view_direction = self.camera.eye - self.camera.target;
+        let axis = Self::extrusion_axis_for_vertices(
+            &existing.vertices,
+            view_direction,
+            fallback_axis
+        );
         self.save_undo_state();
-        let Some(entity) = self.entities.iter_mut().find(|entity| entity.id == object_id) else{
+        let Some(entity) = self
+            .entities
+            .iter_mut()
+            .find(|entity| entity.id == object_id)
+        else{
             return false;
         };
         entity.height = height;
+        entity.extrude_axis = axis;
         self.rebuild_vertices();
         true
     }
@@ -2188,21 +2279,36 @@ impl Viewport {
         }) else {
             return false;
         };
-        let Some(entity) = self.entities.iter().find(|entity| {
+        let Some(existing) = self.entities.iter().find(|entity| {
             entity.id == id && Self::is_closed_shape(&entity.vertices)
         }) else {
             return false;
         };
-        let start_height = entity.height;
+        let start_height = existing.height;
+        let start_axis = existing.extrude_axis;
+        let fallback_axis = if self.front_view {
+            Vector3::unit_z()
+        } else {
+            Vector3::unit_y()
+        };
+        let view_direction = self.camera.eye - self.camera.target;
+        let axis = Self::extrusion_axis_for_vertices(
+            &existing.vertices,
+            view_direction,
+            fallback_axis,
+        );
         self.save_undo_state();
-        self.extrude_drag = Some((id, start_height));
+        if let Some(entity) = self.entities.iter_mut().find(|entity| entity.id== id) {
+            entity.extrude_axis = axis;
+        }
+        self.extrude_drag = Some((id, start_height, start_axis));
         true
     }
     pub fn preview_extrude_drag(&mut self, delta_y: f32) -> bool {
         if !delta_y.is_finite() {
             return false;
         }
-        let Some((id, start_height)) = self.extrude_drag else {
+        let Some((id, start_height, _)) = self.extrude_drag else {
             return false;
         };
         let Some(entity) = self.entities.iter_mut().find(|entity| entity.id == id) else {
@@ -2213,12 +2319,13 @@ impl Viewport {
         true
     }
     pub fn end_extrude_drag(&mut self, commit: bool) {
-        let Some((id, start_height)) = self.extrude_drag.take() else {
+        let Some((id, start_height, start_axis)) = self.extrude_drag.take() else {
             return;
         };
         if !commit {
             if let Some(entity) = self.entities.iter_mut().find(|entity| entity.id == id) {
                 entity.height = start_height;
+                entity.extrude_axis = start_axis;
             }
             self.hist_entities.undo.pop();
             self.hist_entities.current = self.entities.clone();
@@ -2479,6 +2586,7 @@ impl Viewport {
             thickness,
             selected: false,
             height: 0.0,
+            extrude_axis: Vector3::unit_y(),
             show_markers: true,
             hatched,
         })
@@ -3525,6 +3633,7 @@ impl Viewport {
                 thickness: source.thickness,
                 selected: false,
                 height: source.height,
+                    extrude_axis: source.extrude_axis,
                 show_markers: source.show_markers,
                 hatched: source.hatched,
             });
@@ -3574,6 +3683,7 @@ impl Viewport {
                     thickness: source.thickness,
                     selected: true,
                     height: source.height,
+                    extrude_axis: source.extrude_axis,
                     show_markers: source.show_markers,
                     hatched: source.hatched,
                 });
@@ -3650,6 +3760,7 @@ mod tests {
             thickness: 1.0,
             selected: false,
             height: 0.0,
+            extrude_axis: Vector3::unit_y(),
             show_markers: true,
             hatched: true,
         }
