@@ -55,6 +55,18 @@ def sendmessage(
         scene or {"objects": []},
         separators=(",", ":")
     )
+    active_view = (scene or {}).get("active_view", 'perspective')
+    if active_view == 'front':
+        view_instructions = (
+            "The active viewport is Front. Draw new profiles in the XY plane"
+            "with Z=0. For example, a 4 by 3 rectangle is "
+            "[[0,0,0],[4,0,0],[4,3,0],[0,3,0]]. "
+        )
+    else:
+        view_instructions = (
+            f"The active viewport is {active_view}. Draw new profiles in the XZ"
+            "plane with Y=0"
+        )
     messages = [
         {
             'role': "system",
@@ -62,11 +74,13 @@ def sendmessage(
                 "You are Armor AI inside of Armor 3D. Reply with one valid JSON object:"
                 '{"reply":"short response","actions":[]}.'
                 "When the user asks you to draw, return one or more drawing actions. "
+                f"{view_instructions}"
                 "Allowed actions are draw_line, draw_polyline, hatch_shapes, hatch_new_shapes, extrude, revolve, undo, and delete_objects. "
                 'Use {"action":"extrude","target":"last_created","height":3} to extrude the most recently drawn closed shape. '
                 'Use {"action":"extrude","object_id":12,"height":3} to extrude an existing closed shape by its scene ID. '
-                "Extrude height is the final total distance along Y; positive is up and negative is down. "
-                "Only extrude closed shapes. "
+                "Extrude height is signed distance along the drawn shape's plane normal. "
+                "Positive height points toward the current camera; negative height points away. "
+                "On a Front-view XY profile, extrusion is along Z. On an XZ profile, it is along Y. "
                 'Use {"action":"revolve","target":"last_created","degrees":360,"axis":"y"} to revolve the most recently drawn closed profile around the vertical Y axis. '
                 'Use {"action":"revolve","object_id":12,"degrees":180,"axis":"x"} to revolve an existing closed profile by scene ID. '
                 "Revolve degrees must be between -360 and 360 and nonzero. Axis can be x, y, or z. Y is vertical, so use Y for a typical upright profile. "

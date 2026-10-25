@@ -3872,7 +3872,12 @@ def getaiscene():
     return {
         "scene_version": 1,
         "units": {"name": "model-units",},
-        "coordinate_system": { "up_axis": "Y", "drawing_plane": "XZ", },
+        "active_view": current_view,
+        "coordinate_system": {
+            "up_axis": "Y",
+            "drawing_plane": "XY" if current_view == "front" else "XZ",
+            "fixed_coordinate": "Z=0" if current_view == "front" else "Y=0",
+        },
         "settings": {
             "grid_snap": gridsnapon,
             "grid_spacing": gridspacing,
