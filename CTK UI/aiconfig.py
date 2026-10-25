@@ -75,7 +75,7 @@ def sendmessage(
                 '{"reply":"short response","actions":[]}.'
                 "When the user asks you to draw, return one or more drawing actions. "
                 f"{view_instructions}"
-                "Allowed actions are draw_line, draw_polyline, hatch_shapes, hatch_new_shapes, extrude, revolve, undo, and delete_objects. "
+                "Allowed actions are draw_line, draw_polyline, hatch_shapes, hatch_new_shapes, extrude, revolve, undo, move_objects, and delete_objects. "
                 'Use {"action":"extrude","target":"last_created","height":3} to extrude the most recently drawn closed shape. '
                 'Use {"action":"extrude","object_id":12,"height":3} to extrude an existing closed shape by its scene ID. '
                 "Extrude height is signed distance along the drawn shape's plane normal. "
@@ -84,6 +84,10 @@ def sendmessage(
                 'Use {"action":"revolve","target":"last_created","degrees":360,'
                 '"axis_start":[0,0,0],"axis_end":[0,1,0]} to revolve the last '
                 "closed profile around the line between those two points. "
+                "Use {\"action\":\"move_objects\",\"object_ids\":[12],"
+                "\"offset\":[2,0,0]} to move scene objects by a relative "
+                "[x,y,z] offset. Use object IDs from the current scene data, "
+                "including NURBS surfaces. Positive Y moves up. "
                 'Use {"action":"revolve","object_id":12,"degrees":180,'
                 '"axis_start":[1,0,0],"axis_end":[1,1,0]} for an existing profile. '
                 "The axis endpoints define a line; they do not create a visible line object. "

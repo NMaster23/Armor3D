@@ -430,6 +430,44 @@ impl ViewportRenderer {
     fn delete_selected(&mut self) -> usize {
         self.state.delete_selected_objects()
     }
+    fn translate_objects(
+        &mut self,
+        object_ids: Vec<usize>,
+        offset: (f32, f32, f32)
+    ) -> usize {
+        self.state.viewport.translate_objects(
+            &object_ids,
+            cgmath::Vector3::new(offset.0, offset.1, offset.2)
+        )
+    }
+    fn scene_surface_data(&self) -> Vec<(usize, (f32, f32, f32), bool)> {
+        self.state
+            .viewport
+            .nurbs_surfaces
+            .iter()
+            .map(|surface| {
+                let(mut x, mut y, mut z, mut count) = (0.0, 0.0, 0.0, 0usize);
+                for row in &surface.surface.control_points {
+                    for control_point in row {
+                        x+= control_point.point.x;
+                        y += control_point.point.y;
+                        z+= control_point.point.z;
+                        count+= 1;
+                    }
+                }
+                let center = if count == 0 {
+                    (0.0, 0.0, 0.0)
+                } else {
+                    (
+                        x / count as f32,
+                        y / count as f32,
+                        z / count as f32,
+                    )
+                };
+                (surface.id, center, surface.selected)
+            })
+            .collect()
+    }
     fn delete_objects(&mut self, object_ids: Vec<usize>) -> usize {
     self.state.viewport.delete_objects(&object_ids)
     }

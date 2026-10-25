@@ -3585,6 +3585,25 @@ def executeaiactions(actions):
                 else "There was nothing to undo"
             )
             continue
+        if action_type == 'move_objects':
+            object_ids = action.get("object_ids")
+            offset = validpoint(action.get('offset'))
+            if (
+                not isinstance(object_ids, list)
+                or not object_ids
+                or len(object_ids) > 64
+                or any(type(object_id) is not int for object_id in object_ids)
+                or offset is None
+            ):
+                results.append("ignored an invalid move request")
+                continue
+            moved = renderer.translate_objects(object_ids, offset)
+            results.append(
+                f"Moved {moved} objects(s) by the requested offset"
+                if moved
+                else "Those IDs did not match the moveable objects"
+            )
+            continue
         if action_type == "delete_objects":
             object_ids = action.get("object_ids")
             if (
@@ -3835,6 +3854,19 @@ def getaiscene():
                     round(value, 3)
                     for value in color],},
             "properties": { "height": round(height, 5), "selected": selected, },})
+    for object_id, center, selected in renderer.scene_surface_data():
+        x, y, z = center
+        objects.append({
+            "id": object_id,
+            "object_type": 'surface',
+            "geometry_type": "nurbs_surface",
+            "measurements": {
+                "center": [round(x, 5), round(y, 5), round(-z, 5)],
+            },
+            "properties": {
+                'selected': selected,
+            }
+        })
 
     draft_points = []
     if activecommand in ("polyline", "curve"):

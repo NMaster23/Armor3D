@@ -173,6 +173,7 @@ pub struct Viewport {
     pub curve_active: bool,
     pub polyline_distance: Option<f32>,
     pub move_anchor: Option<Vector3<f32>>,
+    pub move_surface_snapshots: Vec<(usize, NurbsSurface)>,
     pub move_snapshots: Vec<(usize, Vec<Vector3<f32>>)>,
     pub point_vertices: Vec<Vertex>,
     pub next_entity: usize,
@@ -398,6 +399,7 @@ impl Viewport {
             })
             .cloned()
             .collect();
+        let source_ids: Vec<usize> = sources.iter().map(|source| source.id).collect();
         if sources.is_empty() {
             return 0;
         }
@@ -457,13 +459,19 @@ impl Viewport {
             self.nurbs_surfaces.push(NurbsSurfaceEntity {
                 id, surface,
                 color: source.color,
-                selected: false,
+                selected: true,
                 u_subdivisions: (profile_rows * 4).clamp(12, 128),
                 v_subdivisions: angle_steps
             });
             created += 1;
         }
         if created > 0 {
+            self.entities.retain(|entity| !source_ids.contains(&entity.id));
+            self.selected_entity = self
+                .nurbs_surfaces
+                .iter()
+                .find(|surface| surface.selected)
+                .map(|surface| surface.id);
             self.rebuild_vertices();
         }
         created
@@ -491,6 +499,7 @@ impl Viewport {
             .filter(|entity| entity.selected && Self::is_closed_shape(&entity.vertices))
             .cloned()
             .collect();
+        let source_ids: Vec<usize> = sources.iter().map(|source| source.id).collect();
         if sources.is_empty() {return 0;}
         self.save_undo_state();
         let angle_steps = ((degrees.abs() / 5.0).ceil() as usize).clamp(12, 144);
@@ -532,11 +541,17 @@ impl Viewport {
             self.next_entity += 1;
             self.nurbs_surfaces.push(NurbsSurfaceEntity {
                 id, surface, color: source.color,
-                selected: false, u_subdivisions: (profile_rows * 4).clamp(12, 128), v_subdivisions: angle_steps
+                selected: true, u_subdivisions: (profile_rows * 4).clamp(12, 128), v_subdivisions: angle_steps
             });
             created += 1;
         }
         if created > 0 {
+            self.entities.retain(|entity| !source_ids.contains(&entity.id));
+            self.selected_entity = self
+                .nurbs_surfaces
+                .iter()
+                .find(|surface| surface.selected)
+                .map(|surface| surface.id);
             self.rebuild_vertices();
         }
         created
@@ -801,6 +816,7 @@ impl Viewport {
             curve_active: false,
             move_anchor: None,
             move_snapshots: Vec::new(),
+            move_surface_snapshots: Vec::new(),
             point_vertices: Vec::new(),
             next_entity: 0,
             camera,
@@ -1761,6 +1777,52 @@ impl Viewport {
         self.rebuild_vertices();
         deleted
     }
+    pub fn translate_objects(
+        &mut self,
+        object_ids: &[usize],
+        offset:Vector3<f32>,
+    ) -> usize {
+        if object_ids.is_empty()
+            || !offset.x.is_finite()
+            || !offset.y.is_finite()
+            || !offset.z.is_finite()
+        {
+            return 0;
+        }
+        let polyline_count = self
+            .entities
+            .iter()
+            .filter(|entity| object_ids.contains(&entity.id))
+            .count();
+        let surface_count = self
+            .nurbs_surfaces
+            .iter()
+            .filter(|surface| object_ids.contains(&surface.id))
+            .count();
+        let moved_count = polyline_count + surface_count;
+        if moved_count == 0 {
+            return 0;
+        }
+        self.save_undo_state();
+        for entity in &mut self.entities {
+            if object_ids.contains(&entity.id) {
+                for point in &mut entity.vertices {
+                    *point += offset;
+                }
+            }
+        }
+        for surface in &mut self.nurbs_surfaces {
+            if object_ids.contains(&surface.id) {
+                for row in &mut surface.surface.control_points {
+                    for control_point in row {
+                        control_point.point += offset;
+                    }
+                }
+            }
+        }
+        self.rebuild_vertices();
+        moved_count
+    }
     pub fn delete_objects(&mut self, ids: &[usize]) -> usize {
         let deleted_polylines = self
             .entities
@@ -1843,7 +1905,7 @@ impl Viewport {
             .iter()
             .filter(|entity| entity.selected)
             .any(|entity| {
-                let screen_vertices: Vec<cgmath::Vector2<f32>> = entity
+                let screen_vertices: Vec<cgmath::Vector2<f32>> =entity
                     .vertices
                     .iter()
                     .filter_map(|point| self.world_to_screen(*point))
@@ -1854,26 +1916,28 @@ impl Viewport {
                 let interior_hit = entity.hatched
                     && Self::is_closed_shape(&entity.vertices)
                     && Self::point_in_polygon(mouse, &screen_vertices);
-                if interior_hit {
-                    return true;
-                }
-                if segment_hit {
-                    return true;
-                }
-                if self.hit_extruded_side(entity, mouse, threshold_sq) {
-                    return true;
-                }
-                if let Some((center, endpoint)) = Self::circle_control_points(&entity.vertices) {
-                    return [center, endpoint]
-                        .into_iter()
-                        .filter_map(|point| self.world_to_screen(point))
-                        .any(|screen| (screen - mouse).magnitude2() <= threshold_sq);
-                }
-                false
-            });
+                interior_hit
+                    || segment_hit
+                    || self.hit_extruded_side(entity, mouse, threshold_sq)
+                    || Self::circle_control_points(&entity.vertices)
+                        .map(|(center, endpoint)| {
+                            [center, endpoint]
+                                .into_iter()
+                                .filter_map(|point| self.world_to_screen(point))
+                                .any(|screen| (screen - mouse).magnitude2() <= threshold_sq)
+                        })
+                        .unwrap_or(false)
+            })
+            || self
+                .nurbs_surfaces
+                .iter()
+                .filter(|surface| surface.selected)
+                .any(|surface| self.surface_hit_test(surface, mouse).is_some());
         if !hit_selected {
             self.move_anchor = None;
             self.move_snapshots.clear();
+            self.move_surface_snapshots.clear();
+            self.move_surface_snapshots.clear();
             return false;
         }
         self.save_undo_state();
@@ -1884,6 +1948,12 @@ impl Viewport {
                 .iter()
                 .filter(|entity| entity.selected)
                 .map(|entity| (entity.id, entity.vertices.clone()))
+                .collect();
+            self.move_surface_snapshots = self
+                .nurbs_surfaces
+                .iter()
+                .filter(|surface| surface.selected)
+                .map(|surface| (surface.id, surface.surface.clone()))
                 .collect();
         }
         self.move_anchor.is_some()
@@ -1910,6 +1980,20 @@ impl Viewport {
                     .collect();
             }
         }
+        for (surface_id, original_surface) in &self.move_surface_snapshots {
+            if let Some(surface_entity) = self
+                .nurbs_surfaces
+                .iter_mut()
+                .find(|surface| surface.id == *surface_id)
+            {
+                surface_entity.surface = original_surface.clone();
+                for row in &mut surface_entity.surface.control_points {
+                    for control_point in row {
+                        control_point.point += offset;
+                    }
+                }
+            }
+        }
         self.rebuild_vertices();
         true
     }
@@ -1917,6 +2001,7 @@ impl Viewport {
     pub fn end_move_selected(&mut self) {
         self.move_anchor = None;
         self.move_snapshots.clear();
+        self.move_surface_snapshots.clear();
     }
     pub fn world_to_screen(&self, world_pos: cgmath::Vector3<f32>) -> Option<cgmath::Vector2<f32>> {
         let view_proj = self.camera.build_view_projection_matrix();
@@ -3796,12 +3881,22 @@ impl Viewport {
             return true;
         } else if move_active {
             for (id, vertices) in &self.move_snapshots {
-                if let Some(entity) = self.entities.iter_mut().find(|e| e.id == *id) {
+                if let Some(entity) = self.entities.iter_mut().find(|entity| entity.id == *id) {
                     entity.vertices = vertices.clone();
+                }
+            }
+            for (id, original_surface) in &self.move_surface_snapshots {
+                if let Some(surface_entity) = self
+                    .nurbs_surfaces
+                    .iter_mut()
+                    .find(|surface| surface.id == *id)
+                {
+                    surface_entity.surface = original_surface.clone();
                 }
             }
             self.move_anchor = None;
             self.move_snapshots.clear();
+            self.move_surface_snapshots.clear();
             self.rebuild_vertices();
             return true;
         } else if grab_active {
