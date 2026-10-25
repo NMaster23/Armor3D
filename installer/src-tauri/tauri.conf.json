@@ -12,7 +12,6 @@
   "app": {
     "windows": [
       {
-        "title": "Armor3D Setup",
         "width": 960,
         "height": 600,
         "decorations": false,

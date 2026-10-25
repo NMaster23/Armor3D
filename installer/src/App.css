@@ -1,3 +1,5 @@
+@import "tailwindcss";
+
 .logo.vite:hover {
   filter: drop-shadow(0 0 2em #747bff);
 }
@@ -113,4 +115,37 @@ button {
   button:active {
     background-color: #0f0f0f69;
   }
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100vw;
+  height: 100vh;
+  background: transparent !important;
+  overflow: hidden;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+}
+
+.screen-wrapper {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(0, 0, 0, 0.2);
+}
+
+.solid-card {
+  width: 860px;
+  height: 520px;
+  background-color: #16161a;
+  border: 1px solid #2e2e38;
+  border-radius: 20px;
+  box-shadow: 0 30px 70px rgba(0, 0, 0, 0.75);
+  padding: 40px;
+  color: #ffffff;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
 }
