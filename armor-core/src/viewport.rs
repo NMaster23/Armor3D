@@ -246,55 +246,102 @@ impl Viewport {
             .filter(|entity| entity.selected)
             .count() }
     pub fn rotate_selected_objects(&mut self, degrees: f32, mode: &str) -> usize {
-        if !degrees.is_finite() || degrees == 0.0 || degrees.abs() > 360.0 {
+        let object_ids: Vec<usize> = self
+            .entities
+            .iter()
+            .filter(|entity| entity.selected)
+            .map(|entity| entity.id)
+            .chain(
+                self.nurbs_surfaces
+                    .iter()
+                    .filter(|surface| surface.selected)
+                    .map(|surface| surface.id)
+            )
+            .collect();
+        self.rotate_objects_by_ids(&object_ids, degrees, mode)
+    }
+    pub fn rotate_objects_by_ids(
+        &mut self,
+        object_ids: &[usize],
+        degrees: f32,
+        mode: &str,
+    ) -> usize {
+        if object_ids.is_empty()
+            || !degrees.is_finite()
+            || degrees == 0.0
+            || degrees.abs() > 360.0
+        {
             return 0;
         }
         let axis: Vector3<f32> = match mode {
             "xy" => {
                 if self.front_view {
                     Vector3::unit_z()
-                } else {
+                } else{
                     Vector3::unit_y()
                 }
             }
             "z" => Vector3::unit_z(),
-            _ => return 0,};
+            _=> return 0,
+        };
         let mut points = Vec::new();
-        for entity in self.entities.iter().filter(|entity| entity.selected) {
-            points.extend(entity.vertices.iter().copied()); }
-        for surface in self.nurbs_surfaces.iter().filter(|surface| surface.selected) {
+        for entity in self.entities.iter().filter(|entity| object_ids.contains(&entity.id)) {
+            points.extend(entity.vertices.iter().copied());
+        }
+        for surface in self
+            .nurbs_surfaces
+            .iter()
+            .filter(|surface| object_ids.contains(&surface.id))
+        {
             for row in &surface.surface.control_points {
                 points.extend(row.iter().map(|control_point| control_point.point));
-            }   
+            }
         }
         if points.is_empty() {
-            return 0; }
-        let min_x = points.iter().map(|point| point.x).fold(f32::INFINITY, f32::min);
-        let min_y = points.iter().map(|point| point.y).fold(f32::INFINITY, f32::min);
-        let min_z = points.iter().map(|point| point.z).fold(f32::INFINITY, f32::min);
-        let max_x = points.iter().map(|point| point.x).fold(f32::NEG_INFINITY, f32::max);
-        let max_y = points.iter().map(|point| point.y).fold(f32::NEG_INFINITY, f32::max);
-        let max_z = points.iter().map(|point| point.z).fold(f32::NEG_INFINITY, f32::max);
+            return 0;
+        }
+        let min_x = points.iter().map(|p| p.x).fold(f32::INFINITY, f32::min);
+        let min_y = points.iter().map(|p| p.y).fold(f32::INFINITY, f32::min);
+        let min_z = points.iter().map(|p| p.z).fold(f32::INFINITY, f32::min);
+        let max_x = points.iter().map(|p| p.x).fold(f32::NEG_INFINITY, f32::max);
+        let max_y = points.iter().map(|p| p.y).fold(f32::NEG_INFINITY, f32::max);
+        let max_z = points.iter().map(|p| p.z).fold(f32::NEG_INFINITY, f32::max);
         let pivot = Vector3::new(
             (min_x + max_x) * 0.5,
             (min_y + max_y) * 0.5,
-            (min_z + max_z) * 0.5, );
+            (min_z + max_z) * 0.5,
+        );
         let half_angle = degrees.to_radians() * 0.5;
         let sin_half = half_angle.sin();
         let rotation = Quaternion::new(
             half_angle.cos(),
             axis.x * sin_half, axis.y * sin_half, axis.z * sin_half,
         );
-        let polyline_count = self.entities.iter().filter(|entity| entity.selected).count();
-        let surface_count = self.nurbs_surfaces.iter().filter(|surface| surface.selected).count();
+        let polyline_count = self
+            .entities
+            .iter()
+            .filter(|entity| object_ids.contains(&entity.id))
+            .count();
+        let surface_count = self
+            .nurbs_surfaces
+            .iter()
+            .filter(|surface| object_ids.contains(&surface.id))
+            .count();
+        if polyline_count + surface_count == 0 {
+            return 0;
+        }
         self.save_undo_state();
-        for entity in self.entities.iter_mut().filter(|entity| entity.selected) {
+        for entity in self.entities.iter_mut().filter(|entity| object_ids.contains(&entity.id)) {
             for point in &mut entity.vertices {
                 *point = pivot + rotation.rotate_vector(*point - pivot);
             }
             entity.extrude_axis = rotation.rotate_vector(entity.extrude_axis);
         }
-        for surface in self.nurbs_surfaces.iter_mut().filter(|surface| surface.selected) {
+        for surface in self
+            .nurbs_surfaces
+            .iter_mut()
+            .filter(|surface| object_ids.contains(&surface.id))
+        {
             for row in &mut surface.surface.control_points {
                 for control_point in row {
                     control_point.point =

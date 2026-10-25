@@ -161,6 +161,16 @@ impl ViewportRenderer {
                 .filter(|surface| surface.selected)
                 .count()
     }
+    fn rotate_objects(
+        &mut self,
+        object_ids: Vec<usize>,
+        degrees: f32,
+        mode: &str,
+    ) -> usize {
+        self.state
+            .viewport
+            .rotate_objects_by_ids(&object_ids, degrees, mode)
+    }
     fn rotate_selected_objects(&mut self, degrees: f32, mode: &str)-> usize {
         self.state
             .viewport

@@ -3743,6 +3743,41 @@ def executeaiactions(actions):
                 else "Those IDs did not match the moveable objects"
             )
             continue
+        if action_type == 'rotate':
+            object_ids = action.get("object_ids")
+            if action.get("target") == 'last_created':
+                if not newly_created_ids:
+                    results.append("There is no newly created object to rotate")
+                    continue
+                object_ids = [newly_created_ids[-1]]
+            elif type(action.get("object_id")) is int:
+                object_ids = [action['object_id']]
+            degrees = action.get("degrees")
+            mode = action.get("mode", 'xy')
+            if (
+                not isinstance(object_ids, list)
+                or not object_ids
+                or len(object_ids) > 64
+                or any(type(object_id) is not int for object_id in object_ids)
+                or type(degrees) not in (int, float)
+                or not math.isfinite(degrees)
+                or degrees == 0
+                or abs(degrees) > 360
+                or mode not in ('xy', 'z')
+            ):
+                results.append("Ignored an invalid rotate request")
+                continue
+            rotated = renderer.rotate_objects(
+                object_ids,
+                float(degrees),
+                mode,
+            )
+            results.append(
+                f"Rotated {rotated} objects(s) {degrees:g} degrees in {mode.upper()} mode"
+                if rotated
+                else "Those IDs did not match rotatabke objects"
+            )
+            continue
         if action_type == "delete_objects":
             object_ids = action.get("object_ids")
             if (
@@ -3818,6 +3853,9 @@ def executeaiactions(actions):
             degrees = action.get('degrees')
             axis = action.get("axis", 'y')
             hascustomaxis = ('axis_start' in action or 'axis_end' in action)
+            surface_before = {
+                object_id
+                for object_id, _center, _selected in renderer.scene_surface_data()}
             if (
                 type(target_id) is not int
                 or type(degrees) not in (int, float)
@@ -3837,6 +3875,9 @@ def executeaiactions(actions):
                 ):
                     results.append("Revolve needs two different valid axis points")
                     continue
+                surface_before = {
+                    object_id for object_id, _center, _selected in renderer.scene_surface_data()
+                }
                 created = renderer.revolve_object_around(
                     target_id, float(degrees), axis_start,
                     axis_end
@@ -3850,6 +3891,12 @@ def executeaiactions(actions):
                     target_id, float(degrees), axis
                 )
                 axisdescription = f"the {axis.upper()} axis"
+            if created:
+                surface_after = {
+                    object_id
+                    for object_id, _center, _selected in renderer.scene_surface_data()
+                }
+                newly_created_ids.extend(sorted(surface_after - surface_before))
             results.append(
                 f"Revolved profile {target_id} around {axisdescription}"
                 f"by {degrees:g} degrees"

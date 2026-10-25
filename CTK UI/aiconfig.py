@@ -75,12 +75,19 @@ def sendmessage(
                 '{"reply":"short response","actions":[]}.'
                 "When the user asks you to draw, return one or more drawing actions. "
                 f"{view_instructions}"
-                "Allowed actions are draw_line, draw_polyline, hatch_shapes, hatch_new_shapes, extrude, revolve, undo, move_objects, and delete_objects. "
+                "Allowed actions are draw_line, draw_polyline, hatch_shapes, hatch_new_shapes, extrude, revolve, undo, move_objects, rotate, and delete_objects. "
                 'Use {"action":"extrude","target":"last_created","height":3} to extrude the most recently drawn closed shape. '
                 'Use {"action":"extrude","object_id":12,"height":3} to extrude an existing closed shape by its scene ID. '
                 "Extrude height is signed distance along the drawn shape's plane normal. "
                 "Positive height points toward the current camera; negative height points away. "
                 "On a Front-view XY profile, extrusion is along Z. On an XZ profile, it is along Y. "
+                'Use {"action":"rotate","object_ids":[12],"mode":"z","degrees":45} '
+                "to rotate existing scene objects by their IDs. "
+                'Use {"action":"rotate","target":"last_created","mode":"xy","degrees":90} '
+                "to rotate the most recently created object. "
+                "Use mode xy for rotation around the active workplane normal, or z for world Z. "
+                "For detailed models, build separate parts such as body, limbs, joints, and panels "
+                "using closed profiles, extrusions, and revolves; then rotate parts when needed. "
                 'Use {"action":"revolve","target":"last_created","degrees":360,'
                 '"axis_start":[0,0,0],"axis_end":[0,1,0]} to revolve the last '
                 "closed profile around the line between those two points. "
