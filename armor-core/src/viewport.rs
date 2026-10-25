@@ -1,4 +1,4 @@
-use crate::Vertex;
+use crate::{Vertex, gumball};
 use crate::gumball::Gumball;
 use crate::camera::{Camera, CameraController};
 use crate::nurbs::{NurbsControlPoint, NurbsCurve, NurbsSurface};
@@ -258,11 +258,9 @@ impl Viewport {
         if !degrees.is_finite() || degrees == 0.0 || degrees.abs() > 360.0 {
             return 0;
         }
-        let axis = match mode {
+        let axis: Vector3<f32> = match mode {
             "xy" => {
                 if self.front_view {
-                    Vector3::unit_z()
-                } else {
                     Vector3::unit_z()
                 } else {
                     Vector3::unit_y()
@@ -285,9 +283,10 @@ impl Viewport {
         }
         let min_x = points.iter().map(|point| point.x).fold(f32::INFINITY, f32::min);
         let min_y = points.iter().map(|point| point.y).fold(f32::INFINITY, f32::min);
-        let min_z = point.iter().map(|point| point.z).fold(f32::INFINITY, f32::min)
-        let max_x = point.iter().map(|point| point.x).fold(f32::NEG_INFINITY, f32::max);
-        let max_y = point.iter().map(|point| point.y).fold(F32::NEG_INFINITY, f32::max);
+        let min_z = points.iter().map(|point| point.z).fold(f32::INFINITY, f32::min);
+        let max_x = points.iter().map(|point| point.x).fold(f32::NEG_INFINITY, f32::max);
+        let max_y = points.iter().map(|point| point.y).fold(f32::NEG_INFINITY, f32::max);
+        let max_z = points.iter().map(|point| point.z).fold(f32::NEG_INFINITY, f32::max);
         let pivot = Vector3::new(
             (min_x + max_x) * 0.5,
             (min_y + max_y) * 0.5,
@@ -295,14 +294,11 @@ impl Viewport {
         );
         let half_angle = degrees.to_radians() * 0.5;
         let sin_half = half_angle.sin();
-        let rotation= Quateration::new(
+        let rotation = Quaternion::new(
             half_angle.cos(),
-            axis.x * sin_half, axis.y*sin_half, axis.z * sin_half,
+            axis.x * sin_half, axis.y * sin_half, axis.z * sin_half,
         );
         let polyline_count = self.entities.iter().filter(|entity| entity.selected).count();
-        let surface_count = self.nurbs_surfaces.iter().filter(|surface| surface.selected).count();
-        self.save_undo_state();
-        for entity in self.entities.iter_mut().filter(|entity| entity.selected).count();
         let surface_count = self.nurbs_surfaces.iter().filter(|surface| surface.selected).count();
         self.save_undo_state();
         for entity in self.entities.iter_mut().filter(|entity| entity.selected) {
@@ -312,7 +308,7 @@ impl Viewport {
             entity.extrude_axis = rotation.rotate_vector(entity.extrude_axis);
         }
         for surface in self.nurbs_surfaces.iter_mut().filter(|surface| surface.selected) {
-            for row in &mut surface.control_points {
+            for row in &mut surface.surface.control_points {
                 for control_point in row {
                     control_point.point  = pivot + rotation.rotate_vector(control_point.point - pivot);
                 }
@@ -2000,7 +1996,19 @@ impl Viewport {
                 .iter()
                 .filter(|surface| surface.selected)
                 .any(|surface| self.surface_hit_test(surface, mouse).is_some());
-        if !hit_selected {
+        let screen_size = Vector2::new(self.width as f32, self.height as f32);
+        let mut hit_gumball = false;
+        if let Some(ray) = self.camera.screen_to_ray(mouse, screen_size) {
+            if let Some(gumball) = &mut self.gumball {
+                if let Some(handle) = gumball.hit_test(&ray) {
+                    gumball.active = Some(handle);
+                    gumball.drag_start_origin = gumball.origin;
+                    gumball.drag_start_point = Some(Point3::new(x, y, 0.0));
+                    hit_gumball = true;
+                }
+            }
+        }
+        if !hit_selected && !hit_gumball {
             self.move_anchor = None;
             self.move_snapshots.clear();
             self.move_surface_snapshots.clear();
@@ -2034,7 +2042,130 @@ impl Viewport {
         let Some(current) = self.fetch_point(self.cursor_pos) else {
             return false;
         };
-        let offset = self.grid_snap_offset(current - anchor);
+        let mut offset = self.grid_snap_offset(current - anchor);
+        if let Some(gumball) = &self.gumball {
+            if let Some(handle) = gumball.active {
+                match handle {
+                    gumball::GumballHandle::translate_x => {
+                        offset = Vector3::new(offset.x, 0.0, 0.0);
+                    }
+                    gumball::GumballHandle::translate_y => {
+                        if let Some(start) = gumball.drag_start_point {
+                            let d_height = -(y - start.y) * 0.03;
+                            for (e_id, _) in &self.move_snapshots {
+                                if let Some(entity) = self.entities.iter_mut().find(|e| e.id == *e_id) {
+                                    if Self::is_closed_shape(&entity.vertices) {
+                                        entity.height = (d_height).max(0.0);
+                                        entity.extrude_axis = Vector3::unit_y();
+                                    } 
+                                }
+                            }
+                            offset = Vector3::new(0.0, 0.0, 0.0);
+                        }
+                    }
+                    gumball::GumballHandle::translate_z => {
+                        offset = Vector3::new(0.0, 0.0, offset.z);
+                    }
+                    gumball::GumballHandle::rotate_y => {
+                        if let Some(start) = gumball.drag_start_point {
+                            let angle = (x - start.x) * 0.02;
+                            let (cos_a, sin_a) = (angle.cos(), angle.sin());
+                            let center = gumball.drag_start_origin;
+                            for (e_id, og_verts) in &self.move_snapshots {
+                                if let Some(entity) = self.entities.iter_mut().find(|e| e.id == *e_id) {
+                                    entity.vertices = og_verts
+                                        .iter()
+                                        .map(|v| {
+                                            let dx = v.x - center.x;
+                                            let dz = v.z - center.z;
+                                            Vector3::new(
+                                                center.x + dx * cos_a - dz * sin_a,
+                                                v.y,
+                                                center.z + dx * sin_a + dz * cos_a,
+                                            )
+                                        })
+                                        .collect();
+                                }
+                            }
+                            offset = Vector3::new(0.0, 0.0, 0.0);
+                        }
+                    }
+                    gumball::GumballHandle::rotate_x => {
+                        if let Some(start) = gumball.drag_start_point {
+                            let angle = (y - start.y) * 0.02;
+                            let (cos_a, sin_a) = (angle.cos(), angle.sin());
+                            let center = gumball.drag_start_origin;
+                            for (e_id, og_verts) in &self.move_snapshots {
+                                if let Some(entity) = self.entities.iter_mut().find(|e| e.id == *e_id) {
+                                    entity.vertices = og_verts
+                                        .iter()
+                                        .map(|v| {
+                                            let dx = v.y - center.y;
+                                            let dz = v.z - center.z;
+                                            Vector3::new(
+                                                v.x,
+                                                center.y + dx * cos_a - dz * sin_a,
+                                                center.z + dx * sin_a + dz * cos_a,
+                                            )
+                                        })
+                                        .collect();
+                                }
+                            }
+                            offset = Vector3::new(0.0, 0.0, 0.0);
+                        }
+                    }
+                    gumball::GumballHandle::rotate_y => {
+                        if let Some(start) = gumball.drag_start_point {
+                            let angle = (x - start.x) * 0.02;
+                            let (cos_a, sin_a) = (angle.cos(), angle.sin());
+                            let center = gumball.drag_start_origin;
+                            for (e_id, og_verts) in &self.move_snapshots {
+                                if let Some(entity) = self.entities.iter_mut().find(|e| e.id == *e_id) {
+                                    entity.vertices = og_verts
+                                        .iter()
+                                        .map(|v| {
+                                            let dx = v.x - center.x;
+                                            let dz = v.z - center.z;
+                                            Vector3::new(
+                                                center.x + dx * cos_a - dz * sin_a,
+                                                v.y,
+                                                center.z + dx * sin_a + dz * cos_a,
+                                            )
+                                        })
+                                        .collect();
+                                }
+                            }
+                            offset = Vector3::new(0.0, 0.0, 0.0);
+                        }
+                    }
+                    gumball::GumballHandle::rotate_z => {
+                        if let Some(start) = gumball.drag_start_point {
+                            let angle = (x - start.x) * 0.02;
+                            let (cos_a, sin_a) = (angle.cos(), angle.sin());
+                            let center = gumball.drag_start_origin;
+                            for (e_id, og_verts) in &self.move_snapshots {
+                                if let Some(entity) = self.entities.iter_mut().find(|e| e.id == *e_id) {
+                                    entity.vertices = og_verts
+                                        .iter()
+                                        .map(|v| {
+                                            let dx = v.x - center.x;
+                                            let dy = v.y - center.y;
+                                            Vector3::new(
+                                                center.x + dx * cos_a - dy * sin_a,
+                                                center.y + dx * sin_a + dy * cos_a,
+                                                v.z,
+                                            )
+                                        })
+                                        .collect();
+                                }
+                            }
+                            offset = Vector3::new(0.0, 0.0, 0.0);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
         for (entity_id, original_vertices) in &self.move_snapshots {
             if let Some(entity) = self
                 .entities
@@ -2061,11 +2192,27 @@ impl Viewport {
                 }
             }
         }
+        if let Some(gumball) = &mut self.gumball {
+            let extrude_h = self.entities
+                .iter()
+                .find(|e| e.selected)
+                .map(|e| e.height)
+                .unwrap_or(0.0);
+            gumball.origin = Point3::new(
+                gumball.drag_start_origin.x + offset.x,
+                gumball.drag_start_origin.y + offset.y + extrude_h,
+                gumball.drag_start_origin.z + offset.z,
+            );
+        }
         self.rebuild_vertices();
         true
     }
 
     pub fn end_move_selected(&mut self) {
+        if let Some(gumball) = &mut self.gumball {
+            gumball.active = None;
+            gumball.drag_start_origin = gumball.origin;
+        }
         self.move_anchor = None;
         self.move_snapshots.clear();
         self.move_surface_snapshots.clear();
@@ -3826,6 +3973,28 @@ impl Viewport {
 
     pub fn mouse_button(&mut self, pressed: bool) -> bool {
         self.holding_left = pressed;
+        if pressed {
+            let screen_pos = Vector2::new(self.cursor_pos.x as f32, self.cursor_pos.y as f32);
+            let screen_size = Vector2::new(self.width as f32, self.height as f32);
+            if let Some(ray) = self.camera.screen_to_ray(screen_pos, screen_size) {
+                if let Some(gumball) = &mut self.gumball {
+                    if let Some(handle) = gumball.hit_test(&ray) {
+                        gumball.active = Some(handle);
+                        gumball.drag_start_origin = gumball.origin;
+                        return true;
+                    }
+                }
+            }
+        } else {
+            if let Some(gumball) = &mut self.gumball {
+                if gumball.active.is_some() {
+                    gumball.active = None;
+                    gumball.drag_start_point = None;
+                    self.save_undo_state();
+                    return true;
+                }
+            }
+        }
         if pressed && self.polyline_active {
             return self.polyline(self.cursor_pos);
         }

@@ -1,4 +1,4 @@
-use cgmath::{Point3, Vector3};
+use cgmath::{InnerSpace, Point3, Vector3};
 use crate::camera::Ray;
 
 use crate::Vertex;
@@ -54,59 +54,62 @@ impl Gumball {
             });
         };
         let arrow_r = self.size * 0.05;
+        let shaft_r = self.size * 0.015;
         let red = [0.9, 0.2, 0.2, 1.0];
         let green = [0.2, 0.8, 0.2, 1.0];
         let blue = [0.2, 0.4, 0.9, 1.0];
         let tiles = [0.9, 0.8, 0.2, 0.8];
-        let axis_x = self.origin + Vector3::new(self.size * 0.85, 0.0, 0.0);
-        let axis_y = self.origin + Vector3::new(0.0, self.size * 0.85, 0.0);
-        let axis_z = self.origin + Vector3::new(0.0, 0.0, self.size * 0.85);
-        let tip_x = self.origin + Vector3::new(self.size, 0.0, 0.0);
-        let x0 = axis_x + Vector3::new(0.0, arrow_r, arrow_r);
-        let x1 = axis_x + Vector3::new(0.0, -arrow_r, arrow_r);
-        let x2 = axis_x + Vector3::new(0.0, -arrow_r, -arrow_r);
-        let x3 = axis_x + Vector3::new(0.0, arrow_r, -arrow_r);
-        let shaft_r = self.size * 0.015;
-        let c_x_a = self.origin + Vector3::new(0.0, shaft_r, 0.0);
-        let c_x_b = axis_x + Vector3::new(0.0, shaft_r, 0.0);
-        let c_x_c = axis_x + Vector3::new(0.0, -shaft_r, 0.0);
-        let c_x_d = self.origin + Vector3::new(0.0, -shaft_r, 0.0);
-        let tip_y = self.origin + Vector3::new(0.0, self.size, 0.0);
-        let y0 = axis_y + Vector3::new(arrow_r, 0.0, arrow_r);
-        let y1 = axis_y + Vector3::new(-arrow_r, 0.0, arrow_r);
-        let y2 = axis_y + Vector3::new(-arrow_r, 0.0, -arrow_r);
-        let y3 = axis_y + Vector3::new(arrow_r, 0.0, -arrow_r);
-        let c_y_a = self.origin + Vector3::new(shaft_r, 0.0, 0.0);
-        let c_y_b = axis_y + Vector3::new(shaft_r, 0.0, 0.0);
-        let c_y_c = axis_y + Vector3::new(-shaft_r, 0.0, 0.0);
-        let c_y_d = self.origin + Vector3::new(-shaft_r, 0.0, 0.0);
-        let tip_z = self.origin + Vector3::new(0.0, 0.0, self.size);
-        let z0 = axis_z + Vector3::new(arrow_r, arrow_r, 0.0);
-        let z1 = axis_z + Vector3::new(-arrow_r,  arrow_r, 0.0);
-        let z2 = axis_z + Vector3::new(-arrow_r, -arrow_r, 0.0);
-        let z3 = axis_z + Vector3::new(arrow_r,  -arrow_r, 0.0);
-        let c_z_a = self.origin + Vector3::new(shaft_r, 0.0, 0.0);
-        let c_z_b = axis_z + Vector3::new(shaft_r, 0.0, 0.0);
-        let c_z_c = axis_z + Vector3::new(-shaft_r, 0.0, 0.0);
-        let c_z_d = self.origin + Vector3::new(-shaft_r, 0.0, 0.0);
-        add_three_p(x0, x1, tip_x, [1.0, 0.0, 0.0], red);
-        add_three_p(x1, x2, tip_x, [1.0, 0.0, 0.0], red);
-        add_three_p(x2, x3, tip_x, [1.0, 0.0, 0.0], red);
-        add_three_p(x3, x0, tip_x, [1.0, 0.0, 0.0], red);
-        add_three_p(c_x_a, c_x_b, c_x_c, [0.0, 0.0, 1.0], red);
-        add_three_p(c_x_a, c_x_c, c_x_d, [0.0, 0.0, 1.0], red);
-        add_three_p(y0, y1, tip_y, [0.0, 1.0, 0.0], green);
-        add_three_p(y1, y2, tip_y, [0.0, 1.0, 0.0], green);
-        add_three_p(y2, y3, tip_y, [0.0, 1.0, 0.0], green);
-        add_three_p(y3, y0, tip_y, [0.0, 1.0, 0.0], green);
-        add_three_p(c_y_a, c_y_b, c_y_c, [0.0, 0.0, 1.0], green);
-        add_three_p(c_y_a, c_y_c, c_y_d, [0.0, 0.0, 1.0], green);
-        add_three_p(z0, z1, tip_z, [0.0, 0.0, 1.0], blue);
-        add_three_p(z1, z2, tip_z, [0.0, 0.0, 1.0], blue);
-        add_three_p(z2, z3, tip_z, [0.0, 0.0, 1.0], blue);
-        add_three_p(z3, z0, tip_z, [0.0, 0.0, 1.0], blue);
-        add_three_p(c_z_a, c_z_b, c_z_c, [0.0, 0.0, 1.0], blue);
-        add_three_p(c_z_a, c_z_c, c_z_d, [0.0, 0.0, 1.0], blue);
+        let axes = [
+            (Vector3::unit_x(), Vector3::unit_y(), Vector3::unit_z(), red, GumballHandle::translate_x),
+            (Vector3::unit_y(), Vector3::unit_z(), Vector3::unit_x(), green, GumballHandle::translate_y),
+            (Vector3::unit_z(), Vector3::unit_x(), Vector3::unit_y(), blue, GumballHandle::translate_z),
+        ];
+        for (dir, u, v, color, _handle) in axes {
+            let shaft_end = self.origin + dir * (self.size * 0.85);
+            let tip = self.origin + dir * self.size;
+            let p0 = shaft_end + (u + v) * arrow_r;
+            let p1 = shaft_end + (-u + v) * arrow_r;
+            let p2 = shaft_end + (-u - v) * arrow_r;
+            let p3 = shaft_end + (u - v) * arrow_r;
+            add_three_p(p0, p1, tip, [dir.x, dir.y, dir.z], color);
+            add_three_p(p1, p2, tip, [dir.x, dir.y, dir.z], color);
+            add_three_p(p2, p3, tip, [dir.x, dir.y, dir.z], color);
+            add_three_p(p3, p0, tip, [dir.x, dir.y, dir.z], color);
+            let c0 = self.origin + u * shaft_r;
+            let c1 = shaft_end + u * shaft_r;
+            let c2 = shaft_end - u * shaft_r;
+            let c3 = self.origin - u *shaft_r;
+            add_three_p(c0, c1, c2, [v.x, v.y, v.z], color);
+            add_three_p(c0, c2, c3, [v.x, v.y, v.z], color);
+        }
+        let arc_r = self.size * 0.6;
+        let arc_thick = self.size * 0.015;
+        let seg = 16;
+        let half_pi = std::f32::consts::FRAC_PI_2;
+        for i in 0..seg {
+            let t0 = (i as f32 / seg as f32) * half_pi;
+            let t1 = ((i + 1) as f32 / seg as f32) * half_pi;
+            let (sin0, cos0) = (t0.sin(), t0.cos());
+            let (sin1, cos1) = (t1.sin(), t1.cos());
+            let g_in0 = self.origin + Vector3::new((arc_r - arc_thick) * cos0, 0.0, (arc_r - arc_thick) * sin0);
+            let g_out0 = self.origin + Vector3::new((arc_r + arc_thick) * cos0, 0.0, (arc_r + arc_thick) * sin0);
+            let g_in1 = self.origin + Vector3::new((arc_r - arc_thick) * cos1, 0.0, (arc_r - arc_thick) * sin1);
+            let g_out1 = self.origin + Vector3::new((arc_r + arc_thick) * cos1, 0.0, (arc_r + arc_thick) * sin1);
+            add_three_p(g_in0, g_out0, g_out1, [0.0, 1.0, 0.0], green);
+            add_three_p(g_in0, g_out1, g_in1, [0.0, 1.0, 0.0], green);
+            let r_in0 = self.origin + Vector3::new(0.0, (arc_r - arc_thick) * cos0, (arc_r - arc_thick) * sin0);
+            let r_out0 = self.origin + Vector3::new(0.0, (arc_r + arc_thick) * cos0, (arc_r + arc_thick) * sin0);
+            let r_in1 = self.origin + Vector3::new(0.0, (arc_r - arc_thick) * cos1, (arc_r - arc_thick) * sin1);
+            let r_out1 = self.origin + Vector3::new(0.0, (arc_r + arc_thick) * cos1, (arc_r + arc_thick) * sin1);
+            add_three_p(r_in0, r_out0, r_out1, [1.0, 0.0, 0.0], red);
+            add_three_p(r_in0, r_out1, r_in1, [1.0, 0.0, 0.0], red);
+            let b_in0 = self.origin + Vector3::new((arc_r - arc_thick) * cos0, (arc_r - arc_thick) * sin0, 0.0);
+            let b_out0 = self.origin + Vector3::new((arc_r + arc_thick) * cos0, (arc_r + arc_thick) * sin0, 0.0);
+            let b_in1 = self.origin + Vector3::new((arc_r - arc_thick) * cos1, (arc_r - arc_thick) * sin1, 0.0);
+            let b_out1 = self.origin + Vector3::new((arc_r + arc_thick) * cos1, (arc_r + arc_thick) * sin1, 0.0);
+            add_three_p(b_in0, b_out0, b_out1, [0.0, 0.0, 1.0], blue);
+            add_three_p(b_in0, b_out1, b_in1, [0.0, 0.0, 1.0], blue);
+        }
         verts
     }
     pub fn hit_test(&self, ray: &Ray) -> Option<GumballHandle> {
@@ -119,62 +122,80 @@ impl Gumball {
             }
         };
         let arrow_r = self.size * 0.05;
-        let axis_x = self.origin + Vector3::new(self.size * 0.85, 0.0, 0.0);
-        let axis_y = self.origin + Vector3::new(0.0, self.size * 0.85, 0.0);
-        let axis_z = self.origin + Vector3::new(0.0, 0.0, self.size * 0.85);
-        let tip_x = self.origin + Vector3::new(self.size, 0.0, 0.0);
-        let x0 = axis_x + Vector3::new(0.0, arrow_r, arrow_r);
-        let x1 = axis_x + Vector3::new(0.0, -arrow_r, arrow_r);
-        let x2 = axis_x + Vector3::new(0.0, -arrow_r, -arrow_r);
-        let x3 = axis_x + Vector3::new(0.0, arrow_r, -arrow_r);
         let shaft_r = self.size * 0.015;
-        let c_x_a = self.origin + Vector3::new(0.0, shaft_r, 0.0);
-        let c_x_b = axis_x + Vector3::new(0.0, shaft_r, 0.0);
-        let c_x_c = axis_x + Vector3::new(0.0, -shaft_r, 0.0);
-        let c_x_d = self.origin + Vector3::new(0.0, -shaft_r, 0.0);
-        let tip_y = self.origin + Vector3::new(0.0, self.size, 0.0);
-        let y0 = axis_y + Vector3::new(arrow_r, 0.0, arrow_r);
-        let y1 = axis_y + Vector3::new(-arrow_r, 0.0, arrow_r);
-        let y2 = axis_y + Vector3::new(-arrow_r, 0.0, -arrow_r);
-        let y3 = axis_y + Vector3::new(arrow_r, 0.0, -arrow_r);
-        let c_y_a = self.origin + Vector3::new(shaft_r, 0.0, 0.0);
-        let c_y_b = axis_y + Vector3::new(shaft_r, 0.0, 0.0);
-        let c_y_c = axis_y + Vector3::new(-shaft_r, 0.0, 0.0);
-        let c_y_d = self.origin + Vector3::new(-shaft_r, 0.0, 0.0);
-        let tip_z = self.origin + Vector3::new(0.0, 0.0, self.size);
-        let z0 = axis_z + Vector3::new(arrow_r, arrow_r, 0.0);
-        let z1 = axis_z + Vector3::new(-arrow_r,  arrow_r, 0.0);
-        let z2 = axis_z + Vector3::new(-arrow_r, -arrow_r, 0.0);
-        let z3 = axis_z + Vector3::new(arrow_r,  -arrow_r, 0.0);
-        let c_z_a = self.origin + Vector3::new(shaft_r, 0.0, 0.0);
-        let c_z_b = axis_z + Vector3::new(shaft_r, 0.0, 0.0);
-        let c_z_c = axis_z + Vector3::new(-shaft_r, 0.0, 0.0);
-        let c_z_d = self.origin + Vector3::new(-shaft_r, 0.0, 0.0);
-        test_three_p(x0, x1, tip_x, GumballHandle::translate_x);
-        test_three_p(x1, x2, tip_x, GumballHandle::translate_x);
-        test_three_p(x2, x3, tip_x, GumballHandle::translate_x);
-        test_three_p(x3, x0, tip_x, GumballHandle::translate_x);
-        test_three_p(c_x_a, c_x_b, c_x_c, GumballHandle::translate_x);
-        test_three_p(c_x_a, c_x_c, c_x_d, GumballHandle::translate_x);
-        test_three_p(y0, y1, tip_y, GumballHandle::translate_y);
-        test_three_p(y1, y2, tip_y, GumballHandle::translate_y);
-        test_three_p(y2, y3, tip_y, GumballHandle::translate_y);
-        test_three_p(y3, y0, tip_y, GumballHandle::translate_y);
-        test_three_p(c_y_a, c_y_b, c_y_c, GumballHandle::translate_y);
-        test_three_p(c_y_a, c_y_c, c_y_d, GumballHandle::translate_y);
-        test_three_p(z0, z1, tip_z, GumballHandle::translate_z);
-        test_three_p(z1, z2, tip_z, GumballHandle::translate_z);
-        test_three_p(z2, z3, tip_z, GumballHandle::translate_z);
-        test_three_p(z3, z0, tip_z, GumballHandle::translate_z);
-        test_three_p(c_z_a, c_z_b, c_z_c, GumballHandle::translate_z);
-        test_three_p(c_z_a, c_z_c, c_z_d, GumballHandle::translate_z);
+        let axes = [
+            (Vector3::unit_x(), Vector3::unit_y(), Vector3::unit_z(), GumballHandle::translate_x),
+            (Vector3::unit_y(), Vector3::unit_z(), Vector3::unit_x(), GumballHandle::translate_y),
+            (Vector3::unit_z(), Vector3::unit_x(), Vector3::unit_y(), GumballHandle::translate_z),
+        ];
+        for (dir, u, v, handle) in axes {
+            let shaft_end = self.origin + dir * (self.size * 0.85);
+            let tip = self.origin + dir * self.size;
+            let p0 = shaft_end + (u + v) * arrow_r;
+            let p1 = shaft_end + (-u + v) * arrow_r;
+            let p2 = shaft_end + (-u - v) * arrow_r;
+            let p3 = shaft_end + (u - v) * arrow_r;
+            test_three_p(p0, p1, tip, handle);
+            test_three_p(p1, p2, tip, handle);
+            test_three_p(p2, p3, tip, handle);
+            test_three_p(p3, p0, tip, handle);
+            let c0 = self.origin + u * shaft_r;
+            let c1 = shaft_end + u * shaft_r;
+            let c2 = shaft_end - u * shaft_r;
+            let c3 = self.origin - u * shaft_r;
+            test_three_p(c0, c1, c2, handle);
+            test_three_p(c0, c2, c3, handle);
+        }
+        let rings: [(Vector3<f32>, Vector3<f32>, GumballHandle); 3] = [
+            (Vector3::unit_x(), Vector3::unit_z(), GumballHandle::rotate_x),
+            (Vector3::unit_y(), Vector3::unit_z(), GumballHandle::rotate_y),
+            (Vector3::unit_z(), Vector3::unit_y(), GumballHandle::rotate_z),
+        ];
+        let arc_r = self.size * 0.6;
+        let arc_thick = self.size * 0.02;
+        let seg = 16;
+        let half_pi = std::f32::consts::FRAC_PI_2;
+        for (u, v, handle) in rings {
+            for i in 0..seg {
+                let t0 = (i as f32 / seg as f32) * half_pi;
+                let t1 = ((i + 1) as f32 / seg as f32) * half_pi;
+                let (s0, c0) = (t0.sin(), t0.cos());
+                let (s1, c1) = (t1.sin(), t1.cos());
+                let p0 = self.origin + (u * c0 + v * s0) * (arc_r - arc_thick);
+                let p1 = self.origin + (u * c0 + v * s0) * (arc_r + arc_thick);
+                let p2 = self.origin + (u * c1 + v * s1) * (arc_r + arc_thick);
+                let p3 = self.origin + (u * c1 + v * s1) * (arc_r - arc_thick);
+                test_three_p(p0, p1, p2, handle);
+                test_three_p(p0, p2, p3, handle);
+            }
+        }
         closest_hit.map(|(_, handle)| handle)
     }
     pub fn compute_drag_delta(
         &self,
-        _handle: GumballHandle,
-        _ray: &Ray
+        handle: GumballHandle,
+        ray: &Ray,
+        camera_dir: Vector3<f32>
     ) -> Option<Vector3<f32>> {
-        None
+        let start_pt = self.drag_start_point?;
+        let axis = match handle {
+            GumballHandle::translate_x => Vector3::new(1.0, 0.0, 0.0),
+            GumballHandle::translate_y => Vector3::new(0.0, 1.0, 0.0),
+            GumballHandle::translate_z => Vector3::new(0.0, 0.0, 1.0),
+            _ => return None,
+        };
+        let plane_normal = (camera_dir - axis * camera_dir.dot(axis)).normalize();
+        let denom = ray.direction.dot(plane_normal);
+        if denom.abs() < 1e-6 {
+            return None;
+        }
+        let t = (self.drag_start_origin - ray.origin).dot(plane_normal) / denom;
+        if t < 0.0 {
+            return None;
+        }
+        let current_pt = ray.origin + ray.direction * t;
+        let total_displacement = current_pt - start_pt;
+        let proj_dist = total_displacement.dot(axis);
+        Some(axis * proj_dist)
     }
 }

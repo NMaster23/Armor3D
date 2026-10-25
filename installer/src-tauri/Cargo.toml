@@ -26,6 +26,7 @@ mslnk = "0.1.8"
 winreg = "0.56.0"
 dirs = "7.0.0"
 window-vibrancy = "0.8.1"
+app_dirs2 = "2.5.5"
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration

@@ -46,8 +46,6 @@ function App() {
               <span className="inline-block w-[10px] h-[0.85em] bg-blue-400 ml-3 align-middle rounded-sm animate-pulse" />
             )}
           </h1>
-
-          {/* Morphing element: transitions from cursor line into Continue button */}
           <div
             onClick={() => {
               if (isButton) {
