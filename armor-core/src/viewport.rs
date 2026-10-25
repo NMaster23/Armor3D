@@ -1550,7 +1550,7 @@ impl Viewport {
             } else {
                 Vector3::new(0.0, 0.0, 0.0)
             };
-            self.gumball = Some(Gumball::new(Point3::new(centroid.x, centroid.y, centroid.z), 2.0));
+            self.gumball = Some(Gumball::new(Point3::new(centroid.x, centroid.y, centroid.z), 0.75));
         } else if let Some(e) = self.entities.iter().find(|e| e.selected) {
             if !e.vertices.is_empty() {
                 let mut sum = Vector3::new(0.0, 0.0, 0.0);
@@ -1558,7 +1558,7 @@ impl Viewport {
                     sum += *v;
                 }
                 let centroid = sum / e.vertices.len() as f32;
-                self.gumball = Some(Gumball::new(Point3::new(centroid.x, centroid.y, centroid.z), 2.0))
+                self.gumball = Some(Gumball::new(Point3::new(centroid.x, centroid.y, centroid.z), 0.75))
             } else {
                 self.gumball = None;
             }
