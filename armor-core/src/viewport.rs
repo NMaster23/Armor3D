@@ -1458,6 +1458,11 @@ impl Viewport {
                 .iter()
                 .filter_map(|point| self.world_to_screen(*point))
                 .collect();
+            if self.hit_extruded_side(entity, mouse_px, threshold_sq) {
+                closest = Some(entity.id);
+                min_dist_sq = 0.0;
+                continue;
+            }
             if entity.hatched
                 && Self::is_closed_shape(&entity.vertices)
                 && Self::point_in_polygon(mouse_px, &screen_vertices)
@@ -1788,6 +1793,48 @@ impl Viewport {
         self.rebuild_vertices();
         deleted
     }
+    fn hit_extruded_side(
+        &self, entity: &PolyLine,
+        mouse: Vector2<f32>,
+        threshold_sq: f32
+    ) -> bool {
+        if entity.height.abs() <= f32::EPSILON
+            || !Self::is_closed_shape(&entity.vertices)
+            || entity.extrude_axis.magnitude2() <= f32::EPSILON
+        {
+            return false;
+        }
+        let offset = entity.extrude_axis.normalize() * entity.height;
+        let point_count = entity.vertices.len() -1;
+        for i in 0..point_count {
+            let next = (i + 1) % point_count;
+            let base_a = entity.vertices[i];
+            let base_b = entity.vertices[next];
+            let top_b = base_b + offset;
+            let top_a = base_a + offset;
+            let quad_world = [base_a, base_b, top_b, top_a];
+            let quad_screen: Vec<Vector2<f32>> = quad_world
+                .iter()
+                .filter_map(|point| self.world_to_screen(*point))
+                .collect();
+            if quad_screen.len() != 4{
+                continue;
+            }
+            if Self::point_in_polygon(mouse, &quad_screen) {
+                return true;
+            }
+            for edge in 0..4 {
+                let next_edge = (edge+1) % 4;
+                if Self::dist_to_segment(
+                    mouse, quad_screen[edge], quad_screen[next_edge]
+                ) <= threshold_sq
+                {
+                    return true;
+                }
+            }
+        }
+        false
+    }
     pub fn begin_move_selected(&mut self, x: f32, y: f32) -> bool {
         let mouse = cgmath::Vector2::new(x, y);
         let threshold_sq = 8.0 * 8.0;
@@ -1811,6 +1858,9 @@ impl Viewport {
                     return true;
                 }
                 if segment_hit {
+                    return true;
+                }
+                if self.hit_extruded_side(entity, mouse, threshold_sq) {
                     return true;
                 }
                 if let Some((center, endpoint)) = Self::circle_control_points(&entity.vertices) {
@@ -2006,7 +2056,7 @@ impl Viewport {
             let entity_vertices =
                 self.tessellate_polyline(&entity.vertices, entity.thickness, draw_color);
             new_vertices.extend_from_slice(&entity_vertices);
-            if entity.show_markers && Self::circle_control_points(&entity.vertices).is_none() {
+            if entity.show_markers && entity.height.abs() <= f32::EPSILON && Self::circle_control_points(&entity.vertices).is_none(){
                 let marker_count = if closed {
                     entity.vertices.len() - 1
                 } else {
