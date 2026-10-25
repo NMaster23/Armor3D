@@ -146,6 +146,26 @@ impl ViewportRenderer {
     fn get_fonts(&mut self) -> Vec<String> {
         self.state.get_all_fonts()
     }
+    fn selected_geometry_count(&self) -> usize {
+        self.state
+            .viewport
+            .entities
+            .iter()
+            .filter(|entity| entity.selected)
+            .count()
+            + self
+                .state
+                .viewport
+                .nurbs_surfaces
+                .iter()
+                .filter(|surface| surface.selected)
+                .count()
+    }
+    fn rotate_selected_objects(&mut self, degrees: f32, mode: &str)-> usize {
+        self.state
+            .viewport
+            .rotate_selected_objects(degrees, mode)
+    }
     fn undo(&mut self) -> bool {
         self.state.undo_scene()
     }

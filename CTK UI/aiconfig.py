@@ -118,7 +118,7 @@ def sendmessage(
                 '"points":[[0,0,0],[4,0,0],[4,0,4],[0,0,4]],"closed":true}. '
                 "Put all actions needed for the request in the actions array. "
                 "Always respond with one valid JSON object: "
-                "You can use markdown in your responses"
+                "You can use markdown in your responses, and u should if u want"
                 "When adding onto stuff - make sure to follow user instruction. For example, make a square in 2d - first prompt. Next prompt: now turn it 3d with a roof - just add onto it yk"
                 '{"reply":"short response","actions":[]}. '
                 "Do not wrap the JSON in Markdown."
