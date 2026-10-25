@@ -310,6 +310,36 @@ impl Viewport {
         self.rebuild_vertices();
         created
     }
+    pub fn revolve_object_around(
+        &mut self,
+        object_id: usize,
+        degrees: f32,
+        axis_start: Vector3<f32>,
+        axis_end: Vector3<f32>,
+    ) -> usize {
+        if !self.entities.iter().any(|entity| {
+            entity.id == object_id && Self::is_closed_shape(&entity.vertices)
+        }) {
+            return 0;
+        }
+        let previous_selection: Vec<usize> = self
+            .entities
+            .iter()
+            .filter(|entity| entity.selected)
+            .map(|entity| entity.id)
+            .collect();
+        for entity in &mut self.entities {
+            entity.selected = entity.id == object_id;
+        }
+        let created = 
+            self.revolve_selected_around(degrees, axis_start, axis_end);
+        for entity in &mut self.entities {
+            entity.selected = previous_selection.contains(&entity.id);
+        }
+        self.selected_entity = previous_selection.first().copied();
+        self.rebuild_vertices();
+        created
+    }
     pub fn hatch_selected(&mut self) -> usize {
         let ids: Vec<usize> = self
             .entities

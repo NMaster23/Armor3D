@@ -3652,28 +3652,51 @@ def executeaiactions(actions):
             continue
         if action_type == "revolve":
             target_id = action.get("object_id")
-            if action.get("target") == "last_created":
+            if action.get("target") == 'last_created':
                 if not newly_created_ids:
-                    results.append("There is no newly drawn profile to revolve")
+                    results.append('There is no newly drawn profile to revolve')
                     continue
                 target_id = newly_created_ids[-1]
-            degrees = action.get("degrees")
-            axis = action.get("axis", "y")
+            degrees = action.get('degrees')
+            axis = action.get("axis", 'y')
+            hascustomaxis = ('axis_start' in action or 'axis_end' in action)
             if (
                 type(target_id) is not int
                 or type(degrees) not in (int, float)
                 or not math.isfinite(degrees)
                 or degrees == 0
                 or abs(degrees) > 360
-                or axis not in ("x", "y", "z")):
+            ):
                 results.append("Ignored an invalid revolve request")
                 continue
-            created = renderer.revolve_object(target_id, float(degrees), axis)
+            if hascustomaxis:
+                axis_start = validpoint(action.get("axis_start"))
+                axis_end = validpoint(action.get("axis_end"))
+                if (
+                    axis_start is None
+                    or axis_end is None
+                    or math.dist(axis_start, axis_end) <= 0.0001
+                ):
+                    results.append("Revolve needs two different valid axis points")
+                    continue
+                created = renderer.revolve_object_around(
+                    target_id, float(degrees), axis_start,
+                    axis_end
+                )
+                axisdescription = 'the specified line'
+            else:
+                if axis not in ('x', 'y', 'z'):
+                    results.append("Revolve axis must be x, y, or z")
+                    continue
+                created = renderer.revolve_object(
+                    target_id, float(degrees), axis
+                )
+                axisdescription = f"the {axis.upper()} axis"
             results.append(
-                f"Revolved profile {target_id} around {axis.upper()} "
+                f"Revolved profile {target_id} around {axisdescription}"
                 f"by {degrees:g} degrees"
                 if created
-                else f"Object {target_id} was missing or is not a closed profile"
+                else f'Object {target_id} was missing or is not a closed profile'
             )
             continue
         if action_type == "draw_line":

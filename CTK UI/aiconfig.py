@@ -81,9 +81,14 @@ def sendmessage(
                 "Extrude height is signed distance along the drawn shape's plane normal. "
                 "Positive height points toward the current camera; negative height points away. "
                 "On a Front-view XY profile, extrusion is along Z. On an XZ profile, it is along Y. "
-                'Use {"action":"revolve","target":"last_created","degrees":360,"axis":"y"} to revolve the most recently drawn closed profile around the vertical Y axis. '
-                'Use {"action":"revolve","object_id":12,"degrees":180,"axis":"x"} to revolve an existing closed profile by scene ID. '
-                "Revolve degrees must be between -360 and 360 and nonzero. Axis can be x, y, or z. Y is vertical, so use Y for a typical upright profile. "
+                'Use {"action":"revolve","target":"last_created","degrees":360,'
+                '"axis_start":[0,0,0],"axis_end":[0,1,0]} to revolve the last '
+                "closed profile around the line between those two points. "
+                'Use {"action":"revolve","object_id":12,"degrees":180,'
+                '"axis_start":[1,0,0],"axis_end":[1,1,0]} for an existing profile. '
+                "The axis endpoints define a line; they do not create a visible line object. "
+                "The two axis points must differ. Use degrees between -360 and 360, excluding zero. "
+                'Use the "axis":"x", "y", or "z" form only when the user requests a world axis. '
                 "For a 3D object with filled faces, draw each face as its own separate, closed, planar draw_polyline. "
                 "Never combine multiple faces of a 3D object into one polyline. Each wall, floor, and roof face must be a separate action with closed set to true. "
                 "After drawing all the faces that should be filled, add one hatch_new_shapes action. "

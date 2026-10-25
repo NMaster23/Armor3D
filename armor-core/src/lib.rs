@@ -186,6 +186,19 @@ impl ViewportRenderer {
             .viewport
             .revolve_object(object_id, degrees, axis)
     }
+    fn revolve_object_around(
+        &mut self,
+        object_id: usize,
+        degrees: f32,
+        axis_start: (f32, f32, f32), 
+        axis_end: (f32, f32, f32)
+    ) -> usize {
+        self.state.viewport.revolve_object_around(
+            object_id,
+            degrees,
+            cgmath::Vector3::new(axis_start.0, axis_start.1, axis_start.2), cgmath::Vector3::new(axis_end.0, axis_end.1, axis_end.2)
+        )
+    }
     fn start_rectangle(&mut self) {
         self.state.viewport.start_rectangle();
     }
