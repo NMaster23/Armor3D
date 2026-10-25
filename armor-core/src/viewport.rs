@@ -1777,6 +1777,52 @@ impl Viewport {
         self.rebuild_vertices();
         deleted
     }
+    pub fn translate_objects(
+        &mut self,
+        object_ids: &[usize],
+        offset:Vector3<f32>,
+    ) -> usize {
+        if object_ids.is_empty()
+            || !offset.x.is_finite()
+            || !offset.y.is_finite()
+            || !offset.z.is_finite()
+        {
+            return 0;
+        }
+        let polyline_count = self
+            .entities
+            .iter()
+            .filter(|entity| object_ids.contains(&entity.id))
+            .count();
+        let surface_count = self
+            .nurbs_surfaces
+            .iter()
+            .filter(|surface| object_ids.contains(&surface.id))
+            .count();
+        let moved_count = polyline_count + surface_count;
+        if moved_count == 0 {
+            return 0;
+        }
+        self.save_undo_state();
+        for entity in &mut self.entities {
+            if object_ids.contains(&entity.id) {
+                for point in &mut entity.vertices {
+                    *point += offset;
+                }
+            }
+        }
+        for surface in &mut self.nurbs_surfaces {
+            if object_ids.contains(&surface.id) {
+                for row in &mut surface.surface.control_points {
+                    for control_point in row {
+                        control_point.point += offset;
+                    }
+                }
+            }
+        }
+        self.rebuild_vertices();
+        moved_count
+    }
     pub fn delete_objects(&mut self, ids: &[usize]) -> usize {
         let deleted_polylines = self
             .entities

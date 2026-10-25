@@ -126,6 +126,7 @@ This week we could not implement the theme but next week we will try to include 
 - Fixing Rust features
 - Fix curve logic - this part has been re-made with AI assistance
 - Fix revolve logic
+- Part of AI system prompt has been made with AI assistance
 - Rest of AI usage that has not been mentioned here is most likely in the commits
 
 ## AI-Updates.md
