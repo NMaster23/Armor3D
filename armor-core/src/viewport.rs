@@ -208,31 +208,24 @@ impl Viewport {
             .filter(|entity| entity.selected)
             .cloned()
             .collect();
-
         if selected.is_empty() {
             return 0;
         }
-
         for entity in &mut self.entities {
             entity.selected = false;
         }
-
         let mut first_new_id = None;
-
         for source in selected {
             let duplicated_vertices: Vec<Vector3<f32>> = source
                 .vertices
                 .iter()
                 .map(|point| *point + offset)
                 .collect();
-
             let id = self.next_entity;
             self.next_entity += 1;
-
             if first_new_id.is_none() {
                 first_new_id = Some(id);
             }
-
             self.entities.push(PolyLine {
                 id,
                 vertices: duplicated_vertices,
@@ -245,15 +238,13 @@ impl Viewport {
                 hatched: source.hatched,
             });
         }
-
         self.selected_entity = first_new_id;
         self.rebuild_vertices();
 
         self.entities
             .iter()
             .filter(|entity| entity.selected)
-            .count()
-    }
+            .count() }
     pub fn rotate_selected_objects(&mut self, degrees: f32, mode: &str) -> usize {
         if !degrees.is_finite() || degrees == 0.0 || degrees.abs() > 360.0 {
             return 0;
@@ -267,20 +258,17 @@ impl Viewport {
                 }
             }
             "z" => Vector3::unit_z(),
-            _ => return 0,
-        };
+            _ => return 0,};
         let mut points = Vec::new();
         for entity in self.entities.iter().filter(|entity| entity.selected) {
-            points.extend(entity.vertices.iter().copied());
-        }
+            points.extend(entity.vertices.iter().copied()); }
         for surface in self.nurbs_surfaces.iter().filter(|surface| surface.selected) {
             for row in &surface.surface.control_points {
                 points.extend(row.iter().map(|control_point| control_point.point));
-            }
+            }   
         }
         if points.is_empty() {
-            return 0;
-        }
+            return 0; }
         let min_x = points.iter().map(|point| point.x).fold(f32::INFINITY, f32::min);
         let min_y = points.iter().map(|point| point.y).fold(f32::INFINITY, f32::min);
         let min_z = points.iter().map(|point| point.z).fold(f32::INFINITY, f32::min);
@@ -290,8 +278,7 @@ impl Viewport {
         let pivot = Vector3::new(
             (min_x + max_x) * 0.5,
             (min_y + max_y) * 0.5,
-            (min_z + max_z) * 0.5,
-        );
+            (min_z + max_z) * 0.5, );
         let half_angle = degrees.to_radians() * 0.5;
         let sin_half = half_angle.sin();
         let rotation = Quaternion::new(
@@ -303,14 +290,15 @@ impl Viewport {
         self.save_undo_state();
         for entity in self.entities.iter_mut().filter(|entity| entity.selected) {
             for point in &mut entity.vertices {
-                *point  = pivot + rotation.rotate_vector(*point - pivot);
+                *point = pivot + rotation.rotate_vector(*point - pivot);
             }
             entity.extrude_axis = rotation.rotate_vector(entity.extrude_axis);
         }
         for surface in self.nurbs_surfaces.iter_mut().filter(|surface| surface.selected) {
             for row in &mut surface.surface.control_points {
                 for control_point in row {
-                    control_point.point  = pivot + rotation.rotate_vector(control_point.point - pivot);
+                    control_point.point =
+                        pivot + rotation.rotate_vector(control_point.point - pivot);
                 }
             }
         }

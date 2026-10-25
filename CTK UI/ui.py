@@ -109,6 +109,48 @@ def startrevolveaxis():
     command.configure(placeholder_text="Pick first point of revolve axis")
     viewport.configure(cursor='crosshair')
     viewport.focus_set()
+
+rotatemode = None
+def focusrotateentry():
+    if activecommand not in ("rotate_mode", "rotate_angle"):
+        return
+
+    command.configure(
+        state="normal",
+        placeholder_text="",
+        text_color="#EAEAEA",
+    )
+    command._deactivate_placeholder()
+    command._entry.configure(
+        state="normal",
+        fg="#EAEAEA",
+        insertbackground="#EAEAEA",
+        selectbackground="#111111",
+        selectforeground="#EAEAEA",
+    )
+    command._entry.focus_force()
+    command._entry.icursor("end")
+
+def startrotate(event=None):
+    global activecommand
+    if renderer is None:
+        return
+    command.delete(0, 'end')
+    if renderer.selected_geometry_count() == 0:
+        activecommand = 'rotate_select'
+        command.configure(placeholder_text='')
+        writehistory("> Rotate\nSelect one or more objects, and then press Enter")
+        viewport.configure(cursor='crosshair')
+        viewport.focus_set()
+        return
+    beginrotateoptions()
+def beginrotateoptions():
+    global activecommand
+    activecommand = 'rotate_mode'
+    command.delete(0, 'end')
+    command.configure(placeholder_text='', text_color="#EAEAEA")
+    writehistory("> Rotate\nChoose XY or Z, then press Enter")
+    app.after_idle(focusrotateentry)
     
 def startextrude():
     global activecommand, extrude_drag_start_y
@@ -464,7 +506,7 @@ app.geometry("1100x700")
 app.minsize(850, 730)
 canvas = Canvas(app, bg="#0B0B0B", highlightthickness=0)
 canvas.pack(fill='both', expand=True)
-command = ctk.CTkEntry(canvas, placeholder_text="Command:", font=("Lexend", 12), fg_color="#111111", border_color="#383838")
+command = ctk.CTkEntry(canvas, placeholder_text="Command:", font=("Lexend", 12), fg_color="#111111", border_color="#383838", text_color="#EAEAEA", placeholder_text_color="#888888")
 history = ctk.CTkTextbox( canvas, font=("Lexend", 11), fg_color="#111111", border_color="#383838",  border_width=2)
 history_window = canvas.create_window(8, 19, window=history, anchor='nw', height=45)
 history.configure(state="disabled")
@@ -674,6 +716,15 @@ def viewport_mouse_down(event):
         return
     if activecommand in ("picture_first", "picture_second"):
         pickpicturecorner(event)
+        return
+    if activecommand == 'rotate_select':
+        additive = bool(event.state & 0x0001)
+        selected = renderer.select_at(event.x, event.y, additive)
+        if selected is None:
+            writehistory("Click an object to select it")
+        else:
+            renderer.render()
+            writehistory('Select more objects or press Enter to continue')
         return
     if activecommand in ('mirror_select', 'copy_select', 'polar_select'):
         hide_selection_box()
@@ -950,6 +1001,12 @@ def viewport_wheel(event):
 def viewport_key(event, pressed):
     if (pressed and event.keysym == 'Return' and activecommand =='mirror_select'):
         confirmmirrorselection()
+        return 'break'
+    if pressed and event.keysym == 'Return' and activecommand == 'rotate_select':
+        if renderer.selected_geometry_count() == 0:
+            writehistory("Select at least one object first")
+            return 'break'
+        beginrotateoptions()
         return 'break'
     if pressed and event.keysym == 'Return' and activecommand == 'copy_select':
         confirmcopyselection()
@@ -1440,6 +1497,7 @@ def runnamedcommand(name):
         'pline': startpolyline,
         "hatch": starthatch,
         'curve': startcurve,
+        "rotate": startrotate,
         'crv': startcurve,
         "extrudeheight": extrudeheightcommand,
         "extrudeh": extrudeheightcommand,
@@ -1575,6 +1633,44 @@ def runcmd(event):
     global circle_center, circle_measure_mode
     global polarcenter
     global pending_text
+    global rotatemode
+    if activecommand == 'rotate_mode':
+        typed_mode = command.get().strip().lower()
+        if typed_mode not in ('xy', 'z'):
+            writehistory("Type XY or Z, then press Enter")
+            app.after_idle(focusrotateentry)
+            return 'break'
+        rotatemode = typed_mode
+        activecommand = 'rotate_angle'
+        command.delete(0, 'end')
+        command.configure(placeholder_text='', text_color="#EAEAEA")
+        writehistory(f"Rotate mode: {typed_mode.upper()}\nEnter degrees and press Enter")
+        app.after_idle(focusrotateentry)
+        return 'break'
+    if activecommand == 'rotate_angle':
+        try:
+            degrees = float(command.get().strip())
+        except ValueError:
+            writehistory("Enter a numeric angle, such as 45 or -90")
+            app.after_idle(focusrotateentry)
+            return 'break'
+        if not math.isfinite(degrees) or degrees == 0 or abs(degrees) > 360:
+            writehistory("Angle must be between -360 and 360, and not zero")
+            app.after_idle(focusrotateentry)
+            return 'break'
+        count = renderer.rotate_selected_objects(degrees, rotatemode)
+        renderer.render()
+        if count:
+            writehistory(f"Rotated {count} objects(s) {degrees:g} degrees around {rotatemode.upper()}")
+            activecommand = None
+            rotatemode = None
+            command.delete(0, 'end')
+            command.configure(placeholder_text='Command:')
+            viewport.configure(cursor='arrow')
+            viewport.focus_set()
+        else:
+            writehistory("Select at least one supported object to rotate")
+        return 'break'
     if activecommand == 'revolve_input':
         global revolveaxissstart, revolveaxisend
         if revolveaxissstart is None or revolveaxisend is None:
@@ -1778,7 +1874,7 @@ def runcmd(event):
     return "break"
 command.bind("<Return>", runcmd)
 commandnames = ["Polyline", "Curve", "Join", "Explode", "Rectangle", "Text", "File", "New", "Save", "Save as", '3DM', "PNG", "DXF", "Analyze", "Distance", "Angle", "Tools", "Revolve", "Extrude", "Mirror", "Copy",
-                'Circle', "Fillet", "Trim", "Arc", "Picture", "Import DXF", "Import", "hatch", "ArrayPolar", "PolarArray", "ExtrudeHeight"]
+                'Circle', "Fillet", "Trim", "Arc", "Picture", "Import DXF", "Import", "hatch", "ArrayPolar", "PolarArray", "ExtrudeHeight", "Rotate"]
 def handlenewconfirmation(event):
     if activecommand != "confirmnew":
         return
@@ -1791,7 +1887,7 @@ def handlenewconfirmation(event):
         cancelnewfile()
     return 'break'
 command.bind("<KeyPress>", handlenewconfirmation, add="+")
-command._entry.configure(selectbackground="#666666", selectforeground="#EAEAEA")
+command._entry.configure(selectbackground="#111111", selectforeground="#EAEAEA")
 def updatepolylinedistance(event=None):
     if activecommand != 'polyline' or renderer is None:
         return
@@ -1839,7 +1935,33 @@ def updatecircleoptionsuggestion(event=None):
     command.insert(0, match)
     command._entry.selection_range(typed_length, "end")
     command._entry.icursor(typed_length)
+
+def updaterotatemodsuggestion(event=None):
+    if activecommand != 'rotate_mode':
+        return
+    if event is not None and event.keysym in (
+        "Return", 'Escape', "BackSpace", "Delete", 'Left', 'Right', 'Up', "Down"
+    ):
+        return
+    typed = command.get().strip().lower()
+    if not typed:
+        return
+    # Accept the user's continued typing after x has already expanded to XY.
+    if typed == "y" or typed.startswith("x") or typed.startswith("y"):
+        match = "XY"
+    elif typed.startswith("z"):
+        match = "Z"
+    else:
+        return
+    if command.get() != match:
+        command.delete(0, 'end')
+        command.insert(0, match)
+        command._entry.icursor('end')
+
 def updatecommandsuggestion(event=None):
+    if activecommand == 'rotate_mode':
+        updaterotatemodsuggestion(event)
+        return
     if activecommand == 'circle' and circle_center is not None:
         updatecircleoptionsuggestion(event)
         return
@@ -1992,6 +2114,23 @@ def typecmduni(event):
             command._entry.icursor("end")
             return 'break'
         return
+    if activecommand in ('rotate_mode', 'rotate_angle'):
+        if event.keysym == 'Return':
+            return runcmd(event)
+        allowed= 'xyz' if activecommand == 'rotate_mode' else "0123456789+-.eE"
+        if event.char and event.char in allowed:
+            command.configure(state="normal", placeholder_text="", text_color="#EAEAEA")
+            command._deactivate_placeholder()
+            command._entry.configure(state="normal", fg="#EAEAEA", insertbackground="#EAEAEA")
+            command._entry.focus_force()
+            if command._entry.selection_present():
+                command._entry.delete("sel.first", 'sel.last')
+            command._entry.insert("end", event.char)
+            command._entry.icursor('end')
+            if activecommand == 'rotate_mode':
+                app.after_idle(updatecommandsuggestion)
+            return 'break'
+        return 'break'
     if activecommand is not None:
         return
     if event.char and event.char.isprintable():
@@ -2224,7 +2363,7 @@ def open_file_menu():
     file_hover_job = None
     slidemenu(importmenu, 48, 72, False)
     slidemenu(analyze_menu, 100, 72, False)
-    slidemenu(toolsmenu, 150, 136, False)
+    slidemenu(toolsmenu, 150, 200, True)
     showfilepage("main")
     slidemenu(filemenu, 8, 104, True)
 def cancelfilehover(event=None):
@@ -2315,7 +2454,7 @@ def openimportmenu():
     importhoverjob = None
     slidemenu(filemenu, 8, 104, False)
     slidemenu(analyze_menu, 100, 72, False)
-    slidemenu(toolsmenu, 150, 136, False)
+    slidemenu(toolsmenu, 150, 200, False)
     slidemenu(importmenu, 48, 72, True)
 def closeimportmenu():
     global importclosejob
@@ -2402,7 +2541,7 @@ def openanalyzemenu():
     analyzehoverjob = None
     slidemenu(importmenu, 48, 72, False)
     slidemenu(filemenu, 8, 104, False)
-    slidemenu(toolsmenu, 150, 136, False)
+    slidemenu(toolsmenu, 150, 200, False)
     slidemenu(analyze_menu, 100, 72, True)
 def analyze_enter(event):
     global analyzehoverjob
@@ -2450,9 +2589,9 @@ canvas.tag_bind(analyze, "<Leave>", analyzeleave, add="+")
 app.bind_all("<Motion>", analyzepointermotion, add="+")
 
 tools = canvas.create_text(170, 8, text="Tools", font=("Lexend", 8), fill="#EAEAEA")
-toolsmenu = Canvas(app, width=160, height=168, bg="#111111", highlightthickness=1, highlightbackground="#555555")
+toolsmenu = Canvas(app, width=160, height=200, bg="#111111", highlightthickness=1, highlightbackground="#555555")
 toolsrows = []
-tool_name = ("Revolve", "Extrude", "Extrude Height", "Mirror", "Copy")
+tool_name = ("Revolve", "Extrude", "Extrude Height", "Mirror", "Copy", "Rotate")
 for i, name in enumerate(tool_name):
     y = 4 + i * 32
     box = toolsmenu.create_rectangle(4, y, 155, y +30, fill='', outline='')
@@ -2469,7 +2608,7 @@ def toolsmenuclick(event):
     if not (4<= event.x <= 155):
         return
     row = (event.y-4)//32
-    names = ("Revolve", "Extrude", "Extrude Height", "Mirror", "Copy")
+    names = ("Revolve", "Extrude", "Extrude Height", "Mirror", "Copy", "Rotate")
     if 0<= row < len(names):
         closetoolsmenu()
         runnamedcommand(names[row])
@@ -2482,11 +2621,11 @@ def opentoolsmenu():
     slidemenu(importmenu, 48, 72, False)
     slidemenu(filemenu, 8, 104, False)
     slidemenu(analyze_menu, 100, 72, False)
-    slidemenu(toolsmenu, 150, 168, True)
+    slidemenu(toolsmenu, 150, 200, False)
 def closetoolsmenu():
     global toolsclosejob
     toolsclosejob = None
-    slidemenu(toolsmenu, 150, 136, False)
+    slidemenu(toolsmenu, 150, 200, False)
 def toolsenter(event):
     global toolshoverjob
     canvas.itemconfig(tools, fill='#FFFFFF')
@@ -2508,7 +2647,7 @@ def toolsclick(event):
 def pointerontoolsmenu(event):
     x = event.x_root - app.winfo_rootx()
     y = event.y_root - app.winfo_rooty()
-    return (150 <= x <= 190 and 0 <= y <= 20) or (150 <= x <= 310 and 20 <= y <= 156)
+    return (150 <= x <= 190 and 0 <= y <= 20) or (150 <= x <= 310 and 20 <= y <= 220)
 def toolspointermotion(event):
     global toolsclosejob
     if toolsmenu in menusliding or not toolsmenu.winfo_manager():
@@ -3275,7 +3414,7 @@ def open_view_menu():
     slidemenu(filemenu, 8, 104, False)
     slidemenu(importmenu, 48, 72, False)
     slidemenu(analyze_menu, 100, 72, False)
-    slidemenu(toolsmenu, 150, 136, False)
+    slidemenu(toolsmenu, 150, 200, False)
     slidemenu(viewmenu, 101, 99, True, top=129, start_y=33)
 def closeviewmenu():
     global view_close_job
