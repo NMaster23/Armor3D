@@ -369,7 +369,6 @@ impl ViewportRenderer {
         if vertices.len() < 2 {
             return false;
         }
-
         let mut points: Vec<cgmath::Vector3<f32>> = vertices
             .iter()
             .map(|&(x, y, z)| cgmath::Vector3::new(x, y, z))
@@ -383,6 +382,24 @@ impl ViewportRenderer {
             .add_polyline(points, [color.0, color.1, color.2, color.3], 2.5);
 
         true
+    }
+    fn import_mesh_triangles(
+        &mut self, triangles: Vec<((f32, f32, f32), (f32, f32, f32), (f32, f32, f32))>,
+        color: (f32, f32, f32, f32)
+    ) -> usize {
+        use cgmath::Vector3;
+        let triangles: Vec<[Vector3<f32>; 3]> = triangles
+            .into_iter()
+            .map(|(a, b, c)| [
+                Vector3::new(a.0, a.1, a.2),
+                Vector3::new(b.0, b.1, b.2),
+                Vector3::new(c.0, c.1, c.2),
+            ])
+            .collect();
+        self.state.viewport.add_triangle_surfaces(
+            &triangles,
+            [color.0, color.1, color.2, color.3],
+        )
     }
     fn hatch_selected(&mut self) -> usize {
         self.state.viewport.hatch_selected()
@@ -585,6 +602,53 @@ impl ViewportRenderer {
                     entity.selected,
                 )
             })
+            .collect()
+    }
+    fn scene_render_triangles(
+        &self,
+    ) -> Vec<((f32, f32, f32), (f32, f32, f32), (f32, f32, f32))> {
+        let mut triangles = Vec::new();
+
+        for entity in &self.state.viewport.entities {
+            let vertices = crate::viewport::Viewport::extrude(
+                &entity.vertices,
+                entity.color,
+                entity.height,
+                entity.extrude_axis,
+            );
+            for triangle in vertices.chunks_exact(3) {
+                triangles.push((
+                    (triangle[0].position[0], triangle[0].position[1], triangle[0].position[2]),
+                    (triangle[1].position[0], triangle[1].position[1], triangle[1].position[2]),
+                    (triangle[2].position[0], triangle[2].position[1], triangle[2].position[2]),
+                ));
+            }
+        }
+
+        for surface in &self.state.viewport.nurbs_surfaces {
+            let vertices = surface.surface.sample_mesh(
+                surface.u_subdivisions,
+                surface.v_subdivisions,
+                surface.color,
+            );
+            for triangle in vertices.chunks_exact(3) {
+                triangles.push((
+                    (triangle[0].position[0], triangle[0].position[1], triangle[0].position[2]),
+                    (triangle[1].position[0], triangle[1].position[1], triangle[1].position[2]),
+                    (triangle[2].position[0], triangle[2].position[1], triangle[2].position[2]),
+                ));
+            }
+        }
+
+        triangles
+    }
+    fn scene_hatched_ids(&self) -> Vec<usize> {
+        self.state
+            .viewport
+            .entities
+            .iter()
+            .filter(|entity| entity.hatched)
+            .map(|entity| entity.id)
             .collect()
     }
 

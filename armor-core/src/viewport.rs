@@ -2611,6 +2611,42 @@ impl Viewport {
         self.rebuild_vertices();
         id
     }
+    pub fn add_triangle_surfaces(
+        &mut self,
+        triangles: &[[Vector3<f32>; 3]],
+        color: [f32; 4],
+    ) -> usize {
+        use crate::nurbs::NurbsControlPoint;
+
+        for triangle in triangles {
+            let point = |p: Vector3<f32>| NurbsControlPoint { point: p, weight: 1.0 };
+            let surface = NurbsSurface {
+                degree_u: 1,
+                degree_v: 1,
+                knots_u: NurbsCurve::clamped_knot_vector(2, 1),
+                knots_v: NurbsCurve::clamped_knot_vector(2, 1),
+                control_points: vec![
+                    vec![point(triangle[0]), point(triangle[1])],
+                    vec![point(triangle[2]), point(triangle[2])],
+                ],
+            };
+            let id = self.next_entity;
+            self.next_entity += 1;
+            self.nurbs_surfaces.push(NurbsSurfaceEntity {
+                id,
+                surface,
+                color,
+                selected: false,
+                u_subdivisions: 2,
+                v_subdivisions: 2,
+            });
+        }
+
+        if !triangles.is_empty() {
+            self.rebuild_vertices();
+        }
+        triangles.len()
+    }
     pub fn extrude_selected(&mut self, height:f32) -> usize {
         if !height.is_finite() || height.abs() > 100_000.0 {
             return 0;

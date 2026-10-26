@@ -333,8 +333,19 @@ def save3dmcommand(path=None):
         writehistory("> 3DM\nViewport is not ready")
         return
     scene = renderer.scene_data()
-    if not scene:
-        writehistory("> 3DM\nThere are no supported polylines to export")
+    triangle_exporter = getattr(renderer, "scene_render_triangles", None)
+    hatch_id_reader = getattr(renderer, "scene_hatched_ids", None)
+    if triangle_exporter is None:
+        scene_triangles = []
+        writehistory(
+            "> 3DM\nThe installed armor_core is outdated; rebuilding it is "
+            "required to save extrusions and revolved surfaces. Saving outlines only."
+        )
+    else:
+        scene_triangles = triangle_exporter()
+    hatched_ids = set(hatch_id_reader()) if hatch_id_reader is not None else set()
+    if not scene and not scene_triangles:
+        writehistory("> 3DM\nThere is no supported geometry to export")
         return
     if (path is None and currentfilepath and Path(currentfilepath).suffix.lower() == '.3dm'):
         path = currentfilepath
@@ -355,7 +366,20 @@ def save3dmcommand(path=None):
             ]
             polyline = rhino3dm.Polyline.CreateFromPoints(points)
             if polyline is not None and polyline.IsValid:
-                model.Objects.AddPolyline(polyline)
+                attributes = rhino3dm.ObjectAttributes()
+                if _object_id in hatched_ids:
+                    attributes.SetUserString("Armor3D.Hatched", "1")
+                model.Objects.AddPolyline(polyline, attributes)
+                exported += 1
+        if scene_triangles:
+            mesh = rhino3dm.Mesh()
+            for triangle in scene_triangles:
+                first = len(mesh.Vertices)
+                for x, y, z in triangle:
+                    mesh.Vertices.Add(float(x), float(-z), float(y))
+                mesh.Faces.AddFace(first, first + 1, first + 2)
+            if mesh.Faces.Count:
+                model.Objects.AddMesh(mesh)
                 exported += 1
         if exported == 0:
             writehistory("> 3DM\nNo supported polylines were exported")
@@ -364,9 +388,100 @@ def save3dmcommand(path=None):
             raise RuntimeError("rhino3dm could not write the file")
         currentfilepath = str(Path(path).resolve())
         updatewindowtitle()
-        writehistory(f"> 3DM\nExported {exported} polylines to {path}")
+        writehistory(f"> 3DM\nExported {exported} geometry objects to {path}")
     except Exception as error:
         writehistory(f"> 3DM\nExport failed: {error}")
+
+def armorpointfromrhino(point):
+    return(
+        float(point.X),
+        float(point.Z),
+        float(-point.Y),)
+
+def polylinepointsfromrhino_curve(curve):
+    if isinstance(curve, rhino3dm.LineCurve):
+        return [curve.PointAtStart, curve.PointAtEnd]
+    if isinstance(curve, rhino3dm.PolylineCurve):
+        polyline = curve.ToPolyline()
+        if polyline is not None:
+            return [polyline[index] for index in range(len(polyline))]
+
+    domain = curve.Domain
+    sample_count = 64
+    return [
+        curve.PointAt(domain.T0 + (domain.T1 - domain.T0) * index / sample_count)
+        for index in range(sample_count + 1)
+    ]
+
+def extrusionwalltriangles(geometry):
+    triangles = []
+    for profile_index in range(geometry.ProfileCount):
+        bottom_curve = geometry.Profile3d(profile_index, 0.0)
+        top_curve = geometry.Profile3d(profile_index, 1.0)
+        if bottom_curve is None or top_curve is None:
+            continue
+
+        bottom = polylinepointsfromrhino_curve(bottom_curve)
+        top = polylinepointsfromrhino_curve(top_curve)
+        if len(bottom) != len(top) or len(bottom) < 2:
+            continue
+
+        for index in range(len(bottom) - 1):
+            b0 = armorpointfromrhino(bottom[index])
+            b1 = armorpointfromrhino(bottom[index + 1])
+            t0 = armorpointfromrhino(top[index])
+            t1 = armorpointfromrhino(top[index + 1])
+            triangles.append((b0, b1, t1))
+            triangles.append((b0, t1, t0))
+    return triangles
+
+def meshtrianglefrom3dmgeometry(geometry):
+    mesh = None
+    if isinstance(geometry, rhino3dm.Mesh):
+        mesh = geometry
+    else:
+        if isinstance(geometry, rhino3dm.Extrusion):
+            mesh = geometry.GetMesh(rhino3dm.MeshType.Any)
+        brep = None
+        if mesh is None and isinstance(geometry, rhino3dm.Extrusion):
+            brep = geometry.ToBrep(False)
+        elif isinstance(geometry, rhino3dm.Brep):
+            brep = geometry
+        elif mesh is None and getattr(geometry, "HasBrepForm", False):
+            brep = rhino3dm.Brep.TryConvertBrep(geometry)
+        if brep is not None:
+            combined = rhino3dm.Mesh()
+            for face in brep.Faces:
+                facemesh = face.GetMesh(rhino3dm.MeshType.Any)
+                if facemesh is not None:
+                    combined.Append(facemesh)
+            if combined.Faces.Count:
+                mesh = combined
+    if (mesh is None or mesh.Faces.Count == 0) and isinstance(geometry, rhino3dm.Extrusion):
+        # Some 3DM files have no cached display mesh. Build the extrusion walls
+        # from its profile curves so those objects still appear in Armor3D.
+        profile_triangles = extrusionwalltriangles(geometry)
+        if profile_triangles:
+            return profile_triangles
+
+    if mesh is None or mesh.Faces.Count == 0:
+        return []
+    triangles = []
+    for index in range(mesh.Faces.Count):
+        face_data = mesh.Faces.GetFaceVertices(index)
+        if not face_data or not face_data[0]:
+            continue
+        _, point_a, point_b, point_c, point_d = face_data
+        a = armorpointfromrhino(point_a)
+        b = armorpointfromrhino(point_b)
+        c = armorpointfromrhino(point_c)
+        d = armorpointfromrhino(point_d)
+        triangles.append((a, b, c))
+        if math.dist(c, d) > 1.0e-9:
+            triangles.append((a, c, d))
+    return triangles
+
+
 def import3dmcommand():
     global currentfilepath
     if renderer is None:
@@ -388,31 +503,40 @@ def import3dmcommand():
             if isinstance(geometry, rhino3dm.LineCurve):
                 points = [geometry.PointAtStart, geometry.PointAtEnd]
             elif isinstance(geometry, rhino3dm.PolylineCurve):
-                points = [
-                    geometry.Point(index)
-                    for index in range(geometry.PointCount)]
+                points = [  geometry.Point(index)  for index in range(geometry.PointCount)]
+            if points:
+                armorpoints = [armorpointfromrhino(point) for point in points ]
+                closed = (len(armorpoints) >= 4 and math.dist(armorpoints[0], armorpoints[-1]) <= 0.0001 )
+                existing_ids = {
+                    object_id for object_id, *_ in renderer.scene_data()
+                }
+                if renderer.import_polyline(
+                    armorpoints,
+                    currentlayercolor(),
+                    closed,
+                ):
+                    imported += 1
+                    if item.Attributes.GetUserString("Armor3D.Hatched") == "1":
+                        new_ids = {
+                            object_id for object_id, *_ in renderer.scene_data()
+                        } - existing_ids
+                        if new_ids:
+                            renderer.hatch_objects([min(new_ids)])
+                continue
+            triangles = meshtrianglefrom3dmgeometry(geometry)
+            if triangles:
+                imported += renderer.import_mesh_triangles( triangles, currentlayercolor(), )
             else:
                 skipped += 1
-                continue
-            if len(points) <2:
-                skipped += 1
-                continue
-            armor_points = [(float(point.X), float(point.Z), float(-point.Y)) for point in points ]
-            closed = (
-                len(armor_points) >= 4
-                and math.dist(armor_points[0], armor_points[-1]) <= 0.0001)
-            if renderer.import_polyline(armor_points, currentlayercolor(),closed,):
-                imported += 1
-            renderer.render()
-            if imported:
-                importedfiles.append(Path(path).name)
-                if currentfilepath is None:
-                    currentfilepath = str(Path(path).resolve())
-                updatewindowtitle()
-            writehistory(f"> Import 3DM\nImported {imported} lines/polylines" + (f"; skipped {skipped} unsupported objects" if skipped else ''))
+        renderer.render()
+        if imported > 0:
+            importedfiles.append(Path(path).name)
+            if currentfilepath is None:
+                currentfilepath = str(Path(path).resolve())
+            updatewindowtitle()
+        writehistory( f"> Import 3DM\nImported {imported} objects" + (f"; skipped {skipped} unsupported objects" if skipped else ""))
     except Exception as error:
         writehistory(f"> Import 3DM\nImport failed: {error}")
-
 def savedxcommands(path=None):
     global currentfilepath
     if renderer is None:
@@ -2037,7 +2161,6 @@ def updaterotatemodsuggestion(event=None):
     typed = command.get().strip().lower()
     if not typed:
         return
-    # Accept the user's continued typing after x has already expanded to XY.
     if typed == "y" or typed.startswith("x") or typed.startswith("y"):
         match = "XY"
     elif typed.startswith("z"):
@@ -3463,8 +3586,6 @@ def slidemenu(menu, x, height, opening, top=20, start_y=None):
         progress = 1 - (1-number /12) ** 3
         y = round(start + (end-start) * progress)
         menu.place(x=x, y=y)
-        # Canvas.tkraise is aliased to tag_raise, so use Tk's widget-level
-        # raise command to place this menu above the Perspective button.
         menu.tk.call("raise", menu._w)
         if number < 12: 
             menujobs[menu]  = app.after(16, lambda: step(number+1))
