@@ -56,6 +56,7 @@ Additional smaller improvements and bug fixes are most likely documented in the 
 ## Week 6 Progress
 - added 3dm saving
 - more AI capabilties
+- new color theme
 - front viewport
 - gumball (beta needs fixes)
 
@@ -65,7 +66,7 @@ Additional smaller improvements and bug fixes are most likely documented in the 
 Armor3D does not yet include the full feature set of Rhino. There may be many incomplete features in the works - will fix in due time. The available features may not be polished, as this project is still in BETA. 
 
 ## Download
-Download the EXE from the [latest Armor3D release](https://github.com/NMaster23/Armor3D/releases/tag/v5). After that is completed, ignore the Windows security feature, and then you're in the app!
+Download the EXE from the [latest Armor3D release](https://github.com/NMaster23/Armor3D/releases/tag/v6). After that is completed, ignore the Windows security feature, and then you're in the app!
 
 ## Run locally
 This version is specifically built for Windows.
@@ -145,6 +146,7 @@ This week we could not implement the theme but next week we will try to include 
 - Nihaal Mysore Bharath - Rust viewport and grid work
 
 ## DEMO
-<img width="1913" height="1029" alt="image" src="https://github.com/user-attachments/assets/a3359b00-53bb-49f3-9827-cd87609300cc" />
+<img width="1095" height="752" alt="image" src="https://github.com/user-attachments/assets/36fcd9d3-8df7-483b-8a83-bd694b4162a1" />
+
 
 
