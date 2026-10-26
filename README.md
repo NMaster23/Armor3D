@@ -53,6 +53,14 @@ Additional smaller improvements and bug fixes are most likely documented in the 
 
 Additional smaller improvements and bug fixes are most likely documented in the commit history.
 
+## Week 6 Progress
+- added 3dm saving
+- more AI capabilties
+- front viewport
+- gumball (beta needs fixes)
+
+Additional smaller improvements and bug fixes are most likely documented in the commit history.
+
 ## Current limitations
 Armor3D does not yet include the full feature set of Rhino. There may be many incomplete features in the works - will fix in due time. The available features may not be polished, as this project is still in BETA. 
 
@@ -80,7 +88,7 @@ Use the path to your own `python.exe` if it differs. After the wheel is installe
 - Right click to pan
 - Scroll wheel to zoom
 - Type your command to execute - command line
-- Press the key "]" to toggle between a 2D and 3D view
+- Press the button at the top left of the grid screen to switch perspectives
 - Shift + right drag to orbit
 - Press polyline to create shapes and drawings - only drawing ability for week two.
 - Use two of the osnap features to snap onto objects - near and end
@@ -98,9 +106,9 @@ The viewport and 3D handling is implemented in Rust through the use of the WGPU 
 The Rust side provides the 2D and 3D grid, camera, polyline drawing and preview, tessellation, end and near snapping, selection, and shape movement. Python forwards viewport input and manages the surrounding controls. More CAD tools are still in progress.
 
 ## Next Steps
-- Add more AI features
-- Add 3dm importing
-- Add more drawing features
+- Add more AI capabilities
+- Add 3d model importing
+- Add 3d model meshing
 
 ## Week 1 theme
 Week 1 used a harvest-inspired palette of orange and green.
