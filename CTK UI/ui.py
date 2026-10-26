@@ -6,6 +6,7 @@ import re
 import ezdxf
 from ezdxf import units
 import math
+import rhino3dm
 import threading
 import json
 import queue
@@ -326,6 +327,92 @@ def importdxcommand(event=None):
     except Exception as error:
         writehistory(f"> Import DXF\nImport failed {error}")
 
+def save3dmcommand(path=None):
+    global currentfilepath
+    if renderer is None:
+        writehistory("> 3DM\nViewport is not ready")
+        return
+    scene = renderer.scene_data()
+    if not scene:
+        writehistory("> 3DM\nThere are no supported polylines to export")
+        return
+    if (path is None and currentfilepath and Path(currentfilepath).suffix.lower() == '.3dm'):
+        path = currentfilepath
+    if path is None:
+        path = filedialog.asksaveasfilename(parent=app, title="Save drawing as 3DM", defaultextension=".3dm",  filetypes=[("Rhino 3D Model", "*.3dm")], initialfile="Armor3D.3dm",)
+    if not path:
+        return
+    try:
+        model = rhino3dm.File3dm()
+        model.ApplicationName = "Armor 3D"
+        exported= 0
+        for _object_id, vertices, _color, _height, _selected in scene:
+            if len(vertices) < 2:
+                continue
+            points = [
+                rhino3dm.Point3d(float(x), float(-z), float(y))
+                for x, y, z, in vertices
+            ]
+            polyline = rhino3dm.Polyline.CreateFromPoints(points)
+            if polyline is not None and polyline.IsValid:
+                model.Objects.AddPolyline(polyline)
+                exported += 1
+        if exported == 0:
+            writehistory("> 3DM\nNo supported polylines were exported")
+            return
+        if not model.Write(path, 8):
+            raise RuntimeError("rhino3dm could not write the file")
+        currentfilepath = str(Path(path).resolve())
+        updatewindowtitle()
+        writehistory(f"> 3DM\nExported {exported} polylines to {path}")
+    except Exception as error:
+        writehistory(f"> 3DM\nExport failed: {error}")
+def import3dmcommand():
+    global currentfilepath
+    if renderer is None:
+        writehistory("> Import 3DM\nviewport is not ready")
+        return
+    path = filedialog.askopenfilename(
+        parent=app, title="Import 3DM drawing", filetypes=[("Rhino 3D model", "*.3dm")],)
+    if not path:
+        return
+    try:
+        model= rhino3dm.File3dm.Read(path)
+        if model is None:
+            raise RuntimeError("Could not read this 3DM file")
+        imported = 0
+        skipped = 0
+        for item in model.Objects:
+            geometry = item.Geometry
+            points = []
+            if isinstance(geometry, rhino3dm.LineCurve):
+                points = [geometry.PointAtStart, geometry.PointAtEnd]
+            elif isinstance(geometry, rhino3dm.PolylineCurve):
+                points = [
+                    geometry.Point(index)
+                    for index in range(geometry.PointCount)]
+            else:
+                skipped += 1
+                continue
+            if len(points) <2:
+                skipped += 1
+                continue
+            armor_points = [(float(point.X), float(point.Z), float(-point.Y)) for point in points ]
+            closed = (
+                len(armor_points) >= 4
+                and math.dist(armor_points[0], armor_points[-1]) <= 0.0001)
+            if renderer.import_polyline(armor_points, currentlayercolor(),closed,):
+                imported += 1
+            renderer.render()
+            if imported:
+                importedfiles.append(Path(path).name)
+                if currentfilepath is None:
+                    currentfilepath = str(Path(path).resolve())
+                updatewindowtitle()
+            writehistory(f"> Import 3DM\nImported {imported} lines/polylines" + (f"; skipped {skipped} unsupported objects" if skipped else ''))
+    except Exception as error:
+        writehistory(f"> Import 3DM\nImport failed: {error}")
+
 def savedxcommands(path=None):
     global currentfilepath
     if renderer is None:
@@ -390,7 +477,10 @@ def savecommand():
         )
         opensaveascommand()
         return
-    savedxcommands(currentfilepath)
+    if Path(currentfilepath).suffix.lower() == '.3dm':
+        save3dmcommand(currentfilepath)
+    else:
+        savedxcommands(currentfilepath)
 
 
 SETTINGSPATH = (Path(os.getenv("APPDATA") or Path.home())
@@ -1520,7 +1610,7 @@ def runnamedcommand(name):
         "new": newfilecommand,
         "save": savecommand,
         "picture": importimagecommand,
-        "3dm": lambda: startplaceholdercmd("3DM", "3DM export is not implemented yet"),
+        "3dm": save3dmcommand,
         "dxf": savedxcommands,
         "file": open_file_menu,
         "analyze": openanalyzemenu,
@@ -1531,7 +1621,8 @@ def runnamedcommand(name):
         "trim": lambda: startplaceholdercmd("Trim", "Select objects to trim"),
         "arc": lambda: startplaceholdercmd("Arc", "Choose arc start point"),
         "import": importdxcommand,
-        "importdxf": importdxcommand
+        "importdxf": importdxcommand,
+        "import3dm": import3dmcommand,
     }
     action = actions.get(normalized)
     if action is None:
@@ -2360,10 +2451,10 @@ filemenu.bind("<Button-1>", filemenuclick)
 file_hover_job = None
 def open_file_menu():
     global file_hover_job
+    closeviewmenu()
     file_hover_job = None
-    slidemenu(importmenu, 48, 72, False)
+    slidemenu(importmenu, 48, 104, False)
     slidemenu(analyze_menu, 100, 72, False)
-    slidemenu(toolsmenu, 150, 200, True)
     showfilepage("main")
     slidemenu(filemenu, 8, 104, True)
 def cancelfilehover(event=None):
@@ -2428,9 +2519,9 @@ def updatecoords():
     canvas.itemconfig(coords_text, text=f"X: {x:.3f}   Y: {y:.3f}   Z: {z:.3f}")
 
 importz = canvas.create_text(68, 8, text='Import', font=("Lexend", 8), fill="#EAEAEA")
-importmenu = Canvas(app, width=160, height=72, bg="#111111", highlightthickness=1, highlightbackground="#555555")
+importmenu = Canvas( app, width=160, height=104, bg="#111111", highlightthickness=1, highlightbackground="#555555")
 importrows = []
-for index, name in enumerate(("DXF", "Picture")):
+for index, name in enumerate(("3DM", "DXF", "Picture")):
     y = 4 + index * 32
     box = importmenu.create_rectangle(4, y, 155, y+30, fill='', outline='')
     label = importmenu.create_text(12, y+15, text=name, anchor='w', fill='#EAEAEA', font=("Iceland", 13))
@@ -2445,21 +2536,22 @@ def importmenuclick(event):
     if not 4<= event.x <= 155:
         return
     row = (event.y-4) // 32
-    commands = ("Import DXF", "Picture")
+    commands = ("Import 3DM", "Import DXF", "Picture")
     if 0 <= row < len(commands):
         closeimportmenu()
         runnamedcommand(commands[row])
 def openimportmenu():
+    closeviewmenu()
     global importhoverjob
     importhoverjob = None
     slidemenu(filemenu, 8, 104, False)
     slidemenu(analyze_menu, 100, 72, False)
     slidemenu(toolsmenu, 150, 200, False)
-    slidemenu(importmenu, 48, 72, True)
+    slidemenu(importmenu, 48, 104, True)
 def closeimportmenu():
     global importclosejob
     importclosejob = None
-    slidemenu(importmenu, 48, 72, False)
+    slidemenu(importmenu, 48, 104, False)
 importhoverjob = None
 importclosejob = None
 def importenter(event):
@@ -2484,7 +2576,7 @@ def pointeronimportmenu(event):
     x = event.x_root - app.winfo_rootx()
     y = event.y_root - app.winfo_rooty()
     return (45 <= x <= 92 and 0 <= y <= 20) or (
-        48 <= x <= 208 and 20 <= y <=94
+        48 <= x <= 208 and 20 <= y <= 124
     )
 def importpointermotion(event):
     global importclosejob
@@ -2538,8 +2630,9 @@ analyzehoverjob = None
 analyzeclosejob = None
 def openanalyzemenu():
     global analyzehoverjob
+    closeviewmenu()
     analyzehoverjob = None
-    slidemenu(importmenu, 48, 72, False)
+    slidemenu(importmenu, 48, 104, False)
     slidemenu(filemenu, 8, 104, False)
     slidemenu(toolsmenu, 150, 200, False)
     slidemenu(analyze_menu, 100, 72, True)
@@ -2616,19 +2709,20 @@ toolsmenu.bind("<Button-1>", toolsmenuclick)
 toolshoverjob = None
 toolsclosejob = None
 def opentoolsmenu():
+    closeviewmenu()
     global toolshoverjob
     toolshoverjob = None
-    slidemenu(importmenu, 48, 72, False)
+    slidemenu(importmenu, 48, 104, False)
     slidemenu(filemenu, 8, 104, False)
     slidemenu(analyze_menu, 100, 72, False)
-    slidemenu(toolsmenu, 150, 200, False)
+    slidemenu(toolsmenu, 150, 200, True)
 def closetoolsmenu():
     global toolsclosejob
     toolsclosejob = None
     slidemenu(toolsmenu, 150, 200, False)
 def toolsenter(event):
     global toolshoverjob
-    canvas.itemconfig(tools, fill='#FFFFFF')
+    canvas.itemconfig(tools, fill='#777777')
     if toolshoverjob is not None:
         app.after_cancel(toolshoverjob)
     toolshoverjob = app.after(500, opentoolsmenu)
@@ -3369,6 +3463,9 @@ def slidemenu(menu, x, height, opening, top=20, start_y=None):
         progress = 1 - (1-number /12) ** 3
         y = round(start + (end-start) * progress)
         menu.place(x=x, y=y)
+        # Canvas.tkraise is aliased to tag_raise, so use Tk's widget-level
+        # raise command to place this menu above the Perspective button.
+        menu.tk.call("raise", menu._w)
         if number < 12: 
             menujobs[menu]  = app.after(16, lambda: step(number+1))
         else:
@@ -3412,7 +3509,7 @@ def open_view_menu():
         app.after_cancel(view_close_job)
         view_close_job = None
     slidemenu(filemenu, 8, 104, False)
-    slidemenu(importmenu, 48, 72, False)
+    slidemenu(importmenu, 48, 104, False)
     slidemenu(analyze_menu, 100, 72, False)
     slidemenu(toolsmenu, 150, 200, False)
     slidemenu(viewmenu, 101, 99, True, top=129, start_y=33)
