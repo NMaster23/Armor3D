@@ -55,7 +55,7 @@ Additional smaller improvements and bug fixes are most likely documented in the 
 
 ## Week 6 Progress
 - added 3dm saving
-- more AI capabilties
+- more AI capabilities
 - new color theme
 - front viewport
 - gumball (beta needs fixes)
