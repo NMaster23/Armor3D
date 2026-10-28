@@ -1,8 +1,12 @@
+use std::error::Error;
 use std::fs::File;
-use std::io::{BufWriter, Write};
+use std::io::{BufWriter, Seek, Write};
 use std::path::PathBuf;
+use glyphon::cosmic_text::skrifa::color::PaintCachedColorGlyph::Ok;
 use rfd::AsyncFileDialog;
 use std::time::SystemTime;
+use zip::write::SimpleFileOptions;
+use zip::ZipWriter;
 
 const ALLOWED_EXTENSIONS: &[&str] = &["3mf", "stl", "obj", "step", "glb/glTF"];
 
@@ -20,6 +24,63 @@ pub struct FileObject {
     pub extension: String,
 }
 
+pub async fn write_3mf<W: Write + Seek>(writer: W, triangles: &[Triangle]) -> Result<(), Box<dyn Error>> {
+    let mut zip = ZipWriter::new(writer);
+    let options = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+    zip.start_file("[Content Types].xml", options)?;
+    let content_types = r#"<?xml version="1.0" encoding="UTF-8"?>
+    <Types xmlns="https://schemas.openxmlformats.org/package/2006/content-types">
+        <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml" />
+        <Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing />
+    </Types>"#;
+    zip.write_all(content_types.as_bytes())?;
+    zip.start_file("_rels/.rels", options)?;
+    let rels = r#"<?xml version=1.0 encoding="UTF-8"?>
+    <Relationships xmlns="https://schemas.openxmlformats.org/package/2006/relationships">
+        <Relationship Target="/3D/3dmodel.model" Id="rel10" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel" />
+    </Relationships>"#;
+    zip.write_all(rels.as_bytes());
+    zip.start_file("3D/3dmodel.model", options)?;
+    zip.write_all(br#"<?xml version="1.0" encoding="UTF-8">
+        <model unit="millimeter" xml:lang+"en-US" xmlns+"http://schemas.microsoft.com/3dmanufacturing/core/2015/02">
+        <metadata name="Application">Armor3D</metadata>
+        <resources>
+            <object id="1" type="model">
+                <mesh>
+                <vertices>
+    "#)?;
+    for tri in triangles {
+        let v_str = format!(
+            "<vertex x=\"{:4}\" y=\"{:.4}\" z=\"{:.4}\" />\n\
+            <vertex x=\"{:4}\" y=\"{:.4}\" z=\"{:.4}\" />\n\
+            <vertex x=\"{:4}\" y=\"{:.4}\" z=\"{:.4}\" />\n",
+            tri.v0[0], tri.v0[1], tri.v0[2],
+            tri.v1[0], tri.v1[1], tri.v1[2],
+            tri.v2[0], tri.v2[1], tri.v2[2]
+        );
+        zip.write_all(v_str.as_bytes())?;
+    }
+    zip.write_all(br#"</vertices>
+        <triangles>
+    "#)?;
+    for i in 0..triangles.len() {
+        let v0 = i * 3;
+        let v1 = i * 3 + 1;
+        let v2 = i * 3 + 2;
+        let tri_str = format!("<triangle v1=\"{}\" v2=\"{}\" v3=\"{}\" />\n", v0, v1, v2);
+        zip.write_all(tri_str.as_bytes())?;
+    }
+    zip.write_all(br#"        </triangles>
+        </mesh>
+        </object>
+    </resources>
+    <build>
+        <item objectid="1" />
+    </build>
+    </model>"#)?;
+    zip.finish()?;
+    Ok(())
+}
 
 pub async fn write_file(triangles: &[Triangle], file_type: &str) -> Option<FileObject> {
     let path = AsyncFileDialog::new()
@@ -56,6 +117,9 @@ pub async fn write_file(triangles: &[Triangle], file_type: &str) -> Option<FileO
         .unwrap_or("file")
         .to_string();
     match final_ext.as_str() {
+        "3mf" => {
+
+        }
         "stl" => {
             writer.write_all(&header).ok()?;
             writer.write_all(&(triangles.len() as u32).to_le_bytes()).ok()?;
