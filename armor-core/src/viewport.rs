@@ -2149,30 +2149,6 @@ impl Viewport {
                             offset = Vector3::new(0.0, 0.0, 0.0);
                         }
                     }
-                    gumball::GumballHandle::rotate_y => {
-                        if let Some(start) = gumball.drag_start_point {
-                            let angle = (x - start.x) * 0.02;
-                            let (cos_a, sin_a) = (angle.cos(), angle.sin());
-                            let center = gumball.drag_start_origin;
-                            for (e_id, og_verts) in &self.move_snapshots {
-                                if let Some(entity) = self.entities.iter_mut().find(|e| e.id == *e_id) {
-                                    entity.vertices = og_verts
-                                        .iter()
-                                        .map(|v| {
-                                            let dx = v.x - center.x;
-                                            let dz = v.z - center.z;
-                                            Vector3::new(
-                                                center.x + dx * cos_a - dz * sin_a,
-                                                v.y,
-                                                center.z + dx * sin_a + dz * cos_a,
-                                            )
-                                        })
-                                        .collect();
-                                }
-                            }
-                            offset = Vector3::new(0.0, 0.0, 0.0);
-                        }
-                    }
                     gumball::GumballHandle::rotate_z => {
                         if let Some(start) = gumball.drag_start_point {
                             let angle = (x - start.x) * 0.02;

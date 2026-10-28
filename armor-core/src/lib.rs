@@ -4,6 +4,7 @@ mod render;
 mod viewport;
 pub mod nurbs;
 pub mod gumball;
+pub mod exporter;
 
 use cgmath::{Quaternion, Vector3};
 use glyphon::Family;
