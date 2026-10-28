@@ -147,13 +147,13 @@ impl Gumball {
             test_three_p(c0, c2, c3, handle);
         }
         let rings: [(Vector3<f32>, Vector3<f32>, GumballHandle); 3] = [
-            (Vector3::unit_x(), Vector3::unit_z(), GumballHandle::rotate_x),
-            (Vector3::unit_y(), Vector3::unit_z(), GumballHandle::rotate_y),
-            (Vector3::unit_z(), Vector3::unit_y(), GumballHandle::rotate_z),
+            (Vector3::unit_y(), Vector3::unit_z(), GumballHandle::rotate_x),
+            (Vector3::unit_x(), Vector3::unit_z(), GumballHandle::rotate_y),
+            (Vector3::unit_x(), Vector3::unit_y(), GumballHandle::rotate_z),
         ];
         let arc_r = self.size * 0.6;
-        let arc_thick = self.size * 0.02;
-        let seg = 16;
+        let hit_arc_thick = self.size * 0.06;
+        let seg = 32;
         let half_pi = std::f32::consts::FRAC_PI_2;
         for (u, v, handle) in rings {
             for i in 0..seg {
@@ -161,10 +161,10 @@ impl Gumball {
                 let t1 = ((i + 1) as f32 / seg as f32) * half_pi;
                 let (s0, c0) = (t0.sin(), t0.cos());
                 let (s1, c1) = (t1.sin(), t1.cos());
-                let p0 = self.origin + (u * c0 + v * s0) * (arc_r - arc_thick);
-                let p1 = self.origin + (u * c0 + v * s0) * (arc_r + arc_thick);
-                let p2 = self.origin + (u * c1 + v * s1) * (arc_r + arc_thick);
-                let p3 = self.origin + (u * c1 + v * s1) * (arc_r - arc_thick);
+                let p0 = self.origin + (u * c0 + v * s0) * (arc_r - hit_arc_thick);
+                let p1 = self.origin + (u * c0 + v * s0) * (arc_r + hit_arc_thick);
+                let p2 = self.origin + (u * c1 + v * s1) * (arc_r + hit_arc_thick);
+                let p3 = self.origin + (u * c1 + v * s1) * (arc_r - hit_arc_thick);
                 test_three_p(p0, p1, p2, handle);
                 test_three_p(p0, p2, p3, handle);
             }
