@@ -1648,7 +1648,7 @@ impl Viewport {
             } else {
                 Vector3::new(0.0, 0.0, 0.0)
             };
-            self.gumball = Some(Gumball::new(Point3::new(centroid.x, centroid.y, centroid.z), 0.75));
+            self.gumball = Some(Gumball::new(Point3::new(centroid.x, centroid.y, centroid.z), 0.25));
         } else if let Some(e) = self.entities.iter().find(|e| e.selected) {
             if !e.vertices.is_empty() {
                 let mut sum = Vector3::new(0.0, 0.0, 0.0);
@@ -1656,7 +1656,7 @@ impl Viewport {
                     sum += *v;
                 }
                 let centroid = sum / e.vertices.len() as f32;
-                self.gumball = Some(Gumball::new(Point3::new(centroid.x, centroid.y, centroid.z), 0.75))
+                self.gumball = Some(Gumball::new(Point3::new(centroid.x, centroid.y, centroid.z), 0.25))
             } else {
                 self.gumball = None;
             }
@@ -2086,17 +2086,9 @@ impl Viewport {
                     }
                     gumball::GumballHandle::translate_y => {
                         if let Some(start) = gumball.drag_start_point {
-                            let d_height = -(y - start.y) * 0.03;
-                            for (e_id, _) in &self.move_snapshots {
-                                if let Some(entity) = self.entities.iter_mut().find(|e| e.id == *e_id) {
-                                    if Self::is_closed_shape(&entity.vertices) {
-                                        entity.height = (d_height).max(0.0);
-                                        entity.extrude_axis = Vector3::unit_y();
-                                    } 
-                                }
+                            let units_per_pixel = self.world_width_for_pixels(1.0);
+                            offset = Vector3::new(0.0,(start.y - y) * units_per_pixel,0.0,);
                             }
-                            offset = Vector3::new(0.0, 0.0, 0.0);
-                        }
                     }
                     gumball::GumballHandle::translate_z => {
                         offset = Vector3::new(0.0, 0.0, offset.z);
@@ -2204,16 +2196,10 @@ impl Viewport {
             }
         }
         if let Some(gumball) = &mut self.gumball {
-            let extrude_h = self.entities
-                .iter()
-                .find(|e| e.selected)
-                .map(|e| e.height)
-                .unwrap_or(0.0);
             gumball.origin = Point3::new(
                 gumball.drag_start_origin.x + offset.x,
-                gumball.drag_start_origin.y + offset.y + extrude_h,
-                gumball.drag_start_origin.z + offset.z,
-            );
+                gumball.drag_start_origin.y + offset.y,
+                gumball.drag_start_origin.z + offset.z);
         }
         self.rebuild_vertices();
         true

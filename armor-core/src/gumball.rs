@@ -121,8 +121,8 @@ impl Gumball {
                 }
             }
         };
-        let arrow_r = self.size * 0.05;
-        let shaft_r = self.size * 0.015;
+        let arrow_r = self.size * 0.12;
+        let shaft_r = self.size * 0.06;
         let axes = [
             (Vector3::unit_x(), Vector3::unit_y(), Vector3::unit_z(), GumballHandle::translate_x),
             (Vector3::unit_y(), Vector3::unit_z(), Vector3::unit_x(), GumballHandle::translate_y),
