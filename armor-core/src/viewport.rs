@@ -1,3 +1,4 @@
+use crate::exporter::Triangle;
 use crate::{Vertex, gumball};
 use crate::gumball::Gumball;
 use crate::camera::{Camera, CameraController};
@@ -4214,6 +4215,67 @@ impl Viewport {
         } else {
             return false;
         }
+    }
+    pub fn extract_triangles(&self) -> Vec<Triangle> {
+        let mut triangles =Vec::new();
+        let push_vert_tri = |verts: &[Vertex], tris: &mut Vec<Triangle>| {
+            for chunk in verts.chunks_exact(3) {
+                let p0 = chunk[0].position;
+                let p1 = chunk[1].position;
+                let p2 = chunk[2].position;
+                let v0 = Vector3::new(p0[0], p0[1], p0[2]);
+                let v1 = Vector3::new(p1[0], p1[1], p1[2]);
+                let v2 = Vector3::new(p2[0], p2[1], p2[2]);
+                let norm_vec =(v1 - v0).cross(v2 - v0);
+                let normal = if norm_vec.magnitude2() > f32::EPSILON {
+                    let n = norm_vec.normalize();
+                    [n.x, n.y, n.z]
+                } else {
+                    chunk[0].coords
+                };
+                tris.push(Triangle {
+                    v0: p0,
+                    v1: p1,
+                    v2: p2,
+                    normal,
+                });
+            }
+        };
+        for entity in &self.entities {
+            let closed =Self::is_closed_shape(&entity.vertices);
+            if closed && entity.height.abs() > f32::EPSILON {
+                let wall_verts = Self::extrude(
+                    &entity.vertices,
+                    [1.0, 1.0, 1.0, 1.0],
+                    entity.height,
+                    entity.extrude_axis,
+                );
+                push_vert_tri(&wall_verts, &mut triangles);
+                let bottom_cap = Self::tessellate_fill(&entity.vertices, [1.0, 1.0, 1.0, 1.0]);
+                push_vert_tri(&bottom_cap, &mut triangles);
+                let offset = entity.extrude_axis.normalize() * entity.height;
+                let top_verts: Vec<Vector3<f32>> = entity.vertices.iter().map(|p| *p + offset).collect();
+                let mut top_cap = Self::tessellate_fill(&top_verts, [1.0, 1.0, 1.0, 1.0]);
+                for chunk in top_cap.chunks_exact_mut(3) {
+                    chunk.swap(1, 2);
+                }
+                push_vert_tri(&top_cap, &mut triangles);
+            }
+        }
+        for entity in &self.nurbs_surfaces {
+            let mesh_verts = entity.surface.sample_mesh(
+                entity.u_subdivisions.max(16),
+                entity.v_subdivisions.max(16),
+                [1.0, 1.0, 1.0, 1.0],
+            );
+            push_vert_tri(&mesh_verts, &mut triangles);
+        }
+        for text in &self.text_entities {
+            if text.depth > 0.0 {
+                push_vert_tri(&text.cached_vertices, &mut triangles);
+            }
+        }
+        triangles
     }
 }
 

@@ -2,7 +2,6 @@ use std::error::Error;
 use std::fs::File;
 use std::io::{BufWriter, Seek, Write};
 use std::path::PathBuf;
-use glyphon::cosmic_text::skrifa::color::PaintCachedColorGlyph::Ok;
 use rfd::AsyncFileDialog;
 use std::time::SystemTime;
 use zip::write::SimpleFileOptions;
@@ -24,25 +23,25 @@ pub struct FileObject {
     pub extension: String,
 }
 
-pub async fn write_3mf<W: Write + Seek>(writer: W, triangles: &[Triangle]) -> Result<(), Box<dyn Error>> {
+pub fn write_3mf<W: Write + Seek>(writer: W, triangles: &[Triangle]) -> Result<(), Box<dyn Error>> {
     let mut zip = ZipWriter::new(writer);
     let options = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
-    zip.start_file("[Content Types].xml", options)?;
+    zip.start_file("[Content_Types].xml", options)?;
     let content_types = r#"<?xml version="1.0" encoding="UTF-8"?>
-    <Types xmlns="https://schemas.openxmlformats.org/package/2006/content-types">
+    <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
         <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml" />
-        <Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing />
+        <Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml" />
     </Types>"#;
     zip.write_all(content_types.as_bytes())?;
     zip.start_file("_rels/.rels", options)?;
-    let rels = r#"<?xml version=1.0 encoding="UTF-8"?>
-    <Relationships xmlns="https://schemas.openxmlformats.org/package/2006/relationships">
+    let rels = r#"<?xml version="1.0" encoding="UTF-8"?>
+    <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
         <Relationship Target="/3D/3dmodel.model" Id="rel10" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel" />
     </Relationships>"#;
-    zip.write_all(rels.as_bytes());
+    zip.write_all(rels.as_bytes())?;
     zip.start_file("3D/3dmodel.model", options)?;
-    zip.write_all(br#"<?xml version="1.0" encoding="UTF-8">
-        <model unit="millimeter" xml:lang+"en-US" xmlns+"http://schemas.microsoft.com/3dmanufacturing/core/2015/02">
+    zip.write_all(br#"<?xml version="1.0" encoding="UTF-8"?>
+        <model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">
         <metadata name="Application">Armor3D</metadata>
         <resources>
             <object id="1" type="model">
@@ -51,9 +50,9 @@ pub async fn write_3mf<W: Write + Seek>(writer: W, triangles: &[Triangle]) -> Re
     "#)?;
     for tri in triangles {
         let v_str = format!(
-            "<vertex x=\"{:4}\" y=\"{:.4}\" z=\"{:.4}\" />\n\
-            <vertex x=\"{:4}\" y=\"{:.4}\" z=\"{:.4}\" />\n\
-            <vertex x=\"{:4}\" y=\"{:.4}\" z=\"{:.4}\" />\n",
+            "<vertex x=\"{:.4}\" y=\"{:.4}\" z=\"{:.4}\" />\n\
+            <vertex x=\"{:.4}\" y=\"{:.4}\" z=\"{:.4}\" />\n\
+            <vertex x=\"{:.4}\" y=\"{:.4}\" z=\"{:.4}\" />\n",
             tri.v0[0], tri.v0[1], tri.v0[2],
             tri.v1[0], tri.v1[1], tri.v1[2],
             tri.v2[0], tri.v2[1], tri.v2[2]
@@ -89,7 +88,6 @@ pub async fn write_file(triangles: &[Triangle], file_type: &str) -> Option<FileO
         .add_filter("Supported formats", ALLOWED_EXTENSIONS)
         .save_file()
         .await?;
-    let mut writer = BufWriter::new(File::create(path.path()).ok()?);
     let mut header = [0u8; 80];
     let mut final_path = path.path().to_path_buf();
     let mut chosen_ext = final_path
@@ -116,9 +114,10 @@ pub async fn write_file(triangles: &[Triangle], file_type: &str) -> Option<FileO
         .and_then(|s| s.to_str())
         .unwrap_or("file")
         .to_string();
+    let mut writer = BufWriter::new(File::create(&final_path).ok()?);
     match final_ext.as_str() {
         "3mf" => {
-
+            write_3mf(writer, triangles).ok()?;
         }
         "stl" => {
             writer.write_all(&header).ok()?;
