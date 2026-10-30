@@ -5,10 +5,10 @@ mod viewport;
 pub mod nurbs;
 pub mod gumball;
 pub mod exporter;
+pub mod objects;
 
 use cgmath::{InnerSpace, Quaternion, Vector3};
 use glyphon::Family;
-use glyphon::cosmic_text::skrifa::color::PaintCachedColorGlyph::Ok;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use render::State;
@@ -119,7 +119,6 @@ pub fn handle_input(pos: (f64, f64), button: &str, vec: (f32, f32, f32)) -> PyRe
 
 #[pymethods]
 impl ViewportRenderer {
-    #[new]
     pub fn export_model(&mut self) -> PyResult<Option<String>> {
         let raw_triangles = self.state.viewport.extract_triangles();
         if raw_triangles.is_empty() {
@@ -127,10 +126,10 @@ impl ViewportRenderer {
         }
         let triangles: Vec<exporter::Triangle> = raw_triangles
             .into_iter()
-            .map(|(p0, p1, p2)| {
-                let v0 = Vector3::new(p0.0, p0.1, p0.2);
-                let v1 = Vector3::new(p1.0, p1.1, p1.2);
-                let v2 = Vector3::new(p2.0, p2.1, p2.2);
+            .map(|triangle| {
+                let v0 = Vector3::new(triangle.v0[0], triangle.v0[1], triangle.v0[2]);
+                let v1 = Vector3::new(triangle.v1[0], triangle.v1[1], triangle.v1[2]);
+                let v2 = Vector3::new(triangle.v2[0], triangle.v2[1], triangle.v2[2]);
                 let n = (v1 - v0).cross(v2 - v0);
                 let normal = if n.magnitude2() > f32::EPSILON {
                     let norm = n.normalize();
@@ -139,15 +138,16 @@ impl ViewportRenderer {
                     [0.0, 0.0, 1.0]
                 };
                 crate::exporter::Triangle {
-                    v0: [p0.0, p0.1, p0.2],
-                    v1: [p1.0, p1.1, p1.2],
-                    v2: [p2.0, p2.1, p2.2],
+                    v0: triangle.v0,
+                    v1: triangle.v1,
+                    v2: triangle.v2,
                     normal,
                 }
             }).collect();
         let file_obj = pollster::block_on(write_file(&triangles, "3mf"));
         Ok(file_obj.map(|f| f.full_path.to_string_lossy().to_string()))
     }
+    #[new]
     fn new(hwnd: usize, width: u32, height: u32) -> PyResult<Self> {
         let state = pollster::block_on(State::new_embedded(hwnd as isize, width, height))
             .map_err(|error| pyo3::exceptions::PyRuntimeError::new_err(error.to_string()))?;

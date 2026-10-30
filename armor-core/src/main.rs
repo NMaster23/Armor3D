@@ -5,6 +5,7 @@ mod viewport;
 pub mod nurbs;
 pub mod gumball;
 pub mod exporter;
+pub mod objects;
 
 use crate::render::State;
 use cgmath::InnerSpace;
