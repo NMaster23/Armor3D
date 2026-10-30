@@ -1,11 +1,11 @@
 use crate::exporter::Triangle;
+use crate::objects::{BaseShape, SolidEntity};
 use crate::{Vertex, gumball};
 use crate::gumball::Gumball;
 use crate::camera::{Camera, CameraController};
 use crate::nurbs::{NurbsControlPoint, NurbsCurve, NurbsSurface};
 use anyhow::Ok;
 use cgmath::{InnerSpace, Point3, Quaternion, Rotation, SquareMatrix, Vector2, Vector3, Vector4, Zero};
-use glyphon::fontdb::Query;
 use lyon::lyon_tessellation::{
     BuffersBuilder, FillOptions, FillRule, FillTessellator, FillVertex, VertexBuffers,
 };
@@ -199,6 +199,7 @@ pub struct Viewport {
     pub text_entities: Vec<TextEntity>,
     pub nurbs_curves: Vec<NurbsCurveEntity>,
     pub nurbs_surfaces: Vec<NurbsSurfaceEntity>,
+    pub solids: Vec<SolidEntity>,
     pub gumball: Option<Gumball>,
 }
 
@@ -242,11 +243,11 @@ impl Viewport {
         }
         self.selected_entity = first_new_id;
         self.rebuild_vertices();
-
         self.entities
             .iter()
             .filter(|entity| entity.selected)
-            .count() }
+            .count()
+    }
     pub fn rotate_selected_objects(&mut self, degrees: f32, mode: &str) -> usize {
         let object_ids: Vec<usize> = self
             .entities
@@ -938,6 +939,7 @@ impl Viewport {
             text_entities: Vec::new(),
             nurbs_curves: Vec::new(),
             nurbs_surfaces: Vec::new(),
+            solids: Vec::new(),
             gumball: None,
         }
     }
@@ -2309,6 +2311,14 @@ impl Viewport {
             let draw_color = if entity.selected { [1.0, 0.8, 0.0, 1.0] } else { entity.color };
             let mesh_verts = entity.surface.sample_mesh(entity.u_subdivisions, entity.v_subdivisions, draw_color);
             new_vertices.extend(mesh_verts);
+        }
+        for solid in &self.solids {
+            let draw_color = if solid.selected {
+                [1.0, 0.8, 0.0, 1.0]
+            } else {
+                solid.color
+            };
+            new_vertices.extend(solid.to_verts(draw_color));   
         }
         for entity in &self.nurbs_curves {
             let draw_color = if entity.selected { [1.0, 0.8, 0.0, 1.0] } else { entity.color };
@@ -4275,7 +4285,60 @@ impl Viewport {
                 push_vert_tri(&text.cached_vertices, &mut triangles);
             }
         }
+        for solid in &self.solids {
+            triangles.extend(solid.to_tris());
+        }
         triangles
+    }
+    pub fn add_solid(&mut self, origin: [f32; 3], shape: BaseShape, color: [f32; 4]) -> usize {
+        let id = self.next_entity;
+        self.next_entity += 1;
+        self.solids.push(SolidEntity {
+            id,
+            origin,
+            shape,
+            color,
+            selected: true,
+        });
+        self.selected_entity = Some(id);
+        self.rebuild_vertices();
+        id
+    }
+    pub fn add_box(&mut self, origin: [f32; 3], width: f32, height: f32, depth: f32) -> usize {
+        self.add_solid(origin, BaseShape::Box {
+            width,
+            height,
+            depth,
+        }, [0.2, 0.6, 0.9, 1.0])
+    }
+    pub fn add_cylinder(&mut self, origin: [f32; 3], radius: f32, height: f32, subdivisions: usize) -> usize {
+        self.add_solid(origin, BaseShape::Cylinder {
+            radius,
+            height,
+            subdivisions,
+        }, [0.3, 0.8, 0.4, 1.0])
+    }
+    pub fn add_sphere(&mut self, origin: [f32; 3], radius: f32, rings: usize, sectors: usize) ->  usize {
+        self.add_solid(origin, BaseShape::Sphere {
+            radius,
+            rings,
+            sectors,
+        }, [0.9, 0.4, 0.3, 1.0])
+    }
+    pub fn add_cone(&mut self, origin: [f32; 3], radius: f32, height: f32, subdivisions: usize) -> usize {
+        self.add_solid(origin, BaseShape::Cone {
+            radius,
+            height,
+            subdivisions,
+        }, [0.9, 0.7, 0.2, 1.0])
+    }
+    pub fn add_torus(&mut self, origin: [f32; 3], outer_radius: f32, inner_radius: f32, outer_subdivisions: usize, inner_subdivisions: usize) -> usize {
+        self.add_solid(origin, BaseShape::Torus {
+            outer_radius,
+            inner_radius,
+            outer_subdivisions,
+            inner_subdivisions,
+        }, [0.7, 0.3, 0.8, 1.0])
     }
 }
 
