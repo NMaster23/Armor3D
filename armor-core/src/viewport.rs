@@ -1710,6 +1710,22 @@ impl Viewport {
         self.rebuild_vertices();
         true
     }
+    pub fn select_objects_by_ids(&mut self, ids: &[usize]) {
+        for entity in &mut self.entities {
+            entity.selected = ids.contains(&entity.id);
+        }
+        for curve in &mut self.nurbs_curves {
+            curve.selected = ids.contains(&curve.id);
+        }
+        for surface in &mut self.nurbs_surfaces {
+            surface.selected = ids.contains(&surface.id);
+        }
+        self.selected_entity = self.entities
+            .iter()
+            .find(|entity| entity.selected)
+            .map(|entity| entity.id);
+        self.rebuild_vertices();
+    }
     pub fn select_shape(
         &mut self,
         mouse_px: cgmath::Vector2<f32>,

@@ -150,6 +150,9 @@ impl ViewportRenderer {
     pub fn create_box(&mut self, x: f32, y: f32, z: f32, width: f32, height: f32, depth: f32) -> usize {
         self.state.viewport.add_box([x, y, z], width, height, depth)
     }
+    fn select_objects_by_ids(&mut self, object_ids: Vec<usize>) {
+        self.state.viewport.select_objects_by_ids(&object_ids);
+    }
     pub fn create_cylinder(&mut self, x: f32, y: f32, z: f32, radius: f32, height: f32, subdivisions: usize) -> usize {
         self.state.viewport.add_cylinder([x, y, z], radius, height, subdivisions)
     }

@@ -4037,6 +4037,44 @@ def executeaiactions(actions):
                 else "Those IDs did not match rotatabke objects"
             )
             continue
+        if action_type in ("explode", "join"):
+            object_ids = action.get("object_ids")
+            target = action.get('target')
+            if target== 'last_created':
+                if not newly_created_ids:
+                    results.append('There is no newly created objects to target')
+                    continue
+                object_ids = [newly_created_ids[-1]]
+            elif target == 'newly_created':
+                object_ids =list(newly_created_ids)
+            if(
+                not isinstance(object_ids, list)
+                or not object_ids
+                or len(object_ids) > 64
+                or any(type(object_id) is not int for object_id in object_ids)):
+                results.append(f"Ignored an invalid {action_type} request")
+                continue
+            before_ids = {object_id for object_id, *_ in renderer.scene_data() }
+            renderer.select_objects_by_ids(object_ids)
+            if action_type == 'explode':
+                count = renderer.explode_selected()
+            else:
+                count = renderer.join_selected()
+            renderer.render()
+            after_ids ={object_id for object_id, *_ in renderer.scene_data()}
+            newly_created_ids[:] = [
+                object_id for object_id in newly_created_ids
+                if object_id in after_ids]
+            newly_created_ids.extend(sorted(after_ids -before_ids))
+            if action_type == "explode":
+                results.append(
+                    f"Exploded into {count} line segments"
+                    if count else "No selected line or curve could be exploded" )
+            else:
+                results.append(
+                    f"Joined {count} connected objects into one polyline"
+                    if count else "The selected polylines were not connected" )
+            continue
         if action_type == "delete_objects":
             object_ids = action.get("object_ids")
             if (
@@ -4050,8 +4088,7 @@ def executeaiactions(actions):
             results.append(
                 f"Deleted {deleted} objects(s)"
                 if deleted
-                else "Those IDs did not match any scene objects"
-            )
+                else "Those IDs did not match any scene objects" )
             continue
         if action_type == 'hatch_shapes':
             object_ids = action.get("object_ids")

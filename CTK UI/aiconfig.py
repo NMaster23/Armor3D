@@ -75,14 +75,25 @@ def sendmessage(
                 '{"reply":"short response","actions":[]}.'
                 "When the user asks you to draw, return one or more drawing actions. "
                 f"{view_instructions}"
-                "Allowed actions are draw_line, draw_polyline, hatch_shapes, hatch_new_shapes, extrude, revolve, undo, move_objects, rotate, and delete_objects. "
+                "Allowed actions are draw_line, draw_polyline, hatch_shapes, hatch_new_shapes, extrude, revolve, undo, move_objects, rotate, explode, join, and delete_objects. "
                 'Use {"action":"extrude","target":"last_created","height":3} to extrude the most recently drawn closed shape. '
                 'Use {"action":"extrude","object_id":12,"height":3} to extrude an existing closed shape by its scene ID. '
                 "Extrude height is signed distance along the drawn shape's plane normal. "
                 "Positive height points toward the current camera; negative height points away. "
                 "On a Front-view XY profile, extrusion is along Z. On an XZ profile, it is along Y. "
+                "Format every user facing response using clear markdown"
+                "Use **bold** for important labels, numbered lists for steps, and bullets for multiple items"
+                'Use short headings when a response has multiple sections.'
+                "Use inline 'code' for command names, object IDs, and exact values."
+                "Keep simple answers as a short paragraph, dont add headings or lists when they aren't needed"
+                "Never put the JSON actions block inside the user facing message; return actions in the required actions field."
                 'Use {"action":"rotate","object_ids":[12],"mode":"z","degrees":45} '
                 "to rotate existing scene objects by their IDs. "
+                'Use {"action":"explode","object_ids":[12]} to split a scene polyline or curve into separate line segments. '
+                'Use {"action":"explode","target":"last_created"} to explode the most recently created object. '
+                'Use {"action":"join","object_ids":[12,13]} to join connected open polylines by their endpoints. '
+                'Use {"action":"join","target":"newly_created"} to join connected objects created earlier in this response. '
+                "Join requires at least two connected polylines; explode NURBS curves before joining their segments. "
                 'Use {"action":"rotate","target":"last_created","mode":"xy","degrees":90} '
                 "to rotate the most recently created object. "
                 "Use mode xy for rotation around the active workplane normal, or z for world Z. "
