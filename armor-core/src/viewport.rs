@@ -248,6 +248,85 @@ impl Viewport {
             .filter(|entity| entity.selected)
             .count()
     }
+    pub fn join_selected(&mut self) -> usize {
+        let selected: Vec<PolyLine> = self.entities
+            .iter()
+            .filter(|entity| entity.selected && entity.vertices.len() >= 2)
+            .cloned()
+            .collect();
+        if selected.len() < 2 || selected.iter().any(|entity| {
+            Self::is_closed_shape(&entity.vertices)
+        }) {
+            return 0;
+        }
+        let tolerance_sq = 1.0e-6;
+        let same_point = |a: Vector3<f32>, b: Vector3<f32>| {
+            (a-b).magnitude2() <= tolerance_sq
+        };
+        let mut joined = selected[0].vertices.clone();
+        let mut remaining = selected[1..].to_vec();
+        while !remaining.is_empty() {
+            let start = joined[0];
+            let end = *joined.last().unwrap();
+            let mut match_piece = None;
+            for (index, piece) in remaining.iter().enumerate() {
+                let piece_start = piece.vertices[0];
+                let piece_end = *piece.vertices.last().unwrap();
+                if same_point(end, piece_start) {
+                    match_piece = Some((index, 0));
+                    break;
+                } else if same_point(end, piece_end) {
+                    match_piece = Some((index, 1));
+                    break;
+                } else if same_point(start, piece_end) {
+                    match_piece = Some((index, 2));
+                    break;
+                } else if same_point(start, piece_start) {
+                    match_piece = Some((index, 3));
+                    break;
+                }
+            }
+            let Some((index, direction)) = match_piece else {
+                return 0;
+            };
+            let mut piece = remaining.remove(index);
+            match direction {
+                0 => {
+                    piece.vertices[0] = end;
+                    joined.extend(piece.vertices.into_iter().skip(1));
+                }
+                1=> {
+                    let last = piece.vertices.len() - 1;
+                    piece.vertices[last] = end;
+                    joined.extend(piece.vertices.into_iter().rev().skip(1));
+                }
+                2 => {
+                    let last = piece.vertices.len() - 1;
+                    piece.vertices[last] = start;
+                    piece.vertices.pop();
+                    piece.vertices.extend(joined);
+                    joined = piece.vertices;
+                }
+                _ => {
+                    piece.vertices[0] = start;
+                    let mut prefix: Vec<_> =
+                        piece.vertices.into_iter().rev().skip(1).collect();
+                    prefix.extend(joined);
+                    joined = prefix;
+                }
+            }
+        }
+        let source = &selected[0];
+        let selected_ids: Vec<usize> =
+            selected.iter().map(|entity| entity.id).collect();
+        self.save_undo_state();
+        self.entities.retain(|entity| !selected_ids.contains(&entity.id));
+        let id = self.push_polyline_entity (
+            joined, source.color, source.thickness, source.height, source.extrude_axis, source.show_markers, true, false);
+        self.selected_entity = Some(id);
+        self.rebuild_vertices();
+        selected.len()
+    }
     pub fn explode_selected(&mut self) -> usize {
         let selected_polylines: Vec<PolyLine> = self.entities
             .iter()

@@ -911,13 +911,15 @@ def viewport_mouse_down(event):
         renderer.mouse_move(event.x, event.y)
         pickrevolveaxispoint()
         return
-    if activecommand == 'explode':
+    if activecommand in ('explode', 'join'):
         additive = bool(event.state & 0x0001)
         selected = renderer.select_at(event.x, event.y, additive)
+        name = 'Join' if activecommand == 'join' else "Explode"
         if selected is None:
-            writehistory("Click an object(s) to explode")
+            writehistory(f"Click an object to {name.lower()}")
         else:
-            writehistory("Selected for Explode. Click more objects or press Enter")
+            renderer.render()
+            writehistory(f"Selected for {name}. Click more objects or press enter")
         return
     if activecommand == "text_place":
         renderer.mouse_move(event.x, event.y)
@@ -1883,6 +1885,19 @@ def runcmd(event):
         viewport.configure(cursor='arrow')
         viewport.focus_set()
         return 'break'
+    if activecommand == 'join':
+        count = renderer.join_selected()
+        renderer.render()
+        if count:
+            writehistory(f"Joined {count} connected objects into one polyline")
+        else:
+            writehistory("Select at least two connected open lines or polylines")
+        activecommand = None
+        command.delete(0, 'end')
+        command.configure(placeholder_text='Command:')
+        viewport.configure(cursor='arrow')
+        viewport.focus_set()
+        return 'break'
     if activecommand == 'rotate_angle':
         try:
             degrees = float(command.get().strip())
@@ -2110,7 +2125,7 @@ def runcmd(event):
     return "break"
 command.bind("<Return>", runcmd)
 def viewport_return_for_explode(event):
-    if activecommand == "explode":
+    if activecommand in ("explode", "join"):
         return runcmd(event)
     return None
 viewport.bind("<Return>", viewport_return_for_explode, add="+")

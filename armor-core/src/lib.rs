@@ -192,6 +192,8 @@ impl ViewportRenderer {
     fn get_fonts(&mut self) -> Vec<String> {
         self.state.get_all_fonts()
     }
+    fn join_selected(&mut self) -> usize {
+        self.state.viewport.join_selected()}
     fn explode_selected(&mut self) -> usize {
         self.state.viewport.explode_selected()}
     fn selected_geometry_count(&self) -> usize {
