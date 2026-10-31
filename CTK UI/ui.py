@@ -493,6 +493,46 @@ def meshtrianglefrom3dmgeometry(geometry):
             triangles.append((a, c, d))
     return triangles
 
+def importobjcommand():
+    if renderer is None:
+        writehistory("> Import OBJ\nViewport is not ready")
+        return
+    path = filedialog.askopenfilename(parent=app, title="Import OBJ model", filetypes=[("Wavefront OBJ", "*.obj")],)
+    if not path:
+        return
+    try:
+        vertices = []
+        triangles = []
+        with open(path, 'r', encoding="utf-8", errors='replace') as obj_file:
+            for line_number, line in enumerate(obj_file, start=1):
+                parts = line.split("#", 1)[0].split()
+                if not parts:
+                    continue
+                if parts[0] == 'v' and len(parts) >= 4:
+                    x, y, z = map(float, parts[1:4])
+                    vertices.append((x, z, -y))
+                elif parts[0] == 'f' and len(parts) >= 4:
+                    face = []
+                    for item in parts[1:]:
+                        index = int(item.split("/")[0])
+                        index = index-1 if index > 0 else len(vertices) + index
+                        if index <0 or index >= len(vertices):
+                            raise ValueError(
+                                f"Invalid face index on OBJ line {line_number}")
+                        face.append(vertices[index])
+                    for i in range(1, len(face)-1):
+                        triangles.append((face[0], face[i], face[i+1]))
+            if not triangles:
+                writehistory("> Import OBJ\n no mesh faces found in this file")
+                return
+            imported = renderer.import_mesh_triangle(triangles, currentlayercolor())
+            renderer.render()
+            if imported:
+                importedfiles.append(Path(path).name)
+                updatewindowtitle()
+            writehistory(f"> Import OBJ\nImported {imported} mesh triangles")
+    except Exception as error:
+        writehistory(f">Import OBJ\nImport failed: {error}")
 
 def import3dmcommand():
     global currentfilepath
@@ -1733,6 +1773,7 @@ def runnamedcommand(name):
         'pline': startpolyline,
         "hatch": starthatch,
         'curve': startcurve,
+        "importobj": importobjcommand,
         "rotate": startrotate,
         'crv': startcurve,
         "extrudeheight": extrudeheightcommand,
@@ -2145,7 +2186,7 @@ def viewport_return_for_explode(event):
     return None
 viewport.bind("<Return>", viewport_return_for_explode, add="+")
 commandnames = ["Polyline", "Curve", "Join", "Explode", "Rectangle", "Text", "File", "New", "Save", "Save as", '3DM', "PNG", "DXF", "Analyze", "Distance", "Angle", "Tools", "Revolve", "Extrude", "Mirror", "Copy",
-                'Circle', "Fillet", "Trim", "Arc", "Picture", "Import DXF", "Import", "hatch", "ArrayPolar", "PolarArray", "ExtrudeHeight", "Rotate", "3D Print", "Print3D", "Slicer"]
+                'Circle', "Fillet", "Trim", "Arc", "Picture", "Import DXF", "Import", "hatch", "ArrayPolar", "PolarArray", "ExtrudeHeight", "Rotate", "3D Print", "Print3D", "Slicer", "Import OBJ"]
 def handlenewconfirmation(event):
     if activecommand != "confirmnew":
         return
@@ -2698,9 +2739,9 @@ def updatecoords():
     canvas.itemconfig(coords_text, text=f"X: {x:.3f}   Y: {y:.3f}   Z: {z:.3f}")
 
 importz = canvas.create_text(68, 8, text='Import', font=("Lexend", 8), fill="#EAEAEA")
-importmenu = Canvas( app, width=160, height=104, bg="#111111", highlightthickness=1, highlightbackground="#555555")
+importmenu = Canvas(app, width=160, height=136, bg="#111111",highlightthickness=1, highlightbackground="#555555")
 importrows = []
-for index, name in enumerate(("3DM", "DXF", "Picture")):
+for index, name in enumerate(("3DM", "DXF", "OBJ", "Picture")):
     y = 4 + index * 32
     box = importmenu.create_rectangle(4, y, 155, y+30, fill='', outline='')
     label = importmenu.create_text(12, y+15, text=name, anchor='w', fill='#EAEAEA', font=("Iceland", 13))
@@ -2715,7 +2756,7 @@ def importmenuclick(event):
     if not 4<= event.x <= 155:
         return
     row = (event.y-4) // 32
-    commands = ("Import 3DM", "Import DXF", "Picture")
+    commands = ("Import 3DM", "Import DXF", "Import OBJ", "Picture")
     if 0 <= row < len(commands):
         closeimportmenu()
         runnamedcommand(commands[row])
