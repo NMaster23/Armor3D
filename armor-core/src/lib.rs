@@ -127,9 +127,10 @@ impl ViewportRenderer {
         let triangles: Vec<exporter::Triangle> = raw_triangles
             .into_iter()
             .map(|triangle| {
-                let v0 = Vector3::new(triangle.v0[0], triangle.v0[1], triangle.v0[2]);
-                let v1 = Vector3::new(triangle.v1[0], triangle.v1[1], triangle.v1[2]);
-                let v2 = Vector3::new(triangle.v2[0], triangle.v2[1], triangle.v2[2]);
+                let to_slicer = |p: [f32; 3]| Vector3::new(p[0], -p[2], p[1]);
+                let v0 = to_slicer(triangle.v0);
+                let v1 = to_slicer(triangle.v1);
+                let v2 = to_slicer(triangle.v2);
                 let n = (v1 - v0).cross(v2 - v0);
                 let normal = if n.magnitude2() > f32::EPSILON {
                     let norm = n.normalize();
@@ -138,9 +139,9 @@ impl ViewportRenderer {
                     [0.0, 0.0, 1.0]
                 };
                 crate::exporter::Triangle {
-                    v0: triangle.v0,
-                    v1: triangle.v1,
-                    v2: triangle.v2,
+                    v0: [v0.x, v0.y, v0.z],
+                    v1: [v1.x, v1.y, v1.z],
+                    v2: [v2.x, v2.y, v2.z],
                     normal,
                 }
             }).collect();

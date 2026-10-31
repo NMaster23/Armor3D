@@ -7,7 +7,7 @@ use std::time::SystemTime;
 use zip::write::SimpleFileOptions;
 use zip::ZipWriter;
 
-const ALLOWED_EXTENSIONS: &[&str] = &["3mf", "stl", "obj", "step", "glb/glTF"];
+const ALLOWED_EXTENSIONS: &[&str] = &["3mf", "stl", "obj"];
 
 pub struct Triangle {
     pub v0: [f32; 3],

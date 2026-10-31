@@ -326,7 +326,19 @@ def importdxcommand(event=None):
         )
     except Exception as error:
         writehistory(f"> Import DXF\nImport failed {error}")
-
+def exporttoslicer():
+    if renderer is None:
+        writehistory("> 3D Print\nVieport is not ready")
+        return
+    try:
+        path = renderer.export_model()
+        if not path:
+            writehistory("> 3D Print\nExport canceled or there is no printable mesh")
+            return
+        os.startfile(path)
+        writehistory(f">3D Print\nExported and opened {Path(path).name}")
+    except Exception as error:
+        writehistory(f"> 3D print\nExport failed: {error}")
 def save3dmcommand(path=None):
     global currentfilepath
     if renderer is None:
@@ -1726,6 +1738,9 @@ def runnamedcommand(name):
         "extrudeheight": extrudeheightcommand,
         "extrudeh": extrudeheightcommand,
         "circle": start_circle,
+        'print3d': exporttoslicer,
+        '3dprint': exporttoslicer,
+        'slicer': exporttoslicer,
         "join": startjoin,
         "explode": startexplode,
         'exp': startexplode,
@@ -2130,7 +2145,7 @@ def viewport_return_for_explode(event):
     return None
 viewport.bind("<Return>", viewport_return_for_explode, add="+")
 commandnames = ["Polyline", "Curve", "Join", "Explode", "Rectangle", "Text", "File", "New", "Save", "Save as", '3DM', "PNG", "DXF", "Analyze", "Distance", "Angle", "Tools", "Revolve", "Extrude", "Mirror", "Copy",
-                'Circle', "Fillet", "Trim", "Arc", "Picture", "Import DXF", "Import", "hatch", "ArrayPolar", "PolarArray", "ExtrudeHeight", "Rotate"]
+                'Circle', "Fillet", "Trim", "Arc", "Picture", "Import DXF", "Import", "hatch", "ArrayPolar", "PolarArray", "ExtrudeHeight", "Rotate", "3D Print", "Print3D", "Slicer"]
 def handlenewconfirmation(event):
     if activecommand != "confirmnew":
         return
@@ -2710,7 +2725,7 @@ def openimportmenu():
     importhoverjob = None
     slidemenu(filemenu, 8, 104, False)
     slidemenu(analyze_menu, 100, 72, False)
-    slidemenu(toolsmenu, 150, 200, False)
+    slidemenu(toolsmenu, 150, 232, False)
     slidemenu(importmenu, 48, 104, True)
 def closeimportmenu():
     global importclosejob
@@ -2798,7 +2813,7 @@ def openanalyzemenu():
     analyzehoverjob = None
     slidemenu(importmenu, 48, 104, False)
     slidemenu(filemenu, 8, 104, False)
-    slidemenu(toolsmenu, 150, 200, False)
+    slidemenu(toolsmenu, 150, 232, False)
     slidemenu(analyze_menu, 100, 72, True)
 def analyze_enter(event):
     global analyzehoverjob
@@ -2846,9 +2861,9 @@ canvas.tag_bind(analyze, "<Leave>", analyzeleave, add="+")
 app.bind_all("<Motion>", analyzepointermotion, add="+")
 
 tools = canvas.create_text(170, 8, text="Tools", font=("Lexend", 8), fill="#EAEAEA")
-toolsmenu = Canvas(app, width=160, height=200, bg="#111111", highlightthickness=1, highlightbackground="#555555")
+toolsmenu = Canvas(app, width=160, height=232, bg="#111111", highlightthickness=1, highlightbackground="#555555")
 toolsrows = []
-tool_name = ("Revolve", "Extrude", "Extrude Height", "Mirror", "Copy", "Rotate")
+tool_name = ("Revolve", "Extrude", "Extrude Height", "Mirror", "Copy", "Rotate", "3D Print")
 for i, name in enumerate(tool_name):
     y = 4 + i * 32
     box = toolsmenu.create_rectangle(4, y, 155, y +30, fill='', outline='')
@@ -2865,7 +2880,7 @@ def toolsmenuclick(event):
     if not (4<= event.x <= 155):
         return
     row = (event.y-4)//32
-    names = ("Revolve", "Extrude", "Extrude Height", "Mirror", "Copy", "Rotate")
+    names = ("Revolve", "Extrude", "Extrude Height", "Mirror", "Copy", "Rotate", "3D Print")
     if 0<= row < len(names):
         closetoolsmenu()
         runnamedcommand(names[row])
@@ -2879,11 +2894,11 @@ def opentoolsmenu():
     slidemenu(importmenu, 48, 104, False)
     slidemenu(filemenu, 8, 104, False)
     slidemenu(analyze_menu, 100, 72, False)
-    slidemenu(toolsmenu, 150, 200, True)
+    slidemenu(toolsmenu, 150, 232, True)
 def closetoolsmenu():
     global toolsclosejob
     toolsclosejob = None
-    slidemenu(toolsmenu, 150, 200, False)
+    slidemenu(toolsmenu, 150, 232, False)
 def toolsenter(event):
     global toolshoverjob
     canvas.itemconfig(tools, fill='#777777')
@@ -3673,7 +3688,7 @@ def open_view_menu():
     slidemenu(filemenu, 8, 104, False)
     slidemenu(importmenu, 48, 104, False)
     slidemenu(analyze_menu, 100, 72, False)
-    slidemenu(toolsmenu, 150, 200, False)
+    slidemenu(toolsmenu, 150, 232, False)
     slidemenu(viewmenu, 101, 99, True, top=129, start_y=33)
 def closeviewmenu():
     global view_close_job
