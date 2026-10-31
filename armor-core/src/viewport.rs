@@ -1626,8 +1626,10 @@ impl Viewport {
             for surface in &mut self.nurbs_surfaces {
                 surface.selected = Some(surface.id) == closest;
             }
+            for solid in &mut self.solids {
+                solid.selected = Some(solid.id) == closest;
+            }
         }
-
         self.selected_entity = self
             .entities
             .iter()
@@ -1638,6 +1640,12 @@ impl Viewport {
                     .iter()
                     .find(|surface| surface.selected)
                     .map(|surface| surface.id)
+            })
+            .or_else(|| {
+                self.solids
+                    .iter()
+                    .find(|s| s.selected)
+                    .map(|s| s.id)  
             });
         if let Some(s) = self.nurbs_surfaces.iter().find(|s| s.selected) {
             let mut sum = Vector3::new(0.0, 0.0, 0.0);
@@ -1654,6 +1662,9 @@ impl Viewport {
                 Vector3::new(0.0, 0.0, 0.0)
             };
             self.gumball = Some(Gumball::new(Point3::new(centroid.x, centroid.y, centroid.z), 0.25));
+        } else if let Some(solid) = self.solids.iter().find(|s| s.selected) {
+            let origin = solid.origin;
+            self.gumball = Some(Gumball::new(Point3::new(origin[0], origin[1], origin[2]), 0.25))
         } else if let Some(e) = self.entities.iter().find(|e| e.selected) {
             if !e.vertices.is_empty() {
                 let mut sum = Vector3::new(0.0, 0.0, 0.0);
@@ -1869,13 +1880,19 @@ impl Viewport {
             .iter()
             .filter(|surface| surface.selected)
             .count();
-        let deleted = deleted_polylines + deleted_surfaces;
+        let deleted_solids = self
+            .solids
+            .iter()
+            .filter(|s| s.selected)
+            .count();
+        let deleted = deleted_polylines + deleted_surfaces + deleted_solids;
         if deleted == 0 {
             return 0;
         }
         self.save_undo_state();
         self.entities.retain(|entity| !entity.selected);
         self.nurbs_surfaces.retain(|surface| !surface.selected);
+        self.solids.retain(|s| !s.selected);
         self.selected_entity = None;
         self.rebuild_vertices();
         deleted
@@ -1902,7 +1919,12 @@ impl Viewport {
             .iter()
             .filter(|surface| object_ids.contains(&surface.id))
             .count();
-        let moved_count = polyline_count + surface_count;
+        let solid_count = self
+            .solids
+            .iter()
+            .filter(|s| object_ids.contains(&s.id))
+            .count();
+        let moved_count = polyline_count + surface_count + solid_count;
         if moved_count == 0 {
             return 0;
         }
@@ -1923,6 +1945,13 @@ impl Viewport {
                 }
             }
         }
+        for solid in &mut self.solids {
+            if object_ids.contains(&solid.id) {
+                solid.origin[0] += offset.x;
+                solid.origin[1] += offset.y;
+                solid.origin[2] += offset.z;
+            }
+        }
         self.rebuild_vertices();
         moved_count
     }
@@ -1937,13 +1966,19 @@ impl Viewport {
             .iter()
             .filter(|surface| ids.contains(&surface.id))
             .count();
-        let deleted = deleted_polylines + deleted_surfaces;
+        let deleted_solids = self
+            .solids
+            .iter()
+            .filter(|s| ids.contains(&s.id))
+            .count();
+        let deleted = deleted_polylines + deleted_surfaces + deleted_solids;
         if deleted == 0 {
             return 0;
         }
         self.save_undo_state();
         self.entities.retain(|entity| !ids.contains(&entity.id));
         self.nurbs_surfaces.retain(|surface| !ids.contains(&surface.id));
+        self.solids.retain(|s| !ids.contains(&s.id));
         self.selected_entity = self
             .entities
             .iter()

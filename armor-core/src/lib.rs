@@ -147,6 +147,21 @@ impl ViewportRenderer {
         let file_obj = pollster::block_on(write_file(&triangles, "3mf"));
         Ok(file_obj.map(|f| f.full_path.to_string_lossy().to_string()))
     }
+    pub fn create_box(&mut self, x: f32, y: f32, z: f32, width: f32, height: f32, depth: f32) -> usize {
+        self.state.viewport.add_box([x, y, z], width, height, depth)
+    }
+    pub fn create_cylinder(&mut self, x: f32, y: f32, z: f32, radius: f32, height: f32, subdivisions: usize) -> usize {
+        self.state.viewport.add_cylinder([x, y, z], radius, height, subdivisions)
+    }
+    pub fn create_sphere(&mut self, x: f32, y: f32, z: f32, radius: f32) -> usize {
+        self.state.viewport.add_sphere([x, y, z], radius, 16, 24)
+    }
+    pub fn create_cone(&mut self, x: f32, y: f32, z: f32, radius: f32, height: f32) -> usize {
+        self.state.viewport.add_cone([x, y, z], radius, height, 24)
+    }
+    pub fn create_torus(&mut self, x: f32, y: f32, z: f32, outer_radius: f32, inner_radius: f32) -> usize {
+        self.state.viewport.add_torus([x, y, z], outer_radius, inner_radius, 24, 16)
+    }
     #[new]
     fn new(hwnd: usize, width: u32, height: u32) -> PyResult<Self> {
         let state = pollster::block_on(State::new_embedded(hwnd as isize, width, height))
