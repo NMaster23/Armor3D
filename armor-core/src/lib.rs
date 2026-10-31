@@ -528,7 +528,7 @@ impl ViewportRenderer {
     fn connect_mesh_holes(
         &mut self, first_id: usize, first_points: Vec<(f32, f32, f32)>, second_id: usize, second_points: Vec<(f32, f32, f32)>,
     ) -> bool {
-        if first_points.len() ! = 3 || second_points.len() ! = 3 {
+        if first_points.len() != 3 || second_points.len() != 3 {
             return false;
         }
         let to_vec = |point: &(f32, f32, f32)| {
@@ -540,10 +540,10 @@ impl ViewportRenderer {
                 to_vec(&first_points[1]),
                 to_vec(&first_points[2])
             ],
-            second_id
+            second_id,
             [
                 to_vec(&second_points[0]),
-                to_vec(&second_poitns[1]),
+                to_vec(&second_points[1]),
                 to_vec(&second_points[2]),
             ]
         )

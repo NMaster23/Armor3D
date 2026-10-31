@@ -1414,7 +1414,7 @@ impl Viewport {
         Some((id, Vector3::new(point.x, point.y, point.z)))
     }
     fn circle_from_three_points(
-        points: [Vecotr3<f32>; 3], 
+        points: [Vector3<f32>; 3], 
     )-> Option<(Vector3<f32>, Vector3<f32>)> {
         let [a, b, c] = points;
         let u = b-a;
@@ -1431,7 +1431,7 @@ impl Viewport {
         Some((center, normal.normalize()))
     }
     pub fn connect_mesh_holes(
-        &mut self, first_id: usize, first_points: [Vector3<f32>; 3], second_id: usize, second_points: [Vecotr3<f32>; 3]
+        &mut self, first_id: usize, first_points: [Vector3<f32>; 3], second_id: usize, second_points: [Vector3<f32>; 3]
     ) -> bool {
         if first_id == second_id {
             return false;
@@ -1448,7 +1448,7 @@ impl Viewport {
         let second_radius= (second_points[0]-second_center).magnitude();
         if first_radius <= 1.0e-6
             || second_radius <= 1.0e-6
-            || (first_radius- second_radius).abs()> first_radius_max(second_radius) * 0.2
+            || (first_radius- second_radius).abs()>first_radius.max(second_radius)* 0.2
         {
             return false;
         }

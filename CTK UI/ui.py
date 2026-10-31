@@ -960,6 +960,55 @@ def viewport_mouse_down(event):
     viewport.focus_set()
     if renderer is None:
         return
+    if activecommand == 'connect':
+        global connectfirstid, connectfirstpoints
+        global connectsecondid, connectsecondpoints
+        picked = renderer.pick_imported_mesh_point(event.x, event.y)
+        if picked is None:
+            writehistory("Click a point on an imported mesh")
+            return
+        meshid, point = picked
+        if connectfirstid is None:
+            connectfirstid = meshid
+        elif len(connectfirstpoints) == 3 and connectsecondid is None:
+            connectsecondid = meshid
+        if len(connectfirstpoints) < 3:
+            if meshid != connectfirstid:
+                writehistory("Keep picking points on the first part")
+                return
+            connectfirstpoints.append(point)
+            remaining = 3 - len(connectfirstpoints)
+            if remaining:
+                writehistory(f"First hole: pick {remaining} more rim points(s)")
+            else:
+                writehistory("First hole recorded. Pick three points around the second hole")
+                command.configure(placeholder_text='Connect: pick 3 points around the second hole')
+            return
+        if meshid == connectfirstid:
+            writehistory("Pick the hole on a different part")
+            return
+        if connectsecondid is None:
+            connectsecondid = meshid
+        if meshid != connectsecondid:
+            writehistory("Keep picking on the second part")
+            return
+        connectsecondpoints.append(point)
+        if len(connectsecondpoints) < 3:
+            writehistory(f"Second hole: pick{3 - len(connectsecondpoints)} more rim points")
+            return
+        if renderer.connect_mesh_holes(
+            connectfirstid, connectfirstpoints, connectsecondid, connectsecondpoints
+        ):
+            renderer.render()
+            writehistory("Connected the hole centers")
+        else:
+            writehistory("Could not connect those holes. Check the rim picks and hole sizes")
+        activecommand = None
+        command.delete(0, 'end')
+        command.configure(placeholder_text='Command:')
+        viewport.configure(cursor='arrow')
+        viewport.focus_set()
+        return
     if activecommand == 'revolve_select':
         selected = renderer.select_at(event.x, event.y, False)
         if selected is None:
@@ -1795,6 +1844,7 @@ def runnamedcommand(name):
     actions = {
         "polyline": startpolyline,
         'pline': startpolyline,
+        "connect": startconnect,
         "hatch": starthatch,
         'curve': startcurve,
         "importmesh": importmeshcommand,
@@ -2210,7 +2260,7 @@ def viewport_return_for_explode(event):
     return None
 viewport.bind("<Return>", viewport_return_for_explode, add="+")
 commandnames = ["Polyline", "Curve", "Join", "Explode", "Rectangle", "Text", "File", "New", "Save", "Save as", '3DM', "PNG", "DXF", "Analyze", "Distance", "Angle", "Tools", "Revolve", "Extrude", "Mirror", "Copy",
-                'Circle', "Fillet", "Trim", "Arc", "Picture", "Import DXF", "Import", "hatch", "ArrayPolar", "PolarArray", "ExtrudeHeight", "Rotate", "3D Print", "Print3D", "Slicer", "Import Mesh"]
+                'Circle', "Fillet", "Trim", "Arc", "Picture", "Import DXF", "Import", "hatch", "ArrayPolar", "PolarArray", "ExtrudeHeight", "Rotate", "3D Print", "Print3D", "Slicer", "Import Mesh", "Connect"]
 def handlenewconfirmation(event):
     if activecommand != "confirmnew":
         return
