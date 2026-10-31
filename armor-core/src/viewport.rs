@@ -164,6 +164,7 @@ pub struct Viewport {
     pub hist_surfaces: ShapeUndoStore<NurbsSurfaceEntity>,
     pub hist_imported_meshes: ShapeUndoStore<ImportedMeshEntity>,
     pub entities: Vec<PolyLine>,
+    pub connected_groups: Vec<Vec<usize>>,
     pub active_polyline: Vec<Vector3<f32>>,
     pub preview_point: Option<Vector3<f32>>,
     pub selected_entity: Option<usize>,
@@ -1104,6 +1105,7 @@ impl Viewport {
             hist_surfaces: ShapeUndoStore::new(Vec::new()),
             hist_imported_meshes: ShapeUndoStore::new(Vec::new()),
             entities: Vec::new(),
+            connected_groups: Vec::new(),
             active_polyline: Vec::new(),
             preview_point: None,
             selected_entity: None,
@@ -1185,6 +1187,66 @@ impl Viewport {
         entity.extrude_axis = axis;
         entity.height += step;
         self.rebuild_vertices();
+    }
+    fn connected_ids(&self, start_id: usize) -> Vec<usize> {
+        let mut ids = vec![start_id];
+        loop {
+            let old_len = ids.len();
+            for group in &self.connected_groups {
+                if group.iter().any(|id| ids.contains(id)) {
+                    for id in group {
+                        if !ids.contains(id) {
+                            ids.push(*id);
+                        }
+                    }
+                }
+            }
+            if ids.len() == old_len {
+                break;
+            }
+        }
+        ids
+    }
+    pub fn connect_selected(&mut self)  -> usize {
+        let mut ids: Vec<usize> = self.entities.iter()
+            .filter(|item| item.selected)
+            .map(|item| item.id)
+            .chain(self.nurbs_surfaces.iter()
+                .filter(|item| item.selected)
+                .map(|item| item.id))
+            .chain(self.imported_meshes.iter()
+                .filter(|item| item.selected)
+                .map(|item| item.id))
+            .collect();
+        ids.sort_unstable();
+        ids.dedup();
+        if ids.len() <2 {
+            return 0;}
+        let mut merged = ids;
+        let mut remaining_groups = Vec::new();
+        for group in self.connected_groups.drain(..) {
+            if group.iter().any(|id| merged.contains(id)) {
+                merged.extend(group);
+            } else {
+                remaining_groups.push(group);
+            }
+        }
+        merged.sort_unstable();
+        merged.dedup();
+        for item in &mut self.entities {
+            item.selected = merged.contains(&item.id);
+        }
+        for item in &mut self.nurbs_surfaces {
+            item.selected = merged.contains(&item.id);
+        }
+        for item in &mut self.imported_meshes {
+            item.selected = merged.contains(&item.id);
+        }
+        let count = merged.len();
+        remaining_groups.push(merged);
+        self.connected_groups = remaining_groups;
+        self.rebuild_vertices();
+        count
     }
     pub fn set_top_view(&mut self) {
         if !self.camera.orthographic {
@@ -1327,7 +1389,107 @@ impl Viewport {
         }
         min_t
     }
-
+    pub fn pick_imported_mesh_point(
+        &self, mouse: Vector2<f32>
+    ) -> Option<(usize, Vector3<f32>)> {
+        let ray = self.camera.screen_to_ray(
+            mouse, Vector2::new(self.width as f32, self.height as f32)
+        )?;
+        let mut nearest: Option<(usize, f32)> = None;
+        for mesh in &self.imported_meshes {
+            for triangle in mesh.triangles.iter() {
+                let [a, b, c] = *triangle;
+                let hit = ray.intersect_triangle(
+                    Point3::new(a.x, a.y, a.z), Point3::new(b.x, b.y, b.z), Point3::new(c.x, c.y, c.z)
+                );
+                if let Some(distance) = hit {
+                    if nearest.map(|(_, best)| distance < best).unwrap_or(true) {
+                        nearest = Some((mesh.id, distance));
+                    }
+                }
+            }
+        }
+        let (id, distance) = nearest?;
+        let point = ray.origin + ray.direction * distance;
+        Some((id, Vector3::new(point.x, point.y, point.z)))
+    }
+    fn circle_from_three_points(
+        points: [Vecotr3<f32>; 3], 
+    )-> Option<(Vector3<f32>, Vector3<f32>)> {
+        let [a, b, c] = points;
+        let u = b-a;
+        let v = c-a;
+        let normal = u.cross(v);
+        let normal_sq = normal.magnitude2();
+        if normal_sq < 1.0e-10 {
+            return None;
+        }
+        let center = a
+            + (v.cross(normal) * u.magnitude2()
+                + normal.cross(u) * v.magnitude2())
+                / (2.0 * normal_sq);
+        Some((center, normal.normalize()))
+    }
+    pub fn connect_mesh_holes(
+        &mut self, first_id: usize, first_points: [Vector3<f32>; 3], second_id: usize, second_points: [Vecotr3<f32>; 3]
+    ) -> bool {
+        if first_id == second_id {
+            return false;
+        }
+        let Some((first_center, first_axis)) = Self::circle_from_three_points(first_points)
+        else {
+            return false;
+        };
+        let Some((second_center, second_axis)) = Self::circle_from_three_points(second_points)
+        else {
+            return false;
+        };
+        let first_radius = (first_points[0] - first_center).magnitude();
+        let second_radius= (second_points[0]-second_center).magnitude();
+        if first_radius <= 1.0e-6
+            || second_radius <= 1.0e-6
+            || (first_radius- second_radius).abs()> first_radius_max(second_radius) * 0.2
+        {
+            return false;
+        }
+        let target_axis = -first_axis;
+        let dot = second_axis.dot(target_axis).clamp(-1.0, 1.0);
+        let cross = second_axis.cross(target_axis);
+        let rotation = if dot < -0.99999 {
+            let basis = if second_axis.x.abs() < 0.9 {
+                Vector3::unit_x()
+            } else {
+                Vector3::unit_y()
+            };
+            let axis = second_axis.cross(basis).normalize();
+            Quaternion::new(0.0, axis.x, axis.y, axis.z)
+        } else {
+            Quaternion::new(1.0 +dot, cross.x, cross.y, cross.z).normalize()
+        };
+        self.save_undo_state();
+        let Some(mesh) = self.imported_meshes
+            .iter_mut()
+            .find(|mesh| mesh.id == second_id)
+        else {
+            return false;
+        };
+        mesh.triangles = Arc::new(
+            mesh.triangles
+                .iter()
+                .map(|triangle| {
+                    triangle.map(|point| {
+                        first_center + rotation.rotate_vector(point - second_center)
+                    })
+                })
+                .collect()
+        );
+        for mesh in &mut self.imported_meshes{
+            mesh.selected = mesh.id == first_id || mesh.id == second_id;
+        }
+        self.connect_selected();
+        self.rebuild_vertices();
+        true
+    }
     fn imported_mesh_hit_test(
         &self,
         mesh: &ImportedMeshEntity,
@@ -1796,17 +1958,23 @@ impl Viewport {
         true
     }
     pub fn select_objects_by_ids(&mut self, ids: &[usize]) {
+        let mut expanded_ids = ids.to_vec();
+        for id in ids {
+            expanded_ids.extend(self.connected_ids(*id));
+        }
+        expanded_ids.sort_unstable();
+        expanded_ids.dedup();
         for entity in &mut self.entities {
-            entity.selected = ids.contains(&entity.id);
+            entity.selected = expanded_ids.contains(&entity.id);
         }
         for curve in &mut self.nurbs_curves {
-            curve.selected = ids.contains(&curve.id);
+            curve.selected = expanded_ids.contains(&curve.id);
         }
         for surface in &mut self.nurbs_surfaces {
-            surface.selected = ids.contains(&surface.id);
+            surface.selected = expanded_ids.contains(&surface.id);
         }
         for mesh in &mut self.imported_meshes {
-            mesh.selected = ids.contains(&mesh.id);
+            mesh.selected = expanded_ids.contains(&mesh.id);
         }
         self.selected_entity = self.entities
             .iter()
@@ -1901,39 +2069,50 @@ impl Viewport {
                 }
             }
         }
+        let connected_selection = closest
+            .map(|id| self.connected_ids(id))
+            .unwrap_or_default();
         if additive {
-            if let Some(id) = closest {
-                if let Some(entity) = self.entities.iter_mut().find(|entity| entity.id == id) {
+            for entity in &mut self.entities {
+                if connected_selection.contains(&entity.id) {
                     entity.selected = true;
-                } else if let Some(surface) =
-                    self.nurbs_surfaces.iter_mut().find(|surface| surface.id == id)
-                {
+                }
+            }
+            for surface in &mut self.nurbs_surfaces {
+                if connected_selection.contains(&surface.id) {
                     surface.selected = true;
-                } else if let Some(mesh) =
-                    self.imported_meshes.iter_mut().find(|mesh| mesh.id == id)
-                {
+                }
+            }
+            for mesh in &mut self.imported_meshes {
+                if connected_selection.contains(&mesh.id) {
                     mesh.selected = true;
-                } else if let Some(curve) =
-                    self.nurbs_curves.iter_mut().find(|curve| curve.id == id)
-                {
+                }
+            }
+            for curve in &mut self.nurbs_curves {
+                if connected_selection.contains(&curve.id) {
                     curve.selected = true;
+                }
+            }
+            for solid in &mut self.solids {
+                if connected_selection.contains(&solid.id) {
+                    solid.selected = true;
                 }
             }
         } else {
             for entity in &mut self.entities {
-                entity.selected = Some(entity.id) == closest;
+                entity.selected = connected_selection.contains(&entity.id);
             }
             for surface in &mut self.nurbs_surfaces {
-                surface.selected = Some(surface.id) == closest;
+                surface.selected = connected_selection.contains(&surface.id);
             }
             for mesh in &mut self.imported_meshes {
-                mesh.selected = Some(mesh.id) == closest;
+                mesh.selected = connected_selection.contains(&mesh.id);
             }
             for curve in &mut self.nurbs_curves {
-                curve.selected = Some(curve.id) == closest;
+                curve.selected = connected_selection.contains(&curve.id);
             }
             for solid in &mut self.solids {
-                solid.selected = Some(solid.id) == closest;
+                solid.selected = connected_selection.contains(&solid.id);
             }
         }
         self.selected_entity = self
@@ -2190,6 +2369,13 @@ impl Viewport {
                 selected_ids.push(mesh.id);
             }
         }
+
+        let directly_selected_ids = selected_ids.clone();
+        for id in directly_selected_ids {
+            selected_ids.extend(self.connected_ids(id));
+        }
+        selected_ids.sort_unstable();
+        selected_ids.dedup();
 
         for entity in &mut self.entities {
             entity.selected = if additive {

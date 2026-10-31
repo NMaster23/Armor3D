@@ -154,6 +154,9 @@ impl ViewportRenderer {
     fn select_objects_by_ids(&mut self, object_ids: Vec<usize>) {
         self.state.viewport.select_objects_by_ids(&object_ids);
     }
+    fn connect_selectewd(&mut self) -> usize{ 
+        self.state.viewport.connect_selected()
+    }
     pub fn create_cylinder(&mut self, x: f32, y: f32, z: f32, radius: f32, height: f32, subdivisions: usize) -> usize {
         self.state.viewport.add_cylinder([x, y, z], radius, height, subdivisions)
     }
@@ -514,6 +517,36 @@ impl ViewportRenderer {
         self.state
             .viewport
             .select_shape(cgmath::Vector2::new(x, y), 8.0, additive)
+    }
+    fn pick_imported_mesh_point(
+        &self, x: f32, y:f32
+    ) -> Option<(usize, (f32, f32, f32))>{
+        let (id, point) = self.state.viewport
+            .pick_imported_mesh_point(cgmath::Vector2::new(x, y))?;
+        Some((id, (point.x, point.y, point.z)))
+    }
+    fn connect_mesh_holes(
+        &mut self, first_id: usize, first_points: Vec<(f32, f32, f32)>, second_id: usize, second_points: Vec<(f32, f32, f32)>,
+    ) -> bool {
+        if first_points.len() ! = 3 || second_points.len() ! = 3 {
+            return false;
+        }
+        let to_vec = |point: &(f32, f32, f32)| {
+            cgmath::Vector3::new(point.0, point.1, point.2)
+        };
+        self.state.viewport.connect_mesh_holes(first_id,
+            [
+                to_vec(&first_points[0]), 
+                to_vec(&first_points[1]),
+                to_vec(&first_points[2])
+            ],
+            second_id
+            [
+                to_vec(&second_points[0]),
+                to_vec(&second_poitns[1]),
+                to_vec(&second_points[2]),
+            ]
+        )
     }
     #[pyo3(signature = (
         start_x,
