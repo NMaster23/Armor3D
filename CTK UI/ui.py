@@ -2840,7 +2840,7 @@ def openimportmenu():
     importhoverjob = None
     slidemenu(filemenu, 8, 104, False)
     slidemenu(analyze_menu, 100, 72, False)
-    slidemenu(toolsmenu, 150, 232, False)
+    slidemenu(toolsmenu, 150, 264, False)
     slidemenu(importmenu, 48, 104, True)
 def closeimportmenu():
     global importclosejob
@@ -2928,7 +2928,7 @@ def openanalyzemenu():
     analyzehoverjob = None
     slidemenu(importmenu, 48, 104, False)
     slidemenu(filemenu, 8, 104, False)
-    slidemenu(toolsmenu, 150, 232, False)
+    slidemenu(toolsmenu, 150, 264, False)
     slidemenu(analyze_menu, 100, 72, True)
 def analyze_enter(event):
     global analyzehoverjob
@@ -2976,9 +2976,9 @@ canvas.tag_bind(analyze, "<Leave>", analyzeleave, add="+")
 app.bind_all("<Motion>", analyzepointermotion, add="+")
 
 tools = canvas.create_text(170, 8, text="Tools", font=("Lexend", 8), fill="#EAEAEA")
-toolsmenu = Canvas(app, width=160, height=232, bg="#111111", highlightthickness=1, highlightbackground="#555555")
+toolsmenu = Canvas(app, width=160, height=264, bg="#111111", highlightthickness=1, highlightbackground="#555555")
 toolsrows = []
-tool_name = ("Revolve", "Extrude", "Extrude Height", "Mirror", "Copy", "Rotate", "3D Print")
+tool_name = ("Revolve", "Extrude", "Extrude Height", "Mirror", "Copy", "Rotate", "3D Print", "Connect")
 for i, name in enumerate(tool_name):
     y = 4 + i * 32
     box = toolsmenu.create_rectangle(4, y, 155, y +30, fill='', outline='')
@@ -2995,7 +2995,7 @@ def toolsmenuclick(event):
     if not (4<= event.x <= 155):
         return
     row = (event.y-4)//32
-    names = ("Revolve", "Extrude", "Extrude Height", "Mirror", "Copy", "Rotate", "3D Print")
+    names = ("Revolve", "Extrude", "Extrude Height", "Mirror", "Copy", "Rotate", "3D Print", "Connect")
     if 0<= row < len(names):
         closetoolsmenu()
         runnamedcommand(names[row])
@@ -3009,11 +3009,11 @@ def opentoolsmenu():
     slidemenu(importmenu, 48, 104, False)
     slidemenu(filemenu, 8, 104, False)
     slidemenu(analyze_menu, 100, 72, False)
-    slidemenu(toolsmenu, 150, 232, True)
+    slidemenu(toolsmenu, 150, 264, True)
 def closetoolsmenu():
     global toolsclosejob
     toolsclosejob = None
-    slidemenu(toolsmenu, 150, 232, False)
+    slidemenu(toolsmenu, 150, 264, False)
 def toolsenter(event):
     global toolshoverjob
     canvas.itemconfig(tools, fill='#777777')
@@ -3035,7 +3035,7 @@ def toolsclick(event):
 def pointerontoolsmenu(event):
     x = event.x_root - app.winfo_rootx()
     y = event.y_root - app.winfo_rooty()
-    return (150 <= x <= 190 and 0 <= y <= 20) or (150 <= x <= 310 and 20 <= y <= 220)
+    return (150 <= x <= 190 and 0 <= y <= 20) or (150 <= x <= 310 and 20 <= y <= 284)
 def toolspointermotion(event):
     global toolsclosejob
     if toolsmenu in menusliding or not toolsmenu.winfo_manager():
@@ -3803,7 +3803,7 @@ def open_view_menu():
     slidemenu(filemenu, 8, 104, False)
     slidemenu(importmenu, 48, 104, False)
     slidemenu(analyze_menu, 100, 72, False)
-    slidemenu(toolsmenu, 150, 232, False)
+    slidemenu(toolsmenu, 150, 264, False)
     slidemenu(viewmenu, 101, 99, True, top=129, start_y=33)
 def closeviewmenu():
     global view_close_job
