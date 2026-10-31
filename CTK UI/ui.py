@@ -3929,17 +3929,18 @@ extratitle.place(x=28, y=20)
 def positionextramenu(event=None):
     if event is not None and event.widget is not app:
         return
-    app.update_idletasks()
     app_x = app.winfo_rootx()
     app_y = app.winfo_rooty()
     app_width = app.winfo_width()
     app_height = app.winfo_height()
-    panel_width = min(720, app_width - 80)
-    panel_height = min(360, app_height - 80)
-    panel_x = app_x + (app_width - panel_width) // 2
-    panel_y = app_y + (app_height - panel_height) // 2
+    if app_width <= 1 or app_height <= 1:
+        return
+    panel_width = min(720, max(360, app_width - 24))
+    panel_height = min(360, max(240, app_height-24))
+    panel_x  = app_x + (app_width - panel_width) // 2
+    panel_y = app_y + (app_height - panel_height) //2
     extraoverlay.geometry(f"{app_width}x{app_height}+{app_x}+{app_y}")
-    extradialog.geometry( f"{panel_width}x{panel_height}+{panel_x}+{panel_y}")
+    extradialog.geometry(f"{panel_width}x{panel_height}+{panel_x}+{panel_y}")
 extracloseeenabled = False
 extraclosejob = None
 def enableextraclose():
@@ -3962,10 +3963,12 @@ def extraoverlayclick(event):
     return closeextramenu()
 def openextramenu(event=None):
     global extracloseeenabled, extraclosejob
-    if extradialog.winfo_viewable():
-        return 'break'
     if extraclosejob is not None:
-        app.after_cancel(extraclosejob)
+        try:
+            app.after_cancel(extraclosejob)
+        except Exception:
+            pass
+        extraclosejob = None
     extracloseeenabled = False
     positionextramenu()
     extraoverlay.deiconify()
@@ -3973,7 +3976,7 @@ def openextramenu(event=None):
     extradialog.deiconify()
     extradialog.lift()
     extradialog.focus_set()
-    extraclosejob = app.after(180, enableextraclose)
+    extraclosejob = app.after(250, enableextraclose)
     return 'break'
 def extratoolbutton(name, x, y):
     button = Canvas( extrapanel,  width=112, height=44, bg="#111111",  highlightthickness=0, cursor="hand2")
@@ -4013,18 +4016,16 @@ closeextra.place(relx=1, x=-52, y=14)
 closeextra.bind(  "<Enter>",lambda event: closeextra.itemconfig(closeextralabel, fill="#FFFFFF"))
 closeextra.bind(  "<Leave>",lambda event: closeextra.itemconfig(closeextralabel, fill="#EAEAEA"))
 closeextra.bind("<Button-1>", closeextramenu)
-def openextramenu(event=None):
-    positionextramenu()
-    extraoverlay.deiconify()
-    extraoverlay.lift()
-    extradialog.deiconify()
-    extradialog.lift()
-    extradialog.focus_force()
 extraoverlay.bind("<Button-1>", extraoverlayclick)
 extradialog.bind("<Escape>", closeextramenu)
 app.bind("<Configure>", positionextramenu, add="+")
-for item in (extrabox, extratext):
-    canvas.tag_bind(item, "<Button-1>", openextramenu)
+def extra_button_click(event):
+    # Handle the button at the canvas level instead of relying on canvas item
+    # tag bindings, which can be skipped when the embedded viewport is resized.
+    if 8 <= event.x <= 92 and 248 <= event.y <= 284:
+        return openextramenu(event)
+
+canvas.bind("<Button-1>", extra_button_click, add="+")
 
 savedapikey, saveaimodel = loadaisettings()
 chatmemory = loadchatmemory()
