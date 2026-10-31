@@ -758,7 +758,7 @@ impl State {
         if self.viewport.redraw {
             let vertices = &self.viewport.point_vertices;
             if vertices.len() > self.point_buffer_capacity {
-                self.point_buffer_capacity = (vertices.len() * 2).max(16);
+                self.point_buffer_capacity = vertices.len().max(16);
                 self.point_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
                     label: Some("Point Buffer"),
                     size: (self.point_buffer_capacity * std::mem::size_of::<Vertex>()) as u64,

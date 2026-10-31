@@ -507,6 +507,7 @@ def importmeshcommand():
         ("STP files", "*.stp"),
         ("OBJ files", "*.obj"),
         ("STL files", "*.stl"),
+        ("3MF files", "*.3mf"),
         ("PLY files", "*.ply"),
         ("glTF binary", "*.glb"),
         ("glTF scene", "*.gltf"),],
@@ -537,8 +538,31 @@ def importmeshcommand():
             importedfiles.append(Path(path).name)
             updatewindowtitle()
         writehistory(f"> Import Mesh\nImported {imported} mesh triangles")
-    except ImportError:
-        writehistory("> Import Mesh\nInstall trimesh with: pip install trimesh")
+    except ImportError as error:
+        missing_module = (getattr(error, "name", None) or "trimesh").split(".")[0]
+        package_name = {"PIL": "pillow"}.get(missing_module, missing_module)
+        is_3mf_dependency = (
+            Path(path).suffix.lower() == ".3mf"
+            and missing_module in {"lxml", "networkx"}
+        )
+        if is_3mf_dependency:
+            missing_description = "3MF import dependencies: lxml and networkx"
+            install_command = (
+                "Install lxml and networkx in the build environment, then rebuild the EXE"
+                if getattr(sys, "frozen", False)
+                else f'"{sys.executable}" -m pip install lxml networkx'
+            )
+        else:
+            missing_description = f"Python package: {package_name}"
+            install_command = (
+                f"Rebuild Armor3D with {package_name} included"
+                if getattr(sys, "frozen", False)
+                else f'"{sys.executable}" -m pip install {package_name}'
+            )
+        writehistory(
+            f"> Import Mesh\nMissing {missing_description}\n"
+            f"{install_command}"
+        )
     except Exception as error:
         writehistory(f"> Imported Mesh\nImport failed: {error}")
 
@@ -4085,6 +4109,11 @@ def validpoint(value):
     if any(abs(coordinate) > 100000 for coordinate in point):
         return None
     return (point[0], point[1], -point[2])
+def validconnectorpoints(value):
+    if not isinstance(value, list) or len(value) != 3:
+        return None
+    points = [validpoint(point) for point in value]
+    return None if any(point is None for point in points) else points
 def executeaiactions(actions):
     if renderer is None:
         return ["Viewport is not ready"]
@@ -4111,6 +4140,59 @@ def executeaiactions(actions):
                 f"Undid {undone} changes(s)"
                 if undone
                 else "There was nothing to undo"
+            )
+            continue
+        mesh_ids = {
+            mesh_id
+            for mesh_id, _selected, _triangle_count
+            in renderer.imported_mesh_data()
+        }
+        if action_type == 'connect_meshes':
+            object_ids = action.get("object_ids")
+            if object_ids is None:
+                object_ids = [
+                    mesh_id
+                    for mesh_id, selected, _triangle_count
+                    in renderer.imported_mesh_data()
+                    if selected
+                ]
+            if (
+                not isinstance(object_ids, list)
+                or len(object_ids) != 2
+                or any(type(object_id) is not int for object_id in object_ids)
+                or object_ids[0] == object_ids[1]
+                or any(object_id not in mesh_ids for object_id in object_ids)
+            ):
+                results.append("Connect needs IDs for two imported meshes")
+                continue
+            renderer.select_objects_by_ids(object_ids)
+            count = renderer.connect_selected()
+            renderer.render()
+            results.append(f"Connected {count} mesh objects as a group" if count >= 2 else "Could not connect those mesh objects")
+            continue
+        if action_type == 'connect_mesh_holes':
+            first_id = action.get("first_id")
+            second_id = action.get("second_id")
+            first_points = validconnectorpoints(action.get("first_points"))
+            second_points = validconnectorpoints(action.get("second_points"))
+            if (
+                type(first_id) is not int
+                or type(second_id) is not int
+                or first_id == second_id
+                or first_id not in mesh_ids
+                or second_id not in mesh_ids
+                or first_points is None
+                or second_points is None
+            ):
+                results.append("Hole connection needs two mesh IDs and three rim points per hole")
+                continue
+            connected = renderer.connect_mesh_holes(
+                first_id, first_points, second_id, second_points)
+            renderer.render()
+            results.append(
+                "Aligned and connected the two mesh holes"
+                if connected
+                else "Could not align those holes; check the rim points and hole sizes"
             )
             continue
         if action_type == 'move_objects':
@@ -4478,6 +4560,15 @@ def getaiscene():
             "properties": {
                 'selected': selected,
             }
+        })
+
+    for mesh_id, selected, triangle_count in renderer.imported_mesh_data():
+        objects.append({
+            "id": mesh_id,
+            "object_type": "mesh",
+            "geometry_type": "triangle_mesh",
+            "geometry": {"triangle_count": triangle_count},
+            "properties": {"selected": selected},
         })
 
     draft_points = []

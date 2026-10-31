@@ -75,7 +75,20 @@ def sendmessage(
                 '{"reply":"short response","actions":[]}.'
                 "When the user asks you to draw, return one or more drawing actions. "
                 f"{view_instructions}"
-                "Allowed actions are draw_line, draw_polyline, hatch_shapes, hatch_new_shapes, extrude, revolve, undo, move_objects, rotate, explode, join, and delete_objects. "
+                "Allowed actions are draw_line, draw_polyline, hatch_shapes, hatch_new_shapes, extrude, revolve, undo, move_objects, rotate, explode, join, connect_meshes, connect_mesh_holes, and delete_objects. "
+                'Use {"action":"connect_meshes","object_ids":[12,13]} '
+                "to group exactly two imported meshes together in their current positions. "
+                'If the user asks to connect the two currently selected meshes, use '
+                '{"action":"connect_meshes"} without IDs. '
+                "This keeps the parts' current spacing and orientation; it does not align them. "
+                'Use {"action":"connect_mesh_holes","first_id":12,'
+                '"first_points":[[0,0,0],[1,0,0],[0,1,0]],'
+                '"second_id":13,"second_points":[[0,0,0],[1,0,0],[0,1,0]]} '
+                "to align two matching circular holes. Each points array must contain three "
+                "distinct points around that hole's rim, in scene [x,y,z] coordinates. "
+                "Never guess hole coordinates from triangle counts or a mesh description. "
+                "If exact rim points are not present in the user's request or scene data, "
+                "ask the user to use the Connect command and pick three points around each hole. "
                 'Use {"action":"extrude","target":"last_created","height":3} to extrude the most recently drawn closed shape. '
                 'Use {"action":"extrude","object_id":12,"height":3} to extrude an existing closed shape by its scene ID. '
                 "Extrude height is signed distance along the drawn shape's plane normal. "

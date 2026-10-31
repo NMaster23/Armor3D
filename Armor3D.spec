@@ -4,8 +4,15 @@ import importlib.util
 from PyInstaller.building.build_main import Analysis, PYZ, EXE
 from PyInstaller.utils.hooks import collect_all
 
+def collect_optional(package):
+    if importlib.util.find_spec(package) is None:
+        return [], [], []
+    return collect_all(package)
+
 trimesh_datas, trimesh_binaries, trimesh_hiddenimports = collect_all("trimesh")
 cascadio_datas, cascadio_binaries, cascadio_hiddenimports = collect_all("cascadio")
+lxml_datas, lxml_binaries, lxml_hiddenimports = collect_optional("lxml")
+networkx_datas, networkx_binaries, networkx_hiddenimports = collect_optional("networkx")
 
 ROOT = Path(SPEC).resolve().parent
 UI_DIR = ROOT / "CTK UI"
@@ -23,24 +30,28 @@ a = Analysis(
     [str(UI_DIR / "ui.py")],
     pathex=[str(ROOT), str(UI_DIR)],
     # Put the compiled PyO3 module inside the armor_core package directory.
-    a = Analysis(
-    [str(UI_DIR / "ui.py")],
-    pathex=[str(ROOT), str(UI_DIR)],
     binaries=[
         (extension_spec.origin, "armor_core"),
         *trimesh_binaries,
-        *cascadio_binaries,],
+        *cascadio_binaries,
+        *lxml_binaries,
+        *networkx_binaries,
+    ],
     datas=[
         (str(ASSETS_DIR), "Assets"),
         *trimesh_datas,
-        *cascadio_datas,],
+        *cascadio_datas,
+        *lxml_datas,
+        *networkx_datas,
+    ],
     hiddenimports=[
         "armor_core",
         "armor_core.armor_core",
         *trimesh_hiddenimports,
-        *cascadio_hiddenimports,],
-    excludes=[],
-)
+        *cascadio_hiddenimports,
+        *lxml_hiddenimports,
+        *networkx_hiddenimports,
+    ],
     excludes=[],
 )
 

@@ -154,8 +154,14 @@ impl ViewportRenderer {
     fn select_objects_by_ids(&mut self, object_ids: Vec<usize>) {
         self.state.viewport.select_objects_by_ids(&object_ids);
     }
-    fn connect_selectewd(&mut self) -> usize{ 
+    fn connect_selected(&mut self) -> usize {
         self.state.viewport.connect_selected()
+    }
+    fn imported_mesh_data(&self) -> Vec<(usize, bool, usize)> {
+        self.state.viewport.imported_meshes
+            .iter()
+            .map(|mesh| (mesh.id, mesh.selected, mesh.triangles.len()))
+            .collect()
     }
     pub fn create_cylinder(&mut self, x: f32, y: f32, z: f32, radius: f32, height: f32, subdivisions: usize) -> usize {
         self.state.viewport.add_cylinder([x, y, z], radius, height, subdivisions)
