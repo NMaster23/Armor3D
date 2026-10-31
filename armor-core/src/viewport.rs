@@ -2534,6 +2534,30 @@ impl Viewport {
         let marker_color = [1.0, 1.0, 1.0, 1.0];
         for entity in &self.nurbs_surfaces {
             let draw_color = if entity.selected { [1.0, 0.8, 0.0, 1.0] } else { entity.color };
+            let points = &entity.surface.control_points;
+            let is_imported_triangle = 
+                entity.surface.degree_u == 1
+                && entity.surface.degree_v == 1
+                && points.len() == 2
+                && points[0].len() == 2
+                && points[1].len() == 2
+                && (points[1][0].point - points[1][1].point).magnitude2() <= 1.0e-12;
+            if is_imported_triangle {
+                let a = points[0][0].point;
+                let b = points[0][1].point;
+                let c = points[1][0].point;
+                let cross = (b-a).cross(c-a);
+                let normal = if cross.magnitude2() > 1.0e-12 {
+                    cross.normalize()
+                } else {
+                    Vector3::unit_y()
+                };
+                let make_vertex = |p: Vector3<f32>| Vertex {
+                    position: [p.x, p.y, p.z],
+                    coords: [normal.x, normal.y, normal.z], color: draw_color};
+                new_vertices.extend([make_vertex(a), make_vertex(b), make_vertex(c)]);
+                continue;
+            }
             let mesh_verts = entity.surface.sample_mesh(entity.u_subdivisions, entity.v_subdivisions, draw_color);
             new_vertices.extend(mesh_verts);
         }

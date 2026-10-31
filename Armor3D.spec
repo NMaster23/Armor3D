@@ -2,7 +2,10 @@ from pathlib import Path
 import importlib.util
 
 from PyInstaller.building.build_main import Analysis, PYZ, EXE
+from PyInstaller.utils.hooks import collect_all
 
+trimesh_datas, trimesh_binaries, trimesh_hiddenimports = collect_all("trimesh")
+cascadio_datas, cascadio_binaries, cascadio_hiddenimports = collect_all("cascadio")
 
 ROOT = Path(SPEC).resolve().parent
 UI_DIR = ROOT / "CTK UI"
@@ -20,9 +23,24 @@ a = Analysis(
     [str(UI_DIR / "ui.py")],
     pathex=[str(ROOT), str(UI_DIR)],
     # Put the compiled PyO3 module inside the armor_core package directory.
-    binaries=[(extension_spec.origin, "armor_core")],
-    datas=[(str(ASSETS_DIR), "Assets")],
-    hiddenimports=["armor_core", "armor_core.armor_core"],
+    a = Analysis(
+    [str(UI_DIR / "ui.py")],
+    pathex=[str(ROOT), str(UI_DIR)],
+    binaries=[
+        (extension_spec.origin, "armor_core"),
+        *trimesh_binaries,
+        *cascadio_binaries,],
+    datas=[
+        (str(ASSETS_DIR), "Assets"),
+        *trimesh_datas,
+        *cascadio_datas,],
+    hiddenimports=[
+        "armor_core",
+        "armor_core.armor_core",
+        *trimesh_hiddenimports,
+        *cascadio_hiddenimports,],
+    excludes=[],
+)
     excludes=[],
 )
 

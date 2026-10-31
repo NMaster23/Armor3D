@@ -470,8 +470,6 @@ def meshtrianglefrom3dmgeometry(geometry):
             if combined.Faces.Count:
                 mesh = combined
     if (mesh is None or mesh.Faces.Count == 0) and isinstance(geometry, rhino3dm.Extrusion):
-        # Some 3DM files have no cached display mesh. Build the extrusion walls
-        # from its profile curves so those objects still appear in Armor3D.
         profile_triangles = extrusionwalltriangles(geometry)
         if profile_triangles:
             return profile_triangles
@@ -492,35 +490,41 @@ def meshtrianglefrom3dmgeometry(geometry):
         if math.dist(c, d) > 1.0e-9:
             triangles.append((a, c, d))
     return triangles
-
 def importmeshcommand():
     if renderer is None:
         writehistory("> Import Mesh\nViewport is not ready")
         return
-    path = filedialog.askopenfilename(parent=app, title='Import 3D Mesh', 
-                                      filetypes=[
-                                          ("OBJ files", "*.obj"),
-                                          ("STL files", "*.stl"),
-                                          ("PLY files", '*.ply'),
-                                          ("g1TF binary", "*.glb"),
-                                          ("g1TF scene", "*.gltf"),
-                                          ("All files", "*.*"),
-                                      ])
+    path = filedialog.askopenfilename(
+    parent=app,
+    title="Import 3D Mesh",
+    filetypes=[
+        ("All files", "*.*"),
+        ("STEP files", "*.step"),
+        ("STP files", "*.stp"),
+        ("OBJ files", "*.obj"),
+        ("STL files", "*.stl"),
+        ("PLY files", "*.ply"),
+        ("glTF binary", "*.glb"),
+        ("glTF scene", "*.gltf"),],
+)
     if not path:
         return
     try:
         import trimesh
         scene = trimesh.load_scene(path)
         mesh = scene.to_mesh()
+        max_faces = 8000
+        if len(mesh.faces) > max_faces:
+            mesh = mesh.simplify_quadric_decimation(face_count=max_faces)
         if mesh.is_empty or len(mesh.faces) == 0:
             writehistory(">Import Mesh\nNo mesh faces found in the file")
             return
         triangles = []
-        isg1tf = Path(path).suffix.lower() in (".glb", ".g1tf")
+        isgltf = Path(path).suffix.lower() in (".glb", ".gltf")
         for triangle in mesh.triangles:
             points = []
-            for x, y, z  in triangles:
-                if isg1tf:
+            for x, y, z in triangle:
+                if isgltf:
                     points.append((float(x), float(y), float(z)))
                 else:
                     points.append((float(x), float(z), float(-y)))
