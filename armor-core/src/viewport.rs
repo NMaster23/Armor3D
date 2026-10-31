@@ -248,6 +248,80 @@ impl Viewport {
             .filter(|entity| entity.selected)
             .count()
     }
+    pub fn explode_selected(&mut self) -> usize {
+        let selected_polylines: Vec<PolyLine> = self.entities
+            .iter()
+            .filter(|entity| entity.selected)
+            .cloned()
+            .collect();
+        let selected_curves: Vec<NurbsCurveEntity> = self.nurbs_curves
+            .iter()
+            .filter(|curve| curve.selected)
+            .cloned()
+            .collect();
+        let segment_count: usize = selected_polylines
+            .iter()
+            .map(|entity| entity.vertices.len().saturating_sub(1))
+            .sum::<usize>()
+            + selected_curves
+                .iter()
+                .map(|curve| curve.curve.sample(64).len().saturating_sub(1))
+                .sum::<usize>();
+
+        if segment_count == 0 {
+            return 0;
+        }
+
+        self.save_undo_state();
+        self.entities.retain(|entity| !entity.selected);
+        self.nurbs_curves.retain(|curve| !curve.selected);
+        let mut new_entities = Vec::with_capacity(segment_count);
+        let mut first_new_id = None;
+        let mut created = 0usize;
+
+        for source in selected_polylines {
+            for pair in source.vertices.windows(2) {
+                let id = self.next_entity;
+                self.next_entity += 1;
+                first_new_id.get_or_insert(id);
+                new_entities.push(PolyLine {
+                    hatched: false,
+                    id,
+                    vertices: vec![pair[0], pair[1]],
+                    color: source.color,
+                    thickness: source.thickness,
+                    selected: true,
+                    height: source.height,
+                    extrude_axis: source.extrude_axis,
+                    show_markers: source.show_markers,
+                });
+                created += 1;
+            }
+        }
+
+        for source in selected_curves {
+            let points = source.curve.sample(64);
+            for pair in points.windows(2) {
+                let id = self.push_polyline_entity(
+                    vec![pair[0], pair[1]],
+                    source.color,
+                    source.thickness,
+                    0.0,
+                    Vector3::unit_y(),
+                    false,
+                    true,
+                    false,
+                );
+                first_new_id.get_or_insert(id);
+                created += 1;
+            }
+        }
+
+        self.entities.extend(new_entities);
+        self.selected_entity = first_new_id;
+        self.rebuild_vertices();
+        created
+    }
     pub fn rotate_selected_objects(&mut self, degrees: f32, mode: &str) -> usize {
         let object_ids: Vec<usize> = self
             .entities
@@ -1599,6 +1673,20 @@ impl Viewport {
                 }
             }
         }
+        for curve in &self.nurbs_curves {
+            let screen_points: Vec<cgmath::Vector2<f32>> = curve.curve.sample(64)
+                .iter()
+                .filter_map(|point| self.world_to_screen(*point))
+                .collect();
+            for segment in screen_points.windows(2) {
+                let distance = Self::dist_to_segment(mouse_px, segment[0], segment[1]);
+                if distance < min_dist_sq {
+                    min_dist_sq = distance;
+                    closest = Some(curve.id);
+                }
+            }
+        }
+
         let mut closest_3d_dist = f32::MAX;
         for s in &self.nurbs_surfaces {
             if let Some(t) = self.surface_hit_test(s, mouse_px) {
@@ -1617,6 +1705,10 @@ impl Viewport {
                     self.nurbs_surfaces.iter_mut().find(|surface| surface.id == id)
                 {
                     surface.selected = true;
+                } else if let Some(curve) =
+                    self.nurbs_curves.iter_mut().find(|curve| curve.id == id)
+                {
+                    curve.selected = true;
                 }
             }
         } else {
@@ -1625,6 +1717,9 @@ impl Viewport {
             }
             for surface in &mut self.nurbs_surfaces {
                 surface.selected = Some(surface.id) == closest;
+            }
+            for curve in &mut self.nurbs_curves {
+                curve.selected = Some(curve.id) == closest;
             }
             for solid in &mut self.solids {
                 solid.selected = Some(solid.id) == closest;
@@ -2615,6 +2710,17 @@ impl Viewport {
         }
         self.point_vertices = new_vertices;
         self.redraw = true;
+    }
+    fn push_polyline_entity(
+        &mut self, vertices: Vec<Vector3<f32>>, color: [f32; 4], thickness: f32, height:f32, extrude_axis: Vector3<f32>, show_markers: bool,
+        selected:bool, hatched: bool
+    )-> usize {
+        let id = self.next_entity;
+        self.next_entity += 1;
+        self.entities.push(PolyLine {
+            id, vertices, color, thickness, selected, height, extrude_axis, show_markers, hatched
+        });
+        id
     }
     pub fn add_nurbs_curve(&mut self, curve: NurbsCurve, color: [f32; 4], thickness: f32) -> usize {
         let id = self.next_entity;

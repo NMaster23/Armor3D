@@ -911,6 +911,14 @@ def viewport_mouse_down(event):
         renderer.mouse_move(event.x, event.y)
         pickrevolveaxispoint()
         return
+    if activecommand == 'explode':
+        additive = bool(event.state & 0x0001)
+        selected = renderer.select_at(event.x, event.y, additive)
+        if selected is None:
+            writehistory("Click an object(s) to explode")
+        else:
+            writehistory("Selected for Explode. Click more objects or press Enter")
+        return
     if activecommand == "text_place":
         renderer.mouse_move(event.x, event.y)
         position = renderer.cursor_world_position()
@@ -1862,6 +1870,19 @@ def runcmd(event):
         writehistory(f"Rotate mode: {typed_mode.upper()}\nEnter degrees and press Enter")
         app.after_idle(focusrotateentry)
         return 'break'
+    if activecommand == 'explode':
+        count = renderer.explode_selected()
+        renderer.render()
+        if count:
+            writehistory(f"Exploded into {count} line segments")
+        else:
+            writehistory("Select a polyline or curve first")
+        activecommand = None
+        command.delete(0, 'end')
+        command.configure(placeholder_text='Command:')
+        viewport.configure(cursor='arrow')
+        viewport.focus_set()
+        return 'break'
     if activecommand == 'rotate_angle':
         try:
             degrees = float(command.get().strip())
@@ -2088,6 +2109,11 @@ def runcmd(event):
         viewport.focus_set()
     return "break"
 command.bind("<Return>", runcmd)
+def viewport_return_for_explode(event):
+    if activecommand == "explode":
+        return runcmd(event)
+    return None
+viewport.bind("<Return>", viewport_return_for_explode, add="+")
 commandnames = ["Polyline", "Curve", "Join", "Explode", "Rectangle", "Text", "File", "New", "Save", "Save as", '3DM', "PNG", "DXF", "Analyze", "Distance", "Angle", "Tools", "Revolve", "Extrude", "Mirror", "Copy",
                 'Circle', "Fillet", "Trim", "Arc", "Picture", "Import DXF", "Import", "hatch", "ArrayPolar", "PolarArray", "ExtrudeHeight", "Rotate"]
 def handlenewconfirmation(event):
