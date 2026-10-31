@@ -214,6 +214,13 @@ impl ViewportRenderer {
                 .iter()
                 .filter(|surface| surface.selected)
                 .count()
+            + self
+                .state
+                .viewport
+                .imported_meshes
+                .iter()
+                .filter(|mesh| mesh.selected)
+                .count()
     }
     fn rotate_objects(
         &mut self,
@@ -692,6 +699,16 @@ impl ViewportRenderer {
                     (triangle[2].position[0], triangle[2].position[1], triangle[2].position[2]),
                 ));
             }
+        }
+
+        for mesh in &self.state.viewport.imported_meshes {
+            triangles.extend(mesh.triangles.iter().map(|triangle| {
+                (
+                    (triangle[0].x, triangle[0].y, triangle[0].z),
+                    (triangle[1].x, triangle[1].y, triangle[1].z),
+                    (triangle[2].x, triangle[2].y, triangle[2].z),
+                )
+            }));
         }
 
         triangles

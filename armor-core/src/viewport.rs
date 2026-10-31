@@ -12,6 +12,7 @@ use lyon::lyon_tessellation::{
 use lyon::math::point;
 use lyon::path::Path;
 use std::mem;
+use std::sync::Arc;
 use winit::dpi::PhysicalPosition;
 use winit::event::MouseButton;
 use winit::event_loop::ActiveEventLoop;
@@ -101,6 +102,14 @@ pub struct NurbsSurfaceEntity {
 }
 
 #[derive(Clone, Debug)]
+pub struct ImportedMeshEntity {
+    pub id: usize,
+    pub triangles: Arc<Vec<[Vector3<f32>; 3]>>,
+    pub color: [f32; 4],
+    pub selected: bool,
+}
+
+#[derive(Clone, Debug)]
 pub struct TextEntity {
     pub id: usize,
     pub depth: f32,
@@ -153,6 +162,7 @@ pub struct Viewport {
     extrude_drag: Option<(usize, f32, Vector3<f32>)>,
     pub hist_entities: ShapeUndoStore<PolyLine>,
     pub hist_surfaces: ShapeUndoStore<NurbsSurfaceEntity>,
+    pub hist_imported_meshes: ShapeUndoStore<ImportedMeshEntity>,
     pub entities: Vec<PolyLine>,
     pub active_polyline: Vec<Vector3<f32>>,
     pub preview_point: Option<Vector3<f32>>,
@@ -175,6 +185,7 @@ pub struct Viewport {
     pub polyline_distance: Option<f32>,
     pub move_anchor: Option<Vector3<f32>>,
     pub move_surface_snapshots: Vec<(usize, NurbsSurface)>,
+    pub move_mesh_snapshots: Vec<(usize, Arc<Vec<[Vector3<f32>; 3]>>)>,
     pub move_axis_snapshots: Vec<(usize, Vector3<f32>)>,
     pub move_snapshots: Vec<(usize, Vec<Vector3<f32>>)>,
     pub point_vertices: Vec<Vertex>,
@@ -199,6 +210,7 @@ pub struct Viewport {
     pub text_entities: Vec<TextEntity>,
     pub nurbs_curves: Vec<NurbsCurveEntity>,
     pub nurbs_surfaces: Vec<NurbsSurfaceEntity>,
+    pub imported_meshes: Vec<ImportedMeshEntity>,
     pub solids: Vec<SolidEntity>,
     pub gumball: Option<Gumball>,
 }
@@ -413,6 +425,12 @@ impl Viewport {
                     .filter(|surface| surface.selected)
                     .map(|surface| surface.id)
             )
+            .chain(
+                self.imported_meshes
+                    .iter()
+                    .filter(|mesh| mesh.selected)
+                    .map(|mesh| mesh.id)
+            )
             .collect();
         self.rotate_objects_by_ids(&object_ids, degrees, mode)
     }
@@ -453,6 +471,13 @@ impl Viewport {
                 points.extend(row.iter().map(|control_point| control_point.point));
             }
         }
+        for mesh in self
+            .imported_meshes
+            .iter()
+            .filter(|mesh| object_ids.contains(&mesh.id))
+        {
+            points.extend(mesh.triangles.iter().flat_map(|triangle| triangle.iter().copied()));
+        }
         if points.is_empty() {
             return 0;
         }
@@ -483,7 +508,12 @@ impl Viewport {
             .iter()
             .filter(|surface| object_ids.contains(&surface.id))
             .count();
-        if polyline_count + surface_count == 0 {
+        let mesh_count = self
+            .imported_meshes
+            .iter()
+            .filter(|mesh| object_ids.contains(&mesh.id))
+            .count();
+        if polyline_count + surface_count + mesh_count == 0 {
             return 0;
         }
         self.save_undo_state();
@@ -505,8 +535,20 @@ impl Viewport {
                 }
             }
         }
+        for mesh in self
+            .imported_meshes
+            .iter_mut()
+            .filter(|mesh| object_ids.contains(&mesh.id))
+        {
+            mesh.triangles = Arc::new(
+                mesh.triangles
+                    .iter()
+                    .map(|triangle| triangle.map(|point| pivot + rotation.rotate_vector(point - pivot)))
+                    .collect(),
+            );
+        }
         self.rebuild_vertices();
-        polyline_count + surface_count
+        polyline_count + surface_count + mesh_count
     }
     fn is_closed_shape(vertices: &[Vector3<f32>]) -> bool {
         vertices.len() >= 4 && (vertices[0] - vertices[vertices.len() - 1]).magnitude2() < 0.0001
@@ -885,6 +927,8 @@ impl Viewport {
         self.hist_entities.save_undo();
         self.hist_surfaces.current = self.nurbs_surfaces.clone();
         self.hist_surfaces.save_undo();
+        self.hist_imported_meshes.current = self.imported_meshes.clone();
+        self.hist_imported_meshes.save_undo();
     }
     fn restore_history_state(&mut self) {
         self.selected_entity = self
@@ -897,12 +941,19 @@ impl Viewport {
                     .iter()
                     .find(|surface| surface.selected)
                     .map(|surface| surface.id)
+            })
+            .or_else(|| {
+                self.imported_meshes
+                    .iter()
+                    .find(|mesh| mesh.selected)
+                    .map(|mesh| mesh.id)
             });
         self.next_entity = self
             .entities
             .iter()
             .map(|entity| entity.id)
             .chain(self.nurbs_surfaces.iter().map(|surface| surface.id))
+            .chain(self.imported_meshes.iter().map(|mesh| mesh.id))
             .max()
             .map(|id| id + 1)
             .unwrap_or(0);
@@ -932,26 +983,32 @@ impl Viewport {
 
         self.hist_entities.current = self.entities.clone();
         self.hist_surfaces.current = self.nurbs_surfaces.clone();
+        self.hist_imported_meshes.current = self.imported_meshes.clone();
 
         if !self.hist_entities.undo() {
             return false;
         }
         let _ = self.hist_surfaces.undo();
+        let _ = self.hist_imported_meshes.undo();
         self.entities = self.hist_entities.current.clone();
         self.nurbs_surfaces = self.hist_surfaces.current.clone();
+        self.imported_meshes = self.hist_imported_meshes.current.clone();
         self.restore_history_state();
         true
     }
     pub fn redo_scene(&mut self) -> bool {
         self.hist_entities.current = self.entities.clone();
         self.hist_surfaces.current = self.nurbs_surfaces.clone();
+        self.hist_imported_meshes.current = self.imported_meshes.clone();
 
         if !self.hist_entities.redo() {
             return false;
         }
         let _ = self.hist_surfaces.redo();
+        let _ = self.hist_imported_meshes.redo();
         self.entities = self.hist_entities.current.clone();
         self.nurbs_surfaces = self.hist_surfaces.current.clone();
+        self.imported_meshes = self.hist_imported_meshes.current.clone();
         self.restore_history_state();
         true
     }
@@ -1045,6 +1102,7 @@ impl Viewport {
         Self {
             hist_entities: ShapeUndoStore::new(Vec::new()),
             hist_surfaces: ShapeUndoStore::new(Vec::new()),
+            hist_imported_meshes: ShapeUndoStore::new(Vec::new()),
             entities: Vec::new(),
             active_polyline: Vec::new(),
             preview_point: None,
@@ -1071,6 +1129,7 @@ impl Viewport {
             move_anchor: None,
             move_snapshots: Vec::new(),
             move_surface_snapshots: Vec::new(),
+            move_mesh_snapshots: Vec::new(),
             point_vertices: Vec::new(),
             next_entity: 0,
             camera,
@@ -1092,6 +1151,7 @@ impl Viewport {
             text_entities: Vec::new(),
             nurbs_curves: Vec::new(),
             nurbs_surfaces: Vec::new(),
+            imported_meshes: Vec::new(),
             solids: Vec::new(),
             gumball: None,
         }
@@ -1267,6 +1327,29 @@ impl Viewport {
         }
         min_t
     }
+
+    fn imported_mesh_hit_test(
+        &self,
+        mesh: &ImportedMeshEntity,
+        mouse: cgmath::Vector2<f32>,
+    ) -> Option<f32> {
+        let ray = self.camera.screen_to_ray(
+            mouse,
+            Vector2::new(self.width as f32, self.height as f32),
+        )?;
+        mesh.triangles
+            .iter()
+            .filter_map(|triangle| {
+                ray.intersect_triangle(
+                    Point3::new(triangle[0].x, triangle[0].y, triangle[0].z),
+                    Point3::new(triangle[1].x, triangle[1].y, triangle[1].z),
+                    Point3::new(triangle[2].x, triangle[2].y, triangle[2].z),
+                )
+            })
+            .filter(|distance| *distance >= 0.0)
+            .min_by(f32::total_cmp)
+    }
+
     pub fn render_text(
         entity: &TextEntity,
         font_data: &[u8],
@@ -1435,6 +1518,8 @@ impl Viewport {
         self.hist_entities.save_undo();
         self.hist_surfaces.current = self.nurbs_surfaces.clone();
         self.hist_surfaces.save_undo();
+        self.hist_imported_meshes.current = self.imported_meshes.clone();
+        self.hist_imported_meshes.save_undo();
         let shape = PolyLine {
             id: self.next_entity,
             vertices: points.to_vec(),
@@ -1720,10 +1805,25 @@ impl Viewport {
         for surface in &mut self.nurbs_surfaces {
             surface.selected = ids.contains(&surface.id);
         }
+        for mesh in &mut self.imported_meshes {
+            mesh.selected = ids.contains(&mesh.id);
+        }
         self.selected_entity = self.entities
             .iter()
             .find(|entity| entity.selected)
-            .map(|entity| entity.id);
+            .map(|entity| entity.id)
+            .or_else(|| {
+                self.nurbs_surfaces
+                    .iter()
+                    .find(|surface| surface.selected)
+                    .map(|surface| surface.id)
+            })
+            .or_else(|| {
+                self.imported_meshes
+                    .iter()
+                    .find(|mesh| mesh.selected)
+                    .map(|mesh| mesh.id)
+            });
         self.rebuild_vertices();
     }
     pub fn select_shape(
@@ -1792,6 +1892,15 @@ impl Viewport {
                 }
             }
         }
+        for mesh in &self.imported_meshes {
+            if let Some(t) = self.imported_mesh_hit_test(mesh, mouse_px) {
+                if t < closest_3d_dist {
+                    closest_3d_dist = t;
+                    closest = Some(mesh.id);
+                    min_dist_sq = 0.0;
+                }
+            }
+        }
         if additive {
             if let Some(id) = closest {
                 if let Some(entity) = self.entities.iter_mut().find(|entity| entity.id == id) {
@@ -1800,6 +1909,10 @@ impl Viewport {
                     self.nurbs_surfaces.iter_mut().find(|surface| surface.id == id)
                 {
                     surface.selected = true;
+                } else if let Some(mesh) =
+                    self.imported_meshes.iter_mut().find(|mesh| mesh.id == id)
+                {
+                    mesh.selected = true;
                 } else if let Some(curve) =
                     self.nurbs_curves.iter_mut().find(|curve| curve.id == id)
                 {
@@ -1812,6 +1925,9 @@ impl Viewport {
             }
             for surface in &mut self.nurbs_surfaces {
                 surface.selected = Some(surface.id) == closest;
+            }
+            for mesh in &mut self.imported_meshes {
+                mesh.selected = Some(mesh.id) == closest;
             }
             for curve in &mut self.nurbs_curves {
                 curve.selected = Some(curve.id) == closest;
@@ -1830,6 +1946,12 @@ impl Viewport {
                     .iter()
                     .find(|surface| surface.selected)
                     .map(|surface| surface.id)
+            })
+            .or_else(|| {
+                self.imported_meshes
+                    .iter()
+                    .find(|mesh| mesh.selected)
+                    .map(|mesh| mesh.id)
             })
             .or_else(|| {
                 self.solids
@@ -1852,6 +1974,23 @@ impl Viewport {
                 Vector3::new(0.0, 0.0, 0.0)
             };
             self.gumball = Some(Gumball::new(Point3::new(centroid.x, centroid.y, centroid.z), 0.25));
+        } else if let Some(mesh) = self.imported_meshes.iter().find(|mesh| mesh.selected) {
+            let (sum, count) = mesh
+                .triangles
+                .iter()
+                .flat_map(|triangle| triangle.iter())
+                .fold((Vector3::zero(), 0usize), |(sum, count), point| {
+                    (sum + *point, count + 1)
+                });
+            if count > 0 {
+                let center = sum / count as f32;
+                self.gumball = Some(Gumball::new(
+                    Point3::new(center.x, center.y, center.z),
+                    0.25,
+                ));
+            } else {
+                self.gumball = None;
+            }
         } else if let Some(solid) = self.solids.iter().find(|s| s.selected) {
             let origin = solid.origin;
             self.gumball = Some(Gumball::new(Point3::new(origin[0], origin[1], origin[2]), 0.25))
@@ -2022,6 +2161,36 @@ impl Viewport {
             }
         }
 
+        for mesh in &self.imported_meshes {
+            let projected: Vec<Option<Vector2<f32>>> = mesh
+                .triangles
+                .iter()
+                .flat_map(|triangle| triangle.iter().copied())
+                .map(|point| self.world_to_screen(point))
+                .collect();
+            let selected = if window_selection {
+                !projected.is_empty()
+                    && projected.iter().all(|point| {
+                        point.map(|point| Self::point_in_rect(point, min, max)).unwrap_or(false)
+                    })
+            } else {
+                projected.chunks_exact(3).any(|triangle| {
+                    let (Some(a), Some(b), Some(c)) = (triangle[0], triangle[1], triangle[2]) else {
+                        return false;
+                    };
+                    Self::point_in_rect(a, min, max)
+                        || Self::point_in_rect(b, min, max)
+                        || Self::point_in_rect(c, min, max)
+                        || Self::segment_intersects_rect(a, b, min, max)
+                        || Self::segment_intersects_rect(b, c, min, max)
+                        || Self::segment_intersects_rect(c, a, min, max)
+                })
+            };
+            if selected {
+                selected_ids.push(mesh.id);
+            }
+        }
+
         for entity in &mut self.entities {
             entity.selected = if additive {
                 entity.selected || selected_ids.contains(&entity.id)
@@ -2036,6 +2205,13 @@ impl Viewport {
                 selected_ids.contains(&surface.id)
             };
         }
+        for mesh in &mut self.imported_meshes {
+            mesh.selected = if additive {
+                mesh.selected || selected_ids.contains(&mesh.id)
+            } else {
+                selected_ids.contains(&mesh.id)
+            };
+        }
         self.selected_entity = self
             .entities
             .iter()
@@ -2043,6 +2219,12 @@ impl Viewport {
             .map(|item| item.id)
             .or_else(|| {
                 self.nurbs_surfaces
+                    .iter()
+                    .find(|item| item.selected)
+                    .map(|item| item.id)
+            })
+            .or_else(|| {
+                self.imported_meshes
                     .iter()
                     .find(|item| item.selected)
                     .map(|item| item.id)
@@ -2057,6 +2239,11 @@ impl Viewport {
                 .iter()
                 .filter(|surface| surface.selected)
                 .count()
+            + self
+                .imported_meshes
+                .iter()
+                .filter(|mesh| mesh.selected)
+                .count()
     }
 
     pub fn delete_selected(&mut self) -> usize {
@@ -2070,18 +2257,24 @@ impl Viewport {
             .iter()
             .filter(|surface| surface.selected)
             .count();
+        let deleted_meshes = self
+            .imported_meshes
+            .iter()
+            .filter(|mesh| mesh.selected)
+            .count();
         let deleted_solids = self
             .solids
             .iter()
             .filter(|s| s.selected)
             .count();
-        let deleted = deleted_polylines + deleted_surfaces + deleted_solids;
+        let deleted = deleted_polylines + deleted_surfaces + deleted_meshes + deleted_solids;
         if deleted == 0 {
             return 0;
         }
         self.save_undo_state();
         self.entities.retain(|entity| !entity.selected);
         self.nurbs_surfaces.retain(|surface| !surface.selected);
+        self.imported_meshes.retain(|mesh| !mesh.selected);
         self.solids.retain(|s| !s.selected);
         self.selected_entity = None;
         self.rebuild_vertices();
@@ -2109,12 +2302,17 @@ impl Viewport {
             .iter()
             .filter(|surface| object_ids.contains(&surface.id))
             .count();
+        let mesh_count = self
+            .imported_meshes
+            .iter()
+            .filter(|mesh| object_ids.contains(&mesh.id))
+            .count();
         let solid_count = self
             .solids
             .iter()
             .filter(|s| object_ids.contains(&s.id))
             .count();
-        let moved_count = polyline_count + surface_count + solid_count;
+        let moved_count = polyline_count + surface_count + mesh_count + solid_count;
         if moved_count == 0 {
             return 0;
         }
@@ -2142,6 +2340,16 @@ impl Viewport {
                 solid.origin[2] += offset.z;
             }
         }
+        for mesh in &mut self.imported_meshes {
+            if object_ids.contains(&mesh.id) {
+                mesh.triangles = Arc::new(
+                    mesh.triangles
+                        .iter()
+                        .map(|triangle| triangle.map(|point| point + offset))
+                        .collect(),
+                );
+            }
+        }
         self.rebuild_vertices();
         moved_count
     }
@@ -2156,18 +2364,24 @@ impl Viewport {
             .iter()
             .filter(|surface| ids.contains(&surface.id))
             .count();
+        let deleted_meshes = self
+            .imported_meshes
+            .iter()
+            .filter(|mesh| ids.contains(&mesh.id))
+            .count();
         let deleted_solids = self
             .solids
             .iter()
             .filter(|s| ids.contains(&s.id))
             .count();
-        let deleted = deleted_polylines + deleted_surfaces + deleted_solids;
+        let deleted = deleted_polylines + deleted_surfaces + deleted_meshes + deleted_solids;
         if deleted == 0 {
             return 0;
         }
         self.save_undo_state();
         self.entities.retain(|entity| !ids.contains(&entity.id));
         self.nurbs_surfaces.retain(|surface| !ids.contains(&surface.id));
+        self.imported_meshes.retain(|mesh| !ids.contains(&mesh.id));
         self.solids.retain(|s| !ids.contains(&s.id));
         self.selected_entity = self
             .entities
@@ -2179,6 +2393,12 @@ impl Viewport {
                     .iter()
                     .find(|surface| surface.selected)
                     .map(|surface| surface.id)
+            })
+            .or_else(|| {
+                self.imported_meshes
+                    .iter()
+                    .find(|mesh| mesh.selected)
+                    .map(|mesh| mesh.id)
             });
         self.rebuild_vertices();
         deleted
@@ -2260,7 +2480,12 @@ impl Viewport {
                 .nurbs_surfaces
                 .iter()
                 .filter(|surface| surface.selected)
-                .any(|surface| self.surface_hit_test(surface, mouse).is_some());
+                .any(|surface| self.surface_hit_test(surface, mouse).is_some())
+            || self
+                .imported_meshes
+                .iter()
+                .filter(|mesh| mesh.selected)
+                .any(|mesh| self.imported_mesh_hit_test(mesh, mouse).is_some());
         let screen_size = Vector2::new(self.width as f32, self.height as f32);
         let mut hit_gumball = false;
         if let Some(ray) = self.camera.screen_to_ray(mouse, screen_size) {
@@ -2277,7 +2502,7 @@ impl Viewport {
             self.move_anchor = None;
             self.move_snapshots.clear();
             self.move_surface_snapshots.clear();
-            self.move_surface_snapshots.clear();
+            self.move_mesh_snapshots.clear();
             return false;
         }
         self.move_axis_snapshots = self
@@ -2300,6 +2525,12 @@ impl Viewport {
                 .iter()
                 .filter(|surface| surface.selected)
                 .map(|surface| (surface.id, surface.surface.clone()))
+                .collect();
+            self.move_mesh_snapshots = self
+                .imported_meshes
+                .iter()
+                .filter(|mesh| mesh.selected)
+                .map(|mesh| (mesh.id, mesh.triangles.clone()))
                 .collect();
         }
         self.move_anchor.is_some()
@@ -2357,6 +2588,20 @@ impl Viewport {
                         control_point.point = rotate_point(control_point.point);
                     }
                 }
+            }
+        }
+        for (mesh_id, original_triangles) in &self.move_mesh_snapshots {
+            if let Some(mesh) = self
+                .imported_meshes
+                .iter_mut()
+                .find(|mesh| mesh.id == *mesh_id)
+            {
+                mesh.triangles = Arc::new(
+                    original_triangles
+                        .iter()
+                        .map(|triangle| triangle.map(rotate_point))
+                        .collect(),
+                );
             }
         }
     }
@@ -2446,6 +2691,20 @@ impl Viewport {
                 }
             }
         }
+        for (mesh_id, original_triangles) in &self.move_mesh_snapshots {
+            if let Some(mesh) = self
+                .imported_meshes
+                .iter_mut()
+                .find(|mesh| mesh.id == *mesh_id)
+            {
+                mesh.triangles = Arc::new(
+                    original_triangles
+                        .iter()
+                        .map(|triangle| triangle.map(|point| point + offset))
+                        .collect(),
+                );
+            }
+        }
         if let Some((axis, angle, pivot)) = pending_rotation {
             self.rotate_gumball_snapshots(axis, angle, pivot);}
         if let Some(gumball) = &mut self.gumball {
@@ -2466,6 +2725,7 @@ impl Viewport {
         self.move_anchor = None;
         self.move_snapshots.clear();
         self.move_surface_snapshots.clear();
+        self.move_mesh_snapshots.clear();
     }
     pub fn world_to_screen(&self, world_pos: cgmath::Vector3<f32>) -> Option<cgmath::Vector2<f32>> {
         let view_proj = self.camera.build_view_projection_matrix();
@@ -2560,6 +2820,29 @@ impl Viewport {
             }
             let mesh_verts = entity.surface.sample_mesh(entity.u_subdivisions, entity.v_subdivisions, draw_color);
             new_vertices.extend(mesh_verts);
+        }
+        for mesh in &self.imported_meshes {
+            let draw_color = if mesh.selected {
+                [1.0, 0.8, 0.0, 1.0]
+            } else {
+                mesh.color
+            };
+            for triangle in mesh.triangles.iter() {
+                let [a, b, c] = *triangle;
+                let cross = (b - a).cross(c - a);
+                let normal = if cross.magnitude2() > 1.0e-12 {
+                    cross.normalize()
+                } else {
+                    Vector3::unit_y()
+                };
+                for point in [a, b, c] {
+                    new_vertices.push(Vertex {
+                        position: [point.x, point.y, point.z],
+                        coords: [normal.x, normal.y, normal.z],
+                        color: draw_color,
+                    });
+                }
+            }
         }
         for solid in &self.solids {
             let draw_color = if solid.selected {
@@ -2874,36 +3157,22 @@ impl Viewport {
         triangles: &[[Vector3<f32>; 3]],
         color: [f32; 4],
     ) -> usize {
-        use crate::nurbs::NurbsControlPoint;
-
-        for triangle in triangles {
-            let point = |p: Vector3<f32>| NurbsControlPoint { point: p, weight: 1.0 };
-            let surface = NurbsSurface {
-                degree_u: 1,
-                degree_v: 1,
-                knots_u: NurbsCurve::clamped_knot_vector(2, 1),
-                knots_v: NurbsCurve::clamped_knot_vector(2, 1),
-                control_points: vec![
-                    vec![point(triangle[0]), point(triangle[1])],
-                    vec![point(triangle[2]), point(triangle[2])],
-                ],
-            };
-            let id = self.next_entity;
-            self.next_entity += 1;
-            self.nurbs_surfaces.push(NurbsSurfaceEntity {
-                id,
-                surface,
-                color,
-                selected: false,
-                u_subdivisions: 2,
-                v_subdivisions: 2,
-            });
+        if triangles.is_empty() {
+            return 0;
         }
 
-        if !triangles.is_empty() {
-            self.rebuild_vertices();
-        }
-        triangles.len()
+        self.save_undo_state();
+        let id = self.next_entity;
+        self.next_entity += 1;
+        let triangle_count = triangles.len();
+        self.imported_meshes.push(ImportedMeshEntity {
+            id,
+            triangles: Arc::new(triangles.to_vec()),
+            color,
+            selected: false,
+        });
+        self.rebuild_vertices();
+        triangle_count
     }
     pub fn extrude_selected(&mut self, height:f32) -> usize {
         if !height.is_finite() || height.abs() > 100_000.0 {
@@ -3039,6 +3308,10 @@ impl Viewport {
             self.hist_entities.current = self.entities.clone();
             self.hist_surfaces.undo.pop();
             self.hist_surfaces.current = self.nurbs_surfaces.clone();
+            if !self.hist_imported_meshes.undo.is_empty() {
+                self.hist_imported_meshes.undo.pop();
+            }
+            self.hist_imported_meshes.current = self.imported_meshes.clone();
         }
         self.rebuild_vertices();
     }
@@ -4539,6 +4812,21 @@ impl Viewport {
                 [1.0, 1.0, 1.0, 1.0],
             );
             push_vert_tri(&mesh_verts, &mut triangles);
+        }
+        for mesh in &self.imported_meshes {
+            for triangle in mesh.triangles.iter() {
+                let v0 = [triangle[0].x, triangle[0].y, triangle[0].z];
+                let v1 = [triangle[1].x, triangle[1].y, triangle[1].z];
+                let v2 = [triangle[2].x, triangle[2].y, triangle[2].z];
+                let cross = (triangle[1] - triangle[0]).cross(triangle[2] - triangle[0]);
+                let normal = if cross.magnitude2() > f32::EPSILON {
+                    let n = cross.normalize();
+                    [n.x, n.y, n.z]
+                } else {
+                    [0.0, 1.0, 0.0]
+                };
+                triangles.push(Triangle { v0, v1, v2, normal });
+            }
         }
         for text in &self.text_entities {
             if text.depth > 0.0 {

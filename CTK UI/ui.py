@@ -513,9 +513,6 @@ def importmeshcommand():
         import trimesh
         scene = trimesh.load_scene(path)
         mesh = scene.to_mesh()
-        max_faces = 8000
-        if len(mesh.faces) > max_faces:
-            mesh = mesh.simplify_quadric_decimation(face_count=max_faces)
         if mesh.is_empty or len(mesh.faces) == 0:
             writehistory(">Import Mesh\nNo mesh faces found in the file")
             return
