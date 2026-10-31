@@ -15,6 +15,10 @@ import aiconfig
 from pathlib import Path
 import os
 from armor_core import ViewportRenderer
+connectfirstid = None
+connectfirstpoints = []
+connectsecondid = None
+connectsecondpoints = []
 ctk.set_appearance_mode('dark')
 CONTROL_HOVER_BG = "#080808"
 CONTROL_ACTIVE_BG = "#030303"
@@ -1705,6 +1709,22 @@ def startcurve(event=None):
     writehistory(
         "> Curve\nSelect curve points"
     )
+    viewport.configure(cursor='crosshair')
+    viewport.focus_set()
+def startconnect(event=None):
+    global activecommand
+    global connectfirstid, connectfirstpoints
+    global connectsecondid, connectsecondpoints
+    connectfirstid = None
+    connectfirstpoints = []
+    connectsecondid = None
+    connectsecondpoints = []
+    activecommand = 'connect'
+    command.delete(0, 'end')
+    command.configure(placeholder_text='Connect: click 3 points around the first hole')
+    writehistory(
+        "> Connect\nClick three points aroudnt he first hole rim,"
+        "then three points around the second")
     viewport.configure(cursor='crosshair')
     viewport.focus_set()
 def startjoin(event=None):
