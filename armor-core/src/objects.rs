@@ -1,4 +1,5 @@
 use std::f32::consts::PI;
+use crate::csg::CSG;
 
 use crate::{Vertex, exporter::Triangle};
 
@@ -10,6 +11,7 @@ pub enum BaseShape {
     Sphere { radius: f32, rings: usize, sectors: usize },
     Cone { radius: f32, height: f32, subdivisions: usize },
     Torus { outer_radius: f32, inner_radius: f32, outer_subdivisions: usize, inner_subdivisions: usize },
+    CustomMesh { triangles: Vec<Triangle> },
 }
 
 #[derive(Clone, Debug)]
@@ -49,6 +51,30 @@ impl SolidEntity {
             BaseShape::Torus { outer_radius, inner_radius, outer_subdivisions, inner_subdivisions } => {
                 Self::create_torus(self.origin, *outer_radius, *inner_radius, *outer_subdivisions, *inner_subdivisions)
             }
+            BaseShape::CustomMesh { triangles } => {
+                triangles.iter().map(|tri| {
+                    Triangle {
+                        v0: [tri.v0[0] + self.origin[0], tri.v0[1] + self.origin[1], tri.v0[2] + self.origin[2]],
+                        v1: [tri.v1[0] + self.origin[0], tri.v1[1] + self.origin[1], tri.v1[2] + self.origin[2]],
+                        v2: [tri.v2[0] + self.origin[0], tri.v2[1] + self.origin[1], tri.v2[2] + self.origin[2]],
+                        normal: tri.normal,
+                    }
+                }).collect()
+            }
+        }
+    }
+    pub fn to_csg(&self) -> CSG {
+        let tris = self.to_tris();
+        CSG::from_tris(&tris)
+    }
+    pub fn from_csg(id: usize, csg: &CSG, color: [f32; 4]) -> Self {
+        let tris = csg.to_tris();
+        Self {
+            id,
+            origin: [0.0, 0.0, 0.0],
+            shape: BaseShape::CustomMesh { triangles: tris },
+            color,
+            selected: false,
         }
     }
     pub fn create_box(origin: [f32; 3], w: f32, h: f32, d: f32) -> Vec<Triangle> {
@@ -231,5 +257,30 @@ impl SolidEntity {
             }
         }
         t
+    }
+    pub fn bounding_box(&self) -> ([f32; 3], [f32; 3]) {
+        let tris = self.to_tris();
+        if tris.is_empty() {
+            return (self.origin, self.origin);
+        }
+        let mut min = [f32::INFINITY; 3];
+        let mut max = [f32::NEG_INFINITY; 3];
+        for tri in &tris {
+            for v in &[tri.v0, tri.v1, tri.v2] {
+                for i in 0..3 {
+                    if v[i] < min[i] {
+                        min[i] = v[i];
+                    }
+                    if v[i] > max[i] {
+                        max[i] = v[i];
+                    }
+                }
+            }
+        }
+        (min, max)
+    }
+    pub fn centroid(&self) -> [f32; 3] {
+        let (min, max) = self.bounding_box();
+        return [(min[0] + max[0]) * 0.5, (min[1] + max[1]) * 0.5, (min[2] + max[2]) * 0.5];
     }
 }

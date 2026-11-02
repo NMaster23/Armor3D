@@ -218,6 +218,7 @@ pub struct Viewport {
     pub imported_meshes: Vec<ImportedMeshEntity>,
     pub solids: Vec<SolidEntity>,
     pub gumball: Option<Gumball>,
+    pub gumball_rot_info: Option<(String, f32)>,
 }
 
 impl Viewport {
@@ -453,6 +454,9 @@ impl Viewport {
             return 0;
         }
         let axis: Vector3<f32> = match mode {
+            "x" => Vector3::unit_x(),
+            "y" => Vector3::unit_y(),
+            "z" => Vector3::unit_z(),
             "xy" => {
                 if self.front_view {
                     Vector3::unit_z()
@@ -460,7 +464,6 @@ impl Viewport {
                     Vector3::unit_y()
                 }
             }
-            "z" => Vector3::unit_z(),
             _=> return 0,
         };
         let mut points = Vec::new();
@@ -1164,6 +1167,7 @@ impl Viewport {
             imported_meshes: Vec::new(),
             solids: Vec::new(),
             gumball: None,
+            gumball_rot_info: None,
         }
     }
 }
@@ -2263,6 +2267,15 @@ impl Viewport {
                 }
             }
         }
+        for solid in &self.solids {
+            if let Some(t) = self.solid_hit_test(solid, mouse_px) {
+                if t < closest_3d_dist {
+                    closest_3d_dist = t;
+                    closest = Some(solid.id);
+                    min_dist_sq = 0.0;
+                }
+            }
+        }
         let connected_selection = closest
             .map(|id| self.connected_ids(id))
             .unwrap_or_default();
@@ -2365,7 +2378,7 @@ impl Viewport {
                 self.gumball = None;
             }
         } else if let Some(solid) = self.solids.iter().find(|s| s.selected) {
-            let origin = solid.origin;
+            let origin = solid.centroid();
             self.gumball = Some(Gumball::new(Point3::new(origin[0], origin[1], origin[2]), 0.25))
         } else if let Some(e) = self.entities.iter().find(|e| e.selected) {
             if !e.vertices.is_empty() {
@@ -3021,24 +3034,30 @@ impl Viewport {
                     }
                     gumball::GumballHandle::rotate_x => {
                         if let Some(start) = gumball.drag_start_point {
+                            let angle_rad = (y - start.y) * 0.02;
                             pending_rotation = Some((
-                                Vector3::unit_x(), (y-start.y) * 0.02, gumball.drag_start_origin
+                                Vector3::unit_x(), angle_rad, gumball.drag_start_origin
                             ));
+                            self.gumball_rot_info = Some(("x".to_string(), angle_rad.to_degrees()));
                             offset = Vector3::new(0.0, 0.0, 0.0);
                         }
                     }
                     gumball::GumballHandle::rotate_y => {
                         if let Some(start) = gumball.drag_start_point {
+                            let angle_rad = (x - start.x) * 0.02;
                             pending_rotation = Some((
                                 Vector3::unit_y(), (x-start.x) * 0.02, gumball.drag_start_origin
                             ));
+                            self.gumball_rot_info = Some(("x".to_string(), angle_rad.to_degrees()));
                             offset = Vector3::new(0.0, 0.0, 0.0);
                         }
                     }
                     gumball::GumballHandle::rotate_z => {
                         if let Some(start) = gumball.drag_start_point {
+                            let angle_rad = (start.x - x) * 0.02;
                             pending_rotation = Some((
                                 Vector3::unit_z(), (start.x-x) * 0.02, gumball.drag_start_origin));
+                            self.gumball_rot_info = Some(("x".to_string(), angle_rad.to_degrees()));
                             offset = Vector3::new(0.0, 0.0, 0.0);
                         }
                     }
@@ -5396,6 +5415,104 @@ impl Viewport {
             outer_subdivisions,
             inner_subdivisions,
         }, [0.7, 0.3, 0.8, 1.0])
+    }
+    pub fn bool_union(&mut self, id_a: usize, id_b: usize) -> Option<usize> {
+        let s_a = self.solids.iter().find(|s| s.id == id_a)?.clone();
+        let s_b = self.solids.iter().find(|s| s.id == id_b)?.clone();
+        self.save_undo_state();
+        let csg_a = s_a.to_csg();
+        let csg_b = s_b.to_csg();
+        let result_csg = csg_a.union(&csg_b);
+        self.solids.retain(|s| s.id != id_a && s.id != id_b);
+        let id = self.next_entity;
+        self.next_entity += 1;
+        let mut new_solid = SolidEntity::from_csg(id, &result_csg, s_a.color);
+        new_solid.selected = true;
+        self.solids.push(new_solid);
+        self.selected_entity = Some(id);
+        self.rebuild_vertices();
+        Some(id)
+    }
+    pub fn bool_difference(&mut self, id_a: usize, id_b: usize) -> Option<usize> {
+        let s_a = self.solids.iter().find(|s| s.id == id_a)?.clone();
+        let s_b = self.solids.iter().find(|s| s.id == id_b)?.clone();
+        self.save_undo_state();
+        let csg_a = s_a.to_csg();
+        let csg_b = s_b.to_csg();
+        let result_csg = csg_a.difference(&csg_b);
+        self.solids.retain(|s| s.id != id_a && s.id != id_b);
+        let id = self.next_entity;
+        self.next_entity += 1;
+        let mut new_solid = SolidEntity::from_csg(id, &result_csg, s_a.color);
+        new_solid.selected = true;
+        self.solids.push(new_solid);
+        self.selected_entity = Some(id);
+        self.rebuild_vertices();
+        Some(id)
+    }
+    pub fn bool_intersection(&mut self, id_a: usize, id_b: usize) -> Option<usize> {
+        let s_a = self.solids.iter().find(|s| s.id == id_a)?.clone();
+        let s_b = self.solids.iter().find(|s| s.id == id_b)?.clone();
+        self.save_undo_state();
+        let csg_a = s_a.to_csg();
+        let csg_b = s_b.to_csg();
+        let result_csg = csg_a.intersect(&csg_b);
+        self.solids.retain(|s| s.id != id_a && s.id != id_b);
+        let id = self.next_entity;
+        self.next_entity += 1;
+        let mut new_solid = SolidEntity::from_csg(id, &result_csg, s_a.color);
+        new_solid.selected = true;
+        self.solids.push(new_solid);
+        self.selected_entity = Some(id);
+        self.rebuild_vertices();
+        Some(id)
+    }
+    pub fn bool_union_selected(&mut self) -> Option<usize> {
+        let selected: Vec<usize> = self.solids.iter().filter(|s| s.selected).map(|s| s.id).collect();
+        if selected.len() >= 2 {
+            self.bool_union(selected[0], selected[1])
+        } else {
+            None
+        }
+    }
+    pub fn bool_difference_selected(&mut self) -> Option<usize> {
+        let selected: Vec<usize> = self.solids.iter().filter(|s| s.selected).map(|s| s.id).collect();
+        if selected.len() >= 2 {
+            self.bool_difference(selected[0], selected[1])
+        } else {
+            None
+        }
+    }
+    pub fn bool_intersection_selected(&mut self) -> Option<usize> {
+        let selected: Vec<usize> = self.solids.iter().filter(|s| s.selected).map(|s| s.id).collect();
+        if selected.len() >= 2 {
+            self.bool_intersection(selected[0], selected[1])
+        } else {
+            None
+        }
+    }
+    pub fn solid_hit_test(&self, solid: &SolidEntity, mouse: Vector2<f32>) -> Option<f32> {
+        let ray = self.camera.screen_to_ray(
+            mouse,
+            Vector2::new(self.width as  f32, self.height as f32)
+        )?;
+        let tris = solid.to_tris();
+        let mut min_t: Option<f32> = None;
+        for tri in tris {
+            let p0 = Point3::new(tri.v0[0], tri.v0[1], tri.v0[2]);
+            let p1 = Point3::new(tri.v1[0], tri.v1[1], tri.v1[2]);
+            let p2 = Point3::new(tri.v2[0], tri.v2[1], tri.v2[2]);
+            if let Some(t) = ray.intersect_triangle(p0, p1, p2) {
+                if let Some(cur) = min_t {
+                    if t < cur {
+                        min_t = Some(t);
+                    }
+                } else {
+                    min_t = Some(t);
+                }
+            }
+        }
+        min_t
     }
 }
 

@@ -61,8 +61,8 @@ impl Gumball {
         let tiles = [0.9, 0.8, 0.2, 0.8];
         let axes = [
             (Vector3::unit_x(), Vector3::unit_y(), Vector3::unit_z(), red, GumballHandle::translate_x),
-            (Vector3::unit_y(), Vector3::unit_z(), Vector3::unit_x(), green, GumballHandle::translate_y),
-            (Vector3::unit_z(), Vector3::unit_x(), Vector3::unit_y(), blue, GumballHandle::translate_z),
+            (Vector3::unit_y(), Vector3::unit_z(), Vector3::unit_x(), blue, GumballHandle::translate_y),
+            (Vector3::unit_z(), Vector3::unit_x(), Vector3::unit_y(), green, GumballHandle::translate_z),
         ];
         for (dir, u, v, color, _handle) in axes {
             let shaft_end = self.origin + dir * (self.size * 0.85);
@@ -101,14 +101,14 @@ impl Gumball {
             let r_out0 = self.origin + Vector3::new(0.0, (arc_r + arc_thick) * cos0, (arc_r + arc_thick) * sin0);
             let r_in1 = self.origin + Vector3::new(0.0, (arc_r - arc_thick) * cos1, (arc_r - arc_thick) * sin1);
             let r_out1 = self.origin + Vector3::new(0.0, (arc_r + arc_thick) * cos1, (arc_r + arc_thick) * sin1);
-            add_three_p(r_in0, r_out0, r_out1, [1.0, 0.0, 0.0], red);
-            add_three_p(r_in0, r_out1, r_in1, [1.0, 0.0, 0.0], red);
+            add_three_p(r_in0, r_out0, r_out1, [1.0, 0.0, 0.0], blue);
+            add_three_p(r_in0, r_out1, r_in1, [1.0, 0.0, 0.0], blue);
             let b_in0 = self.origin + Vector3::new((arc_r - arc_thick) * cos0, (arc_r - arc_thick) * sin0, 0.0);
             let b_out0 = self.origin + Vector3::new((arc_r + arc_thick) * cos0, (arc_r + arc_thick) * sin0, 0.0);
             let b_in1 = self.origin + Vector3::new((arc_r - arc_thick) * cos1, (arc_r - arc_thick) * sin1, 0.0);
             let b_out1 = self.origin + Vector3::new((arc_r + arc_thick) * cos1, (arc_r + arc_thick) * sin1, 0.0);
-            add_three_p(b_in0, b_out0, b_out1, [0.0, 0.0, 1.0], blue);
-            add_three_p(b_in0, b_out1, b_in1, [0.0, 0.0, 1.0], blue);
+            add_three_p(b_in0, b_out0, b_out1, [0.0, 0.0, 1.0], red);
+            add_three_p(b_in0, b_out1, b_in1, [0.0, 0.0, 1.0], red);
         }
         verts
     }

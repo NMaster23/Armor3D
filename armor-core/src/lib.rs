@@ -6,6 +6,7 @@ pub mod nurbs;
 pub mod gumball;
 pub mod exporter;
 pub mod objects;
+pub mod csg;
 
 use cgmath::{InnerSpace, Quaternion, Vector3};
 use glyphon::Family;
@@ -119,6 +120,24 @@ pub fn handle_input(pos: (f64, f64), button: &str, vec: (f32, f32, f32)) -> PyRe
 
 #[pymethods]
 impl ViewportRenderer {
+    pub fn bool_union(&mut self, id_a: usize, id_b: usize) -> Option<usize> {
+        self.state.viewport.bool_union(id_a, id_b)
+    }
+    pub fn bool_difference(&mut self, id_a: usize, id_b: usize) -> Option<usize> {
+        self.state.viewport.bool_difference(id_a, id_b)
+    }
+    pub fn bool_intersection(&mut self, id_a: usize, id_b: usize) -> Option<usize> {
+        self.state.viewport.bool_intersection(id_a, id_b)
+    }
+    pub fn bool_union_selected(&mut self) -> Option<usize> {
+        self.state.viewport.bool_union_selected()
+    }
+    pub fn bool_difference_selected(&mut self) -> Option<usize> {
+        self.state.viewport.bool_difference_selected()
+    }
+    pub fn bool_intersection_selected(&mut self) -> Option<usize> {
+        self.state.viewport.bool_intersection_selected()
+    }
     pub fn export_model(&mut self) -> PyResult<Option<String>> {
         let raw_triangles = self.state.viewport.extract_triangles();
         if raw_triangles.is_empty() {
@@ -174,6 +193,17 @@ impl ViewportRenderer {
     }
     pub fn create_torus(&mut self, x: f32, y: f32, z: f32, outer_radius: f32, inner_radius: f32) -> usize {
         self.state.viewport.add_torus([x, y, z], outer_radius, inner_radius, 24, 16)
+    }
+    pub fn get_gumball_rot_info(&self) -> Option<(String, f32, f32, f32)> {
+        let (axis, deg) = self.state.viewport.gumball_rot_info.as_ref()?;
+        let gumball = self.state.viewport.gumball.as_ref()?;
+        let screen_pos = self.state.viewport.world_to_screen(
+            Vector3::new(gumball.origin.x, gumball.origin.y, gumball.origin.z)
+        )?;
+        Some((axis.clone(), *deg, screen_pos.x, screen_pos.y))
+    }
+    pub fn clear_gumball_rot_info(&mut self) {
+        self.state.viewport.gumball_rot_info = None;
     }
     #[new]
     fn new(hwnd: usize, width: u32, height: u32) -> PyResult<Self> {
@@ -516,32 +546,8 @@ impl ViewportRenderer {
     fn select_picture_box(&mut self, x1: f32, y1: f32, x2: f32, y2: f32, additive: bool) -> bool {
         self.state.select_reference_box(x1, y1, x2, y2, additive)
     }
-    fn start_arc(&mut self) {
-        self.state.viewport.start_arc();
-    }
-    fn begin_arc_start(&mut self, x: f32, y: f32) -> bool {
-        self.state.viewport.begin_arc_start(x, y)
-    }
-    fn set_arc_end(&mut self, x: f32, y:f32) -> bool {
-        self.state.viewport.set_arc_end(x, y)
-    }
-    fn update_arc_preview(&mut self, x: f32, y: f32) {
-        self.state.viewport.update_arc_preview(x, y);
-    }
-    fn set_arc_degrees(&mut self, degrees: f32) -> bool {
-        self.state.viewport.set_arc_degrees(degrees)
-    }
-    fn commit_arc(&mut self) -> bool {
-        self.state.viewport.commit_arc()
-    }
-    fn cancel_arc(&mut self) {
-        self.state.viewport.cancel_arc();
-    }
     fn clear_picture_selection(&mut self) {
         self.state.clear_reference_selection();
-    }
-    fn trim_at(&mut self, x: f32, y:f32) -> bool {
-        self.state.viewport.trim_at(x, y)
     }
     fn select_at(&mut self, x: f32, y: f32, additive: bool) -> Option<usize> {
         self.state

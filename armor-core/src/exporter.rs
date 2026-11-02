@@ -9,6 +9,7 @@ use zip::ZipWriter;
 
 const ALLOWED_EXTENSIONS: &[&str] = &["3mf", "stl", "obj"];
 
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Triangle {
     pub v0: [f32; 3],
     pub v1: [f32; 3],

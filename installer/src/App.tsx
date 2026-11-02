@@ -1,10 +1,44 @@
 import { useEffect, useState } from "react";
 import "./App.css";
-import { Card, Label, ProgressBar, ScrollShadow, Typography } from "@heroui/react";
-import { __unstable__loadDesignSystem } from "tailwindcss";
+import { Card, ProgressBar, ScrollShadow, Typography } from "@heroui/react";
+import { invoke } from "@tauri-apps/api/core";
+
+const system_checks_text = [
+  "Auditing your PATH variable and quietly judging your life choices",
+  "Asking Python 2.7 to please leave the premises",
+  "Checking if you actually have 16 GB of RAM or if Chrome is just lying to you",
+  "Scanning for abandoned node_modules folders to cannibalize for scrap metal",
+  "Consulting a 2011 forum thread marked 'Fixed it, nvm' with zero follow-up",
+  "Verifying that your CPU fan is spinning fast enough to double as a hovercraft",
+  "Negotiating an uneasy truce with your antivirus"
+];
+
+const downloading_texts = [
+  "Unstrangling stray TCP packets that arrived out of order",
+  "Downloading 400 MB of dependencies to left-pad a single string",
+  "Siphoning extra bandwidth from an open Wi-Fi network down the street",
+  "Decompressing 47 recursive tarballs just to reach a single .env.example file",
+  "Converting bits into bytes, then converting bytes back into excuses",
+  "Re-encrypting already-decrypted decryptors",
+  "Polling the server every 2 milliseconds to make sure it doesn’t feel lonely",
+];
+
+const compiling_texts = [
+  "Reticulating splines (mandatory by municipal code)",
+  "Compiling your code into a single, incomprehensible blob of regret",
+  "Transpiling TypeScript into JavaScript, then back into TypeScript for fun",
+  "Optimizing your code until it runs faster than the speed of light (or at least until it compiles)",
+  "Running a quantum algorithm to predict the future of your code",
+  "Summoning a team of code gnomes to manually review every line",
+  "Converting your code into a series of interpretive dance moves for better performance",
+  "Teaching C++ how to feel joy again",
+  "Resolving circular dependencies by turning them into an octagon",
+  "Staring directly at the progress bar to make it move slower",
+];
 
 function App() {
   const [state, setState] = useState(0);
+  const [installingState, setInstallingState] = useState(0);
   const [isLoaded, setIsLoaded] = useState(false);
   const fullText = " The Next Generation of Computer Aided Design";
   const [displayText, setDisplayText] = useState("");
@@ -15,6 +49,35 @@ function App() {
     const timer = setTimeout(() => setIsLoaded(true), 50);
     return () => clearTimeout(timer);
   }, []);
+  useEffect(() => {
+    if (progress <= 33) {
+      setInstallingState(0);
+    } else if (progress > 33 && progress <= 66) {
+      setInstallingState(1);
+    } else if (progress > 66 && progress <= 99) {
+      setInstallingState(2);
+    } else {
+      invoke("save_config");
+    }
+  }, [progress]);
+  useEffect(() => {
+    if (installingState === 0) {
+      const timer = setInterval(() => {
+        setLoadText(system_checks_text[Math.floor(Math.random() * system_checks_text.length)]);
+      }, 1000);
+      return () => clearInterval(timer);
+    } else if (installingState === 1) {
+      const timer = setInterval(() => {
+        setLoadText(downloading_texts[Math.floor(Math.random() * downloading_texts.length)]);
+      }, 1000);
+      return () => clearInterval(timer);
+    } else if (installingState === 2) {
+      const timer = setInterval(() => {
+        setLoadText(compiling_texts[Math.floor(Math.random() * compiling_texts.length)]);
+      }, 1000);
+      return () => clearInterval(timer);
+    }
+  }, [installingState]);
 
   useEffect(() => {
     let index = 0;
@@ -30,7 +93,7 @@ function App() {
     }, 40);
     return () => clearInterval(interval);
   }, []);
-
+  
   useEffect(() => {
     if (state === 1) {
       const timer = setInterval(() => {
@@ -100,7 +163,7 @@ function App() {
           <Card className="w-full p-0">
             <ScrollShadow className="max-h-[240px] p-4" orientation="vertical">
               <div className="space-y-4">
-                {Array.from({length: 10}).map((__unstable__loadDesignSystem, idx) => (
+                {Array.from({length: 10}).map((_, idx) => (
                   <p key={`scroll-shadow-lorem-content-${idx}`}>
                     
                   </p>
