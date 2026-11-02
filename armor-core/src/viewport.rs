@@ -2051,6 +2051,74 @@ impl Viewport {
         let target = match self.entities.iter().find(|entity| entity.id == target_id) {
             Some(entity) => entity, None => return false,
         };
+        if target.vertices.len() >= 4
+            && (target.vertices[0] - *target.vertices.last().unwrap()).magnitude2() <= 1.0e-8
+        {
+            let vertices = target.vertices.clone();
+            let segment_count = vertices.len() - 1;
+            let click_position = target_segment as f32 + click_t;
+            let view_proj = self.camera.build_view_projection_matrix();
+            let mut hits: Vec<(f32, Vector3<f32>)> = Vec::new();
+            for segment_index in 0..segment_count {
+                let a_world = vertices[segment_index];
+                let b_world = vertices[segment_index + 1];
+                let (Some(a_screen), Some(b_screen)) =
+                    (self.world_to_screen(a_world), self.world_to_screen(b_world))
+                else { continue; };
+                for cutter in &self.entities {
+                    for cutter_pair in cutter.vertices.windows(2) {
+                        if cutter.id == target_id {
+                            continue;
+                        }
+                        let (Some(c_screen), Some(d_screen)) = (
+                            self.world_to_screen(cutter_pair[0]),
+                            self.world_to_screen(cutter_pair[1]),
+                        ) else { continue; };
+                        let Some((t, _)) = Self::segment_intersection_parameters(
+                            a_screen, b_screen, c_screen, d_screen,
+                        ) else { continue; };
+
+                        let clip_a = view_proj * Vector4::new(a_world.x, a_world.y, a_world.z, 1.0);
+                        let clip_b = view_proj * Vector4::new(b_world.x, b_world.y, b_world.z, 1.0);
+                        let denom = (1.0 - t) * clip_b.w + t * clip_a.w;
+                        let world_t = if denom.abs() > 1.0e-6 {
+                            (t * clip_a.w / denom).clamp(0.0, 1.0)
+                        } else { t.clamp(0.0, 1.0) };
+                        let hit_point = a_world + (b_world - a_world) * world_t;
+                        hits.push((segment_index as f32 + t, hit_point));
+                    }
+                }
+            }
+
+            hits.sort_by(|a, b| a.0.total_cmp(&b.0));
+            hits.dedup_by(|a, b| (a.0 - b.0).abs() < 1.0e-3);
+            if hits.len() < 2 { return false; }
+
+            let previous = hits.iter().rev().find(|hit| hit.0 < click_position)
+                .cloned().unwrap_or_else(|| hits[hits.len() - 1].clone());
+            let next = hits.iter().find(|hit| hit.0 > click_position)
+                .cloned().unwrap_or_else(|| hits[0].clone());
+
+            let mut start_position = next.0;
+            let mut end_position = previous.0;
+            if end_position <= start_position { end_position += segment_count as f32; }
+            let mut kept = vec![next.1];
+            let mut vertex_position = start_position.floor() as usize + 1;
+            while (vertex_position as f32) < end_position {
+                kept.push(vertices[vertex_position % segment_count]);
+                vertex_position += 1;
+            }
+            kept.push(previous.1);
+            kept.dedup_by(|a, b| (*a - *b).magnitude2() <= 1.0e-10);
+            if kept.len() < 2 { return false; }
+
+            self.save_undo_state();
+            if let Some(entity) = self.entities.iter_mut().find(|entity| entity.id == target_id) {
+                entity.vertices = kept;
+            } else { return false; }
+            self.rebuild_vertices();
+            return true;
+        }
         let (Some(target_a), Some(target_b)) = (
             self.world_to_screen(target.vertices[target_segment]),
             self.world_to_screen(target.vertices[target_segment + 1]),
