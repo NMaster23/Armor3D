@@ -1036,6 +1036,11 @@ def viewport_mouse_down(event):
         viewport.configure(cursor='arrow')
         viewport.focus_set()
         return
+    if activecommand == 'fillet_select':
+        additive = bool(event.state & 0x0001)
+        renderer.select_at(event.x, event.y, additive)
+        writehistory("Select the second line, then press Enter")
+        return
     if activecommand == "trim":
         trimmed = renderer.trim_at(event.x, event.y)
         if trimmed:
@@ -1959,7 +1964,7 @@ def runnamedcommand(name):
         "tools": opentoolsmenu,
         'saveas': opensaveascommand,
         "png": savepngcommand,
-        "fillet": lambda: startplaceholdercmd("Fillet", "Select curves to fillet"),
+        "fillet": startfillet,
         "trim": starttrim,
         "arc": startarc,
         "import": importdxcommand,
@@ -2086,6 +2091,33 @@ def runcmd(event):
             viewport.focus_set()
         else:
             writehistory("Could not create the arc; move the cursor to one side of the chord")
+        return 'break'
+    if activecommand == 'fillet_select':
+        selected_count = sum(1 for row in renderer.scene_data() if row[4])
+        if selected_count != 2:
+            writehistory("Select exactly two lines, then press Enter")
+            return 'break'
+        activecommand = 'fillet_radius'
+        command.delete(0, 'end')
+        command.configure(placeholder_text="")
+        app.after_idle(command._entry.focus_force)
+        writehistory("Type the fillet radius and press Enter")
+        return 'break'
+    if activecommand == "fillet_radius":
+        try:
+            radius = float(command.get().strip())
+        except ValueError:
+            writehistory("Type a positive numeric radius")
+            return "break"
+        if radius <= 0:
+            writehistory("Radius must be greater than 0")
+            return 'break'
+        applyfillet(radius)
+        activecommand = None
+        command.delete(0, 'end')
+        command.configure(placeholder_text="Command:")
+        viewport.configure(cursor='arrow')
+        viewport.focus_set()
         return 'break'
     if activecommand == 'rotate_mode':
         typed_mode = command.get().strip().lower()
@@ -2353,7 +2385,7 @@ def runcmd(event):
     return "break"
 command.bind("<Return>", runcmd)
 def viewport_return_for_explode(event):
-    if activecommand in ("explode", "join"):
+    if activecommand in ("explode", "join", 'fillet_select'):
         return runcmd(event)
     return None
 viewport.bind("<Return>", viewport_return_for_explode, add="+")
@@ -3192,6 +3224,114 @@ def updatesendanimation():
         sendbutton.coords( dot,  x - 2, 18 + offset, x + 2, 22 + offset)
     sendanimation["frame"] += 1
     sendanimation["job"] = app.after( 110,  updatesendanimation )
+
+def startfillet(event=None):
+    global activecommand
+    activecommand = 'fillet_select'
+    renderer.select_objects_by_ids([])
+    command.delete(0, 'end')
+    command.configure(placeholder_text='Fillet: select two connected lines, then press Enter')
+    writehistory("> Fillet\nSelect two connected straight liners, then press Enter")
+    viewport.configure(cursor='crosshair')
+    viewport.focus_set()
+def filletcornerpoints(line_a, line_b, radius, frtont_view=False):
+    if len(line_a) != 2 or len(line_b) != 2 or radius <= 0:
+        return None
+    def plane(p):
+        return (p[0], p[1]) if frtont_view else (p[0], p[2])
+    def dist2(a, b):
+        return (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2
+    endpoint_pairs = [ (dist2(plane(a), plane(b)), ia, ib) for ia, a in enumerate(line_a) for ib, b in enumerate(line_b)]
+    gap2, ia, ib = min(endpoint_pairs)
+    if gap2 > 1e-4:
+        return None
+    corner = tuple((line_a[ia][k] + line_b[ib][k])* 0.5 for k in range(3))
+    outer_a = line_a[1-ia]
+    outer_b = line_b[1-ib]
+    c2 = plane(corner)
+    a2 = plane(outer_a)
+    b2 = plane(outer_b)
+    def unitfromcorner(point):
+        dx, dy = point[0] - c2[0], point[1] - c2[1]
+        length = math.hypot(dx, dy)
+        if length < 1e-8:
+            return None
+        return(dx/length, dy/length)
+    u = unitfromcorner(a2)
+    v = unitfromcorner(b2)
+    if u is None or v is None:
+        return None
+    dot = max(-1.0, min(1.0, u[0] * v[0] + u[1] * v[1]))
+    theta = math.acos(dot)
+    if theta < 1e-4 or abs(math.pi - theta) < 1e-4:
+        return None
+    tangentdistance =radius/math.tan(theta * 0.5)
+    if tangentdistance >= math.dist(c2, a2) or tangentdistance >= math.dist(c2, b2):
+        return None
+    bisector = (u[0] + v[0], u[1] + v[1])
+    bisector_len  = math.hypot(*bisector)
+    if bisector_len < 1e-8:
+        return None
+    bisector = (bisector[0] / bisector_len, bisector[1] / bisector_len)
+    center_distance =radius / math.sin(theta * 0.5)
+    center2 = (c2[0] + bisector[0] * center_distance, c2[1] + bisector[1] * center_distance)
+    tangent_a2 = (c2[0] + u[0] * tangentdistance, c2[1] + u[1] * tangentdistance)
+    tangent_b2 = (c2[0]+ v[0] * tangentdistance, c2[1] + v[1] * tangentdistance)
+    def lift(point2):
+        if frtont_view:
+            return (point2[0], point2[1], corner[2])
+        return (point2[0], corner[1], point2[1])
+    startangle = math.atan2(tangent_a2[1]- center2[1], tangent_a2[0] - center2[0])
+    endangle = math.atan2(tangent_b2[1] - center2[1],tangent_b2[0] - center2[0],)
+    sweep  = (endangle - startangle + math.pi) % (2* math.pi) - math.pi
+    segments = max(12, int(abs(sweep) * 16))
+    arc = [
+        lift((
+            center2[0] + radius * math.cos(startangle + sweep * i / segments),
+            center2[1] + radius * math.sin(startangle + sweep * i / segments),
+        ))
+        for i in range(segments + 1)
+    ]
+    arc[0] = lift(tangent_a2)
+    arc[-1] = lift(tangent_b2)
+    return (
+        [outer_a, lift(tangent_a2)],
+        arc, [lift(tangent_b2), outer_b],
+    )
+def applyfillet(radius):
+    selected = [
+        row for row in renderer.scene_data()
+        if row[4]
+    ]
+    if len(selected) != 2:
+        writehistory("Fillet needs exactly two selected line objects")
+        return False
+    id_a, points_a, color_a, height_a, _ = selected[0]
+    id_b, points_b, color_b, height_b, _ = selected[1]
+    if height_a !=0 or height_b != 0:
+        writehistory("Fillet currently works on flat 2D lines only")
+        return False
+    front_view = globals().get("current_view", 'perspective') == 'front'
+    result = filletcornerpoints(points_a, points_b, radius, front_view)
+    if result is None:
+        writehistory("Those lines must share a corner, and the radius must fit")
+        return False
+    line_a, arc, line_b = result
+    beforeids = {row[0] for row in renderer.scene_data()}
+    created = (
+        renderer.import_polyline(line_a, color_a, False)
+        and renderer.import_polyline(arc, color_a, False)
+        and renderer.import_polyline(line_b, color_b, False))
+    if not created:
+        afterids = {row[0] for row in renderer.scene_data()}
+        renderer.delete_objects(list(afterids - beforeids))
+        writehistory("Could not create the fillet")
+        return False
+    renderer.delete_objects([id_a, id_b])
+    renderer.render()
+    writehistory(f"Fillet created with radius {radius:g}")
+    return True
+
 def startsendanimation():
     if sendanimation["job"] is not None:
         return
