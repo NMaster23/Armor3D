@@ -516,6 +516,27 @@ impl ViewportRenderer {
     fn select_picture_box(&mut self, x1: f32, y1: f32, x2: f32, y2: f32, additive: bool) -> bool {
         self.state.select_reference_box(x1, y1, x2, y2, additive)
     }
+    fn start_arc(&mut self) {
+        self.state.viewport.start_arc();
+    }
+    fn begin_arc_start(&mut self, x: f32, y: f32) -> bool {
+        self.state.viewport.begin_arc_start(x, y)
+    }
+    fn set_arc_end(&mut self, x: f32, y:f32) -> bool {
+        self.state.viewport.set_arc_end(x, y)
+    }
+    fn update_arc_preview(&mut self, x: f32, y: f32) {
+        self.state.viewport.update_arc_preview(x, y);
+    }
+    fn set_arc_degrees(&mut self, degrees: f32) -> bool {
+        self.state.viewport.set_arc_degrees(degrees)
+    }
+    fn commit_arc(&mut self) -> bool {
+        self.state.viewport.commit_arc()
+    }
+    fn cancel_arc(&mut self) {
+        self.state.viewport.cancel_arc();
+    }
     fn clear_picture_selection(&mut self) {
         self.state.clear_reference_selection();
     }

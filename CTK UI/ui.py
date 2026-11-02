@@ -982,7 +982,7 @@ def show_selection_box(start_x, start_y, end_x, end_y):
 def viewport_mouse_down(event):
     global rectanglefirstpoint
     global left_drag_start, left_dragged, moving_selection, activecommand, extrude_drag_start_y
-    global circle_center, circle_measure_mode, activecommand, pending_text
+    global circle_center, circle_measure_mode, activecommand, pending_text, arcstage
     hidesnapindicator()
     viewport.focus_set()
     if renderer is None:
@@ -2062,7 +2062,7 @@ app.bind("<Escape>", cancelactivecommand)
 command.bind("<Escape>", cancelactivecommand)
 viewport.bind("<Escape>", cancelactivecommand)
 def runcmd(event):
-    global history_index, activecommand
+    global history_index, activecommand, arcstage
     global circle_center, circle_measure_mode
     global polarcenter
     global pending_text

@@ -202,6 +202,10 @@ pub struct Viewport {
     pub grab_origin: Option<Vector3<f32>>,
     pub grab_snapshot: Vec<Vector3<f32>>,
     pub circle_center: Option<Vector3<f32>>,
+    pub arc_start: Option<Vector3<f32>>,
+    pub arc_end: Option<Vector3<f32>>,
+    pub arc_cursor: Option<Vector3<f32>>,
+    pub arc_degrees: f32,
     pub circle_target: Option<Vector3<f32>>,
     pub rectangle_first: Option<Vector3<f32>>,
     pub rectangle_second: Option<Vector3<f32>>,
@@ -1144,6 +1148,10 @@ impl Viewport {
             move_axis_snapshots: Vec::new(),
             grab_snapshot: Vec::new(),
             circle_center: None,
+            arc_start: None,
+            arc_end: None,
+            arc_cursor: None,
+            arc_degrees: 90.0,
             circle_target: None,
             rectangle_first: None,
             rectangle_second: None,
@@ -3254,6 +3262,18 @@ impl Viewport {
                 ));
             }
         }
+        if let (Some(start), Some(end), Some(cursor)) = 
+            (self.arc_start, self.arc_end, self.arc_cursor)
+        {
+            let points =Self::arc_points(
+                start, end, cursor, self.arc_degrees, self.front_view
+            );
+            if points.len() >= 2 {
+                new_vertices.extend(self.tessellate_polyline(
+                    &points, POLYLINE_WIDTH_PIXELS, self.polyline_color
+                ));
+            }
+        }
         if let (Some(center), Some(target)) = (self.circle_center, self.circle_target) {
             let preview_points = Self::circle_points_from_target(center, target, 64);
             if preview_points.len() >= 2 {
@@ -4596,7 +4616,116 @@ impl Viewport {
         self.circle_target = None;
         self.rebuild_vertices();
     }
-
+    fn arc_points(center: Vector3<f32>, radius_point: Vector3<f32>, cursor: Vector3<f32>, degrees: f32, front_view: bool) -> Vec<Vector3<f32>> {
+        let (cx, cy, start_x, start_y, cursor_x, cursor_y) = if front_view {
+            (
+                center.x, center.y, radius_point.x, radius_point.y, cursor.x, cursor.y
+            )
+        } else {
+            (
+                center.x, center.z,
+                radius_point.x, radius_point.z, cursor.x, cursor.z
+            )
+        };
+        let dx = start_x - cx;
+        let dy = start_y - cy;
+        let radius = (dx * dx + dy * dy).sqrt();
+        if radius < 1.0e-5 || !degrees.is_finite() || ! (1.0..359.0).contains(&degrees) {
+            return Vec::new();
+        }
+        let cursor_dx = cursor_x - cx;
+        let cursor_dy = cursor_y - cy;
+        let cross = dx * cursor_dy - dy * cursor_dx;
+        let direction = if cross >= 0.0 {1.0} else {-1.0};
+        let start_angle = dy.atan2(dx);
+        let sweep  =degrees.to_radians() * direction;
+        let segments = ((degrees / 3.0).ceil() as usize).clamp(12, 120);
+        let mut points = Vec::with_capacity(segments +1);
+        for i in 0..=segments {
+            let angle = start_angle + sweep * i as f32 / segments as f32;
+            let u = cx + radius * angle.cos();
+            let v = cy +radius * angle.sin();
+            points.push(if front_view {
+                Vector3::new(u, v, center.z)
+            } else {
+                Vector3::new(u, center.y, v)
+            });
+        }
+        points
+    }
+    pub fn start_arc(&mut self) {
+        self.arc_start = None;
+        self.arc_end = None;
+        self.arc_cursor = None;
+        self.arc_degrees = 90.0;
+        self.rebuild_vertices();
+    }
+    pub fn begin_arc_start(&mut self, x: f32, y:f32) -> bool {
+        self.cursor_pos = PhysicalPosition::new(x as f64, y as f64);
+        let Some(point) = self.fetch_point(self.cursor_pos) else {
+            return false;
+        };
+        self.arc_start =Some(self.get_snap_pos(point).0);
+        self.rebuild_vertices();
+        true
+    }
+    pub fn set_arc_end(&mut self, x: f32, y:f32) -> bool {
+        let Some(start) = self.arc_start else {
+            return false;
+        };
+        self.cursor_pos = PhysicalPosition::new(x as f64, y as f64);
+        let Some(point) = self.fetch_point(self.cursor_pos) else {
+            return false;
+        };
+        let end = self.get_snap_pos(point).0;
+        if (end-start).magnitude2() < 1.0e-8 {
+            return false;
+        }
+        self.arc_end = Some(end);
+        self.arc_cursor =Some(end);
+        self.rebuild_vertices();
+        true
+    }
+    pub fn update_arc_preview(&mut self, x:f32, y :f32) {
+        if self.arc_end.is_none() {
+            return;
+        }
+        self.cursor_pos = PhysicalPosition::new(x as f64, y as f64);
+        if let Some(point) = self.fetch_point(self.cursor_pos) {
+            self.arc_cursor = Some(self.get_snap_pos(point).0);
+            self.rebuild_vertices();
+        }
+    }
+    pub fn set_arc_degrees(&mut self, degrees: f32) -> bool {
+        if !degrees.is_finite() || !(1.0..359.0).contains(&degrees) {
+            return false;
+        }
+        self.arc_degrees= degrees;
+        self.rebuild_vertices();
+        true
+    }
+    pub fn commit_arc(&mut self) -> bool {
+        let (Some(start), Some(end), Some(cursor)) = 
+            (self.arc_start, self.arc_end, self.arc_cursor)
+        else {
+            return false;
+        };
+        let points = Self::arc_points(
+            start, end, cursor, self.arc_degrees, self.front_view
+        );
+        self.cancel_arc();
+        if points.len() < 2 {
+            return false;
+        }
+        self.add_polyline(points, self.polyline_color, POLYLINE_WIDTH_PIXELS);
+        true
+    }
+    pub fn cancel_arc(&mut self) {
+        self.arc_start = None;
+        self.arc_end = None;
+        self.arc_cursor = None;
+        self.rebuild_vertices();
+    }
 
     pub fn draw_circle_mouse(
         &mut self,
