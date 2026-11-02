@@ -18,6 +18,7 @@ from armor_core import ViewportRenderer
 connectfirstid = None
 connectfirstpoints = []
 connectsecondid = None
+arcstage = None
 connectsecondpoints = []
 ctk.set_appearance_mode('dark')
 CONTROL_HOVER_BG = "#080808"
@@ -885,6 +886,8 @@ def resize_viewport(event):
     if renderer is not None:
         renderer.resize(max(1, event.width), max(1, event.height))
 def viewport_mouse_move(event):
+    if activecommand == 'arc' and arcstage == 'angle':
+        renderer.update_arc_preview(event.x, event.y)
     if renderer is None:
         return
     snapkind = renderer.mouse_move(event.x, event.y)
@@ -1176,6 +1179,22 @@ def viewport_mouse_down(event):
             writehistory("Extrude requires one selected closed shape")
             command._entry.focus_set()
         return
+    if activecommand == 'arc':
+        renderer.mouse_move(event.x, event.y)
+        if arcstage == 'start':
+            if renderer.begin_arc_start(event.x, event.y):
+                arcstage = 'end'
+                command.configure(placeholder_text='Arc: click end point')
+                writehistory("Click the arc's end point")
+            return
+        if arcstage == 'end':
+            if renderer.set_arc_end(event.x, event.y):
+                arcstage = 'angle'
+                command.delete(0, 'end')
+                command.configure(placeholder_text='Arc: move cursor to choose side, type angle, press Enter')
+                writehistory("Move the cursor to choose the arc side, type an angle, then press Enter")
+                app.after_idle(command._entry.focus_force)
+            return
     if activecommand is None:
         hide_selection_box()
         additive = bool(event.state & 0x0001)
@@ -1822,6 +1841,18 @@ def startexplode(event=None):
     command.configure(placeholder_text = "Select objects to explode")
     writehistory("> Explode\nSelect objects to explode")
     viewport.focus_set()
+def startarc(event=None):
+    global activecommand, arcstage
+    if renderer is None:
+        return
+    activecommand = 'arc'
+    arcstage = 'start'
+    renderer.start_arc()
+    command.delete(0, 'end')
+    command.configure(placeholder_text='Arc: click start point')
+    writehistory("> Arc\nClick the start point")
+    viewport.configure(cursor='crosshair')
+    viewport.focus_set()
 def startrectangle(event=None):
     global activecommand, rectanglefirstpoint
     if renderer is None:
@@ -1930,7 +1961,7 @@ def runnamedcommand(name):
         "png": savepngcommand,
         "fillet": lambda: startplaceholdercmd("Fillet", "Select curves to fillet"),
         "trim": starttrim,
-        "arc": lambda: startplaceholdercmd("Arc", "Choose arc start point"),
+        "arc": startarc,
         "import": importdxcommand,
         "importdxf": importdxcommand,
         "import3dm": import3dmcommand,
@@ -2036,6 +2067,26 @@ def runcmd(event):
     global polarcenter
     global pending_text
     global rotatemode
+    if activecommand == 'arc' and arcstage == 'angle':
+        try:
+            degrees=  float(command.get().strip())
+        except ValueError:
+            writehistory("Type an arc angle between 1 and 359 degrees")
+            return 'break'
+        if not 1.0 <= degrees <= 359.0:
+            writehistory("Arc angle must be between 1 and 359 degrees")
+            return 'break'
+        if renderer.set_arc_degrees(degrees) and renderer.commit_arc():
+            writehistory(f"Arc created: {degrees:g} degrees")
+            activecommand = None
+            arcstage = None
+            command.delete(0, 'end')
+            command.configure(placeholder_text ='Command:')
+            viewport.configure(cursor='arrow')
+            viewport.focus_set()
+        else:
+            writehistory("Could not create the arc; move the cursor to one side of the chord")
+        return 'break'
     if activecommand == 'rotate_mode':
         typed_mode = command.get().strip().lower()
         if typed_mode not in ('xy', 'z'):
@@ -2500,9 +2551,14 @@ def typecmduni(event):
         if widget_class in (
             "Entry",
             "TEntry",
-            "Text"
-        ):
+            "Text" ):
             return
+    if activecommand == 'arc' and arcstage == 'angle':
+        if event.char and event.char in "0123456789.":
+            command._entry.focus_set()
+            command.insert("end", event.char)
+            return 'break'
+        return
     if activecommand == 'polyline':
         if event.char and event.char in "0123456789.":
             command._entry.focus_set()
@@ -4043,8 +4099,6 @@ extraoverlay.bind("<Button-1>", extraoverlayclick)
 extradialog.bind("<Escape>", closeextramenu)
 app.bind("<Configure>", positionextramenu, add="+")
 def extra_button_click(event):
-    # Handle the button at the canvas level instead of relying on canvas item
-    # tag bindings, which can be skipped when the embedded viewport is resized.
     if 8 <= event.x <= 92 and 248 <= event.y <= 284:
         return openextramenu(event)
 

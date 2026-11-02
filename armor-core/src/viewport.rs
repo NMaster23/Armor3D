@@ -2081,8 +2081,6 @@ impl Viewport {
         };
         let original_a = target.vertices[target_segment];
         let original_b = target.vertices[target_segment + 1];
-        // `hit_t` is measured between projected screen points. Convert it to
-        // the matching world-space segment parameter before moving the vertex.
         let view_proj = self.camera.build_view_projection_matrix();
         let clip_a = view_proj * Vector4::new(original_a.x, original_a.y, original_a.z, 1.0);
         let clip_b = view_proj * Vector4::new(original_b.x, original_b.y, original_b.z, 1.0);
@@ -3283,6 +3281,7 @@ impl Viewport {
                 ));
             }
         }
+
 
         if let (Some(base), Some(target)) = (self.copy_base, self.copy_target) {
             let offset = target - base;
@@ -4597,6 +4596,7 @@ impl Viewport {
         self.circle_target = None;
         self.rebuild_vertices();
     }
+
 
     pub fn draw_circle_mouse(
         &mut self,
