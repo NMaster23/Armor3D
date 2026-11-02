@@ -75,7 +75,7 @@ def sendmessage(
                 '{"reply":"short response","actions":[]}.'
                 "When the user asks you to draw, return one or more drawing actions. "
                 f"{view_instructions}"
-                "Allowed actions are draw_line, draw_polyline, hatch_shapes, hatch_new_shapes, extrude, revolve, undo, move_objects, rotate, explode, join, connect_meshes, connect_mesh_holes, and delete_objects. "
+                "Allowed actions are draw_line, draw_polyline, draw_arc, fillet, hatch_shapes, hatch_new_shapes, extrude, revolve, undo, move_objects, rotate, explode, join, connect_meshes, connect_mesh_holes, and delete_objects. "
                 'Use {"action":"connect_meshes","object_ids":[12,13]} '
                 "to group exactly two imported meshes together in their current positions. "
                 'If the user asks to connect the two currently selected meshes, use '
@@ -147,6 +147,11 @@ def sendmessage(
                 'A line uses {"action":"draw_line","start":[0,0,0],"end":[4,0,0]}. '
                 'A polyline uses {"action":"draw_polyline",'
                 '"points":[[0,0,0],[4,0,0],[4,0,4],[0,0,4]],"closed":true}. '
+                'For an arc use {"action":"draw_arc","center":[0,0,0],'
+                '"radius":2,"start_degrees":0,"sweep_degrees":90}. '
+                'The arc lies in the active drawing plane. '
+                'For fillet use {"action":"fillet","object_ids":[12,13],"radius":0.2}. '
+                'Fillet requires two separate straight line objects sharing an endpoint. '
                 "Put all actions needed for the request in the actions array. "
                 "Always respond with one valid JSON object: "
                 "You can use markdown in your responses, and u should if u want"

@@ -4630,6 +4630,60 @@ def executeaiactions(actions):
                 else f'Object {target_id} was missing or is not a closed profile'
             )
             continue
+        if action_type == 'draw_arc':
+            center = validpoint(action.get('center'))
+            try:
+                radius = float(action.get('radius'))
+                startdegrees = float(action.get("start_degrees", 0))
+                sweepdegrees = float(action.get("sweep_degrees", 90))
+            except (TypeError, ValueError):
+                results.append("Ignored an arc with invalid numeric values")
+                continue
+            if (center is None or not math.isfinite(radius) or not math.isfinite(startdegrees) or not math.isfinite(sweepdegrees) or radius <= 0
+                or abs(sweepdegrees) < 1 or abs(sweepdegrees) >= 360):
+                results.append("Ignored an invalid arc")
+                continue
+            segments = max(120, math.ceil(abs(sweepdegrees)/3))
+            frontview = current_view == 'front'
+            arcpoints = []
+            for index in range(segments +1):
+                angle = math.radians(startdegrees + sweepdegrees  *index / segments)
+                u = center[0] + radius * math.cos(angle)
+                v = (center[1] + radius * math.sin(angle)) if frontview else (
+                    center[2] + radius * math.sin(angle))
+                point = (u, v, center[2]) if frontview else (
+                    u, center[1], v)
+                arcpoints.append(point)
+            if renderer.import_polyline(arcpoints, currentlayercolor(), False):
+                results.append(f"Drew an angle with radius {radius:g} and sweep {sweepdegrees:g} degrees")
+            else:
+                results.append("Could not create the requested arc")
+            continue
+        if action_type == 'fillet':
+            object_ids = action.get("object_ids")
+            try:
+                radius = float(action.get("radius"))
+            except (TypeError, ValueError):
+                results.append("Ignored a fillet with an invalid radius")
+                continue
+            validids = {row[0] for row in renderer.scene_data()}
+            if (
+                isinstance(object_ids,list)
+                or len(object_ids) != 2
+                or any(type(object_id) is not int for object_id in object_ids)
+                or object_ids[0] == object_ids[1]
+                or any(object_id not in validids for object_id in object_ids)
+                or not math.isfinite(radius)
+                or radius <= 0):
+                results.append("fillet needs two valid line IDs and a positive radius")
+                continue
+            renderer.select_object_by_ids(object_ids)
+            if applyfillet(radius):
+                results.append(f"Filleted the two lines with radius {radius:g}")
+            else:
+                results.append(
+                    "Could not fillet those lines, the need to shar a corner and or the radius must fit")
+            continue
         if action_type == "draw_line":
             points = [
                 validpoint(action.get("start")),
