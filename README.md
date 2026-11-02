@@ -62,6 +62,15 @@ Additional smaller improvements and bug fixes are most likely documented in the 
 
 Additional smaller improvements and bug fixes are most likely documented in the commit history.
 
+## Week 7 Progress
+- added fillet 
+- added model importing
+- added connect (used for connected to models)
+- added arc
+- widened AI capabilites
+
+Additional smaller improvements and bug fixes are most likely documented in the commit history.
+
 ## Current limitations
 Armor3D does not yet include the full feature set of Rhino. There may be many incomplete features in the works - will fix in due time. The available features may not be polished, as this project is still in BETA. 
 
@@ -108,8 +117,10 @@ The Rust side provides the 2D and 3D grid, camera, polyline drawing and preview,
 
 ## Next Steps
 - Add more AI capabilities
-- Add 3d model importing
-- Add 3d model meshing
+- Imrpove model importing - widen the selection of applicable models
+- Correct final fixes
+- Add logo
+- Startup menu?
 
 ## Week 1 theme
 Week 1 used a harvest-inspired palette of orange and green.
