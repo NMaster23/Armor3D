@@ -148,7 +148,7 @@ impl Gumball {
         }
         let rings: [(Vector3<f32>, Vector3<f32>, GumballHandle); 3] = [
             (Vector3::unit_y(), Vector3::unit_z(), GumballHandle::rotate_x),
-            (Vector3::unit_x(), Vector3::unit_z(), GumballHandle::rotate_y),
+            (Vector3::unit_x(), Vector3::unit_z(), GumballHandle::rotate_y), 
             (Vector3::unit_x(), Vector3::unit_y(), GumballHandle::rotate_z),
         ];
         let arc_r = self.size * 0.6;

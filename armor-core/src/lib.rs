@@ -519,6 +519,9 @@ impl ViewportRenderer {
     fn clear_picture_selection(&mut self) {
         self.state.clear_reference_selection();
     }
+    fn trim_at(&mut self, x: f32, y:f32) -> bool {
+        self.state.viewport.trim_at(x, y)
+    }
     fn select_at(&mut self, x: f32, y: f32, additive: bool) -> Option<usize> {
         self.state
             .viewport

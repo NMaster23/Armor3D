@@ -1899,6 +1899,22 @@ impl Viewport {
             .map(|&index| geometry.vertices[index as usize])
             .collect()
     }
+    fn segment_intersection_parameters(a: Vector2<f32>, b: Vector2<f32>, c: Vector2<f32>, d: Vector2<f32>) -> Option<(f32, f32)> {
+        let r = b-a;
+        let s = d-c;
+        let denominator = r.x*s.y - r.y * s.x;
+        if denominator.abs() < 1.0e-6{
+            return None;
+        }
+        let offset = c-a;
+        let t = (offset.x * s.y - offset.y * s.x) / denominator;
+        let u = (offset.x * r.y - offset.y * r.x) / denominator;
+        if (-1.0e-4..=1.0001).contains(&t) && (-1.0e-4..=1.0001).contains(&u) {
+            Some((t, u))
+        } else {
+            None
+        }
+    }
     pub fn dist_to_segment(
         p: cgmath::Vector2<f32>,
         a: cgmath::Vector2<f32>,
@@ -1993,6 +2009,110 @@ impl Viewport {
                     .map(|mesh| mesh.id)
             });
         self.rebuild_vertices();
+    }
+    pub fn trim_at(&mut self, mouse_x: f32, mouse_y: f32) -> bool {
+        let mouse = Vector2::new(mouse_x, mouse_y);
+        let mut closest: Option<(usize, usize, f32, f32)> = None;
+        for entity in &self.entities {
+            for (segment_index, pair) in entity.vertices.windows(2).enumerate() {
+                let (Some(a), Some(b)) = (
+                    self.world_to_screen(pair[0]),
+                    self.world_to_screen(pair[1]),
+                ) else {
+                    continue;
+                };
+            let ab = b-a;
+            let length_sq = ab.magnitude2();
+            if length_sq <= 1.0e-8 {
+                continue;
+            }
+            let click_t = ((mouse - a).dot(ab)/length_sq).clamp(0.0, 1.0);
+            let projected_click = a + ab * click_t;
+            let distance_sq = (mouse - projected_click).magnitude2();
+            if closest.map(|(_, _, best, _)| distance_sq < best).unwrap_or(true) {
+                closest = Some((entity.id, segment_index, distance_sq, click_t));
+            }
+        }
+        }
+        let Some((target_id, target_segment, click_distance_sq, click_t)) = closest else {
+            return false;
+        };
+        if click_distance_sq > 12.0 * 12.0 {
+            return false;
+        }
+        let target = match self.entities.iter().find(|entity| entity.id == target_id) {
+            Some(entity) => entity, None => return false,
+        };
+        let (Some(target_a), Some(target_b)) = (
+            self.world_to_screen(target.vertices[target_segment]),
+            self.world_to_screen(target.vertices[target_segment + 1]),
+        ) else {
+            return false;
+        };
+        let mut nearest_hit: Option<f32> = None;
+        for cutter in &self.entities {
+            for (cutter_segment, pair) in cutter.vertices.windows(2).enumerate() {
+                if cutter.id == target_id
+                    && cutter_segment.abs_diff(target_segment) <= 1
+                {
+                    continue;
+                }
+                let (Some(c), Some(d)) = (
+                    self.world_to_screen(pair[0]),
+                    self.world_to_screen(pair[1]),
+                ) else {
+                    continue;
+                };
+                let Some((t, _)) =
+                    Self::segment_intersection_parameters(target_a, target_b, c, d)
+                else {
+                    continue;
+                };
+                if nearest_hit
+                    .map(|best_t| (t - click_t).abs() < (best_t - click_t).abs())
+                    .unwrap_or(true)
+                {
+                    nearest_hit = Some(t);
+                }
+            }
+        }
+        let Some(hit_t) = nearest_hit else {
+            return false;
+        };
+        let original_a = target.vertices[target_segment];
+        let original_b = target.vertices[target_segment + 1];
+        // `hit_t` is measured between projected screen points. Convert it to
+        // the matching world-space segment parameter before moving the vertex.
+        let view_proj = self.camera.build_view_projection_matrix();
+        let clip_a = view_proj * Vector4::new(original_a.x, original_a.y, original_a.z, 1.0);
+        let clip_b = view_proj * Vector4::new(original_b.x, original_b.y, original_b.z, 1.0);
+        let perspective_denom = (1.0 - hit_t) * clip_b.w + hit_t * clip_a.w;
+        let world_t = if perspective_denom.abs() > 1.0e-6 {
+            (hit_t * clip_a.w / perspective_denom).clamp(0.0, 1.0)
+        } else {
+            hit_t
+        };
+        let new_endpoint = original_a + (original_b - original_a) * world_t;
+        self.save_undo_state();
+        let mut remove_target = false;
+        if let Some(entity) = self.entities.iter_mut().find(|entity| entity.id == target_id) {
+            if click_t < hit_t {
+                entity.vertices.drain(..target_segment);
+                entity.vertices[0] = new_endpoint;
+            } else {
+                entity.vertices.truncate(target_segment + 2);
+                entity.vertices[target_segment + 1] = new_endpoint;
+            }
+            entity.vertices.dedup_by(|a, b| (*a - *b).magnitude2() <= 1.0e-10);
+            remove_target = entity.vertices.len() < 2;
+        } else {
+            return false;
+        }
+        if remove_target {
+            self.entities.retain(|entity| entity.id != target_id);
+        }
+        self.rebuild_vertices();
+        true
     }
     pub fn select_shape(
         &mut self,
@@ -4035,19 +4155,25 @@ impl Viewport {
         Some((point.x, point.y, point.z))
     }
 
-    pub fn set_polyline_color(&mut self, red: f32, green: f32, blue: f32, alpha: f32) {
+    pub fn set_polyline_color(&mut self, red: f32, green: f32, blue:f32, alpha: f32) {
         let color = [
             red.clamp(0.0, 1.0),
             green.clamp(0.0, 1.0),
             blue.clamp(0.0, 1.0),
-            alpha.clamp(0.0, 1.0),];
+            alpha.clamp(0.0, 1.0)
+        ];
         self.polyline_color = color;
         for entity in &mut self.entities {
-            entity.color = color;}
-        for curve in &mut self.nurbs_curves {curve.color = color;}
-        for surface in &mut self.nurbs_surfaces { surface.color = color; }
-                self.rebuild_vertices();
-            }
+            entity.color =color;
+        }
+        for curve in &mut self.nurbs_curves {
+            curve.color = color;
+        }
+        for surface in &mut self.nurbs_surfaces{
+            surface.color = color;
+        }
+        self.rebuild_vertices();
+    }
     fn segment_intersection_xz(
         first_start: Vector3<f32>,
         first_end: Vector3<f32>,

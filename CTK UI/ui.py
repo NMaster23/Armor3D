@@ -1033,6 +1033,14 @@ def viewport_mouse_down(event):
         viewport.configure(cursor='arrow')
         viewport.focus_set()
         return
+    if activecommand == "trim":
+        trimmed = renderer.trim_at(event.x, event.y)
+        if trimmed:
+            renderer.render()
+            writehistory("Trimmed the clicked curve segment")
+        else:
+            writehistory("No trim intersection found there")
+        return
     if activecommand == 'revolve_select':
         selected = renderer.select_at(event.x, event.y, False)
         if selected is None:
@@ -1828,15 +1836,30 @@ def startrectangle(event=None):
     writehistory("> Rectangle\nSelect first corner")
     viewport.configure(cursor='crosshair')
     viewport.focus_set()
-def starttext(event=None):
+
+def starttext(event=None):         
     global activecommand
-    if renderer is None:
+    if renderer is None:          
         return
     activecommand = 'text_input'
     command.delete(0, 'end')
     command.configure(placeholder_text='')
     writehistory("> Text\nType your text in the command bar, then press enter")
     app.after_idle(command._entry.focus_force)
+
+def starttrim(event=None):
+    global activecommand
+    activecommand = 'trim'
+    command.delete(0, 'end')
+    command.configure(placeholder_text='Trim: click the piece to remove')
+    trim_ids = [row[0] for row in renderer.scene_data()]
+    renderer.select_objects_by_ids(trim_ids)
+    renderer.render()
+    writehistory("> Trim\nAll drawing curves selected as cutters. Click a piece to remove.")
+    viewport.configure(cursor='crosshair')
+    viewport.focus_set()
+
+
 def startplaceholdercmd(name, message):
     global activecommand
     activecommand = name.lower().replace(" ", "")
@@ -1906,7 +1929,7 @@ def runnamedcommand(name):
         'saveas': opensaveascommand,
         "png": savepngcommand,
         "fillet": lambda: startplaceholdercmd("Fillet", "Select curves to fillet"),
-        "trim": lambda: startplaceholdercmd("Trim", "Select objects to trim"),
+        "trim": starttrim,
         "arc": lambda: startplaceholdercmd("Arc", "Choose arc start point"),
         "import": importdxcommand,
         "importdxf": importdxcommand,
