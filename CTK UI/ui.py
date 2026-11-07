@@ -1471,6 +1471,7 @@ history_index = 0
 
 activecommand = None
 lastcommand = None
+whiteviewmode = False
 mirrorpoint1= None
 polarcenter = None
 
@@ -1901,6 +1902,15 @@ def starttrim(event=None):
     viewport.configure(cursor='crosshair')
     viewport.focus_set()
 
+def startrender():
+    global activecommand
+    activecommand = 'render_confirm'
+    command.delete(0, 'end')
+    question = ("Turn white viewport mode off? Yes or no?" if whiteviewmode else "Turn white viewport mode on? Type yes or no")
+    command.configure(state='normal', placeholder_text='', text_color="#FFFAFA")
+    command._entry.configure(state='normal', fg="#FFFAFA")
+    writehistory(f"> Render\n{question}\nType yes or no in the cmd bar, then press enter")
+    command._entry.focus_force()
 
 def startplaceholdercmd(name, message):
     global activecommand
@@ -1932,6 +1942,7 @@ def runnamedcommand(name):
     normalized = name.lower().replace(" ", "")
     actions = {
         "polyline": startpolyline,
+        "render": startrender,
         'pline': startpolyline,
         "connect": startconnect,
         "hatch": starthatch,
@@ -2076,6 +2087,7 @@ def runcmd(event):
     global history_index, activecommand, arcstage
     global circle_center, circle_measure_mode
     global polarcenter
+    global whiteviewmode
     global pending_text
     global rotatemode
     if activecommand == 'arc' and arcstage == 'angle':
@@ -2234,6 +2246,21 @@ def runcmd(event):
         writehistory(f"Text: {pending_text}\nClick a position in the viewport to place it")
         app.after_idle(viewport.focus_force)
         return "break"
+    if activecommand == 'render_confirm':
+        answer = command.get().strip().lower()
+        if answer in ("yes", 'y', 'on'):
+            whiteviewmode = not whiteviewmode
+            renderer.set_white_viewport(whiteviewmode)
+            renderer.render()
+            writehistory("White viewport mode on" if whiteviewmode else "White viewport mode off")
+        elif answer not in ('no', 'n', 'cancel'):
+            writehistory("Type yes or no, then press enter")
+            return 'break'
+        activecommand = None
+        command.delete(0, 'end')
+        command.configure(placeholder_text='Command:')
+        viewport.focus_set()
+        return 'break'
     if activecommand in ("extrude_select", "extrude_input"):
         typed = command.get().strip()
         if not typed:
@@ -2584,6 +2611,22 @@ def typecmduni(event):
             app.after_idle(updatecommandsuggestion)
             return "break"
         return
+    if activecommand == 'render_confirm':
+        if event.keysym == 'Return':
+            return runcmd(event)
+        if event.keysym == 'BackSpace':
+            if command.get():
+                command.delete(len(command.get()) -1, 'end')
+            return 'break'
+        if event.char and event.char.isalpha():
+            command.configure(state='normal', placeholder_text="",text_color="#EAEAEA")
+            command._deactivate_placeholder()
+            command._entry.configure(state='normal', fg="#EAEAEA", insertbackground="#EAEAEA")
+            command._entry.focus_force()
+            command._entry.insert("end", event.char)
+            command._entry.icursor('end')
+            return 'break'
+        return 'break'
     if focused is not None:
         widget_class = focused.winfo_class()
         if widget_class in (
@@ -2625,7 +2668,7 @@ def typecmduni(event):
         if event.keysym == "Return":
             return runcmd(event)
         if event.char and event.char in "0123456789+-.eE":
-            command._entry.focus_force()
+            app.after_idle(command._entry.focus_force)
             insertextrudecharacter(event.char)
             return "break"
         return
@@ -2981,7 +3024,7 @@ def openimportmenu():
     importhoverjob = None
     slidemenu(filemenu, 8, 104, False)
     slidemenu(analyze_menu, 100, 72, False)
-    slidemenu(toolsmenu, 150, 264, False)
+    slidemenu(toolsmenu, 150, 296, False)
     slidemenu(importmenu, 48, 104, True)
 def closeimportmenu():
     global importclosejob
@@ -3069,7 +3112,7 @@ def openanalyzemenu():
     analyzehoverjob = None
     slidemenu(importmenu, 48, 104, False)
     slidemenu(filemenu, 8, 104, False)
-    slidemenu(toolsmenu, 150, 264, False)
+    slidemenu(toolsmenu, 150, 296, False)
     slidemenu(analyze_menu, 100, 72, True)
 def analyze_enter(event):
     global analyzehoverjob
@@ -3117,9 +3160,9 @@ canvas.tag_bind(analyze, "<Leave>", analyzeleave, add="+")
 app.bind_all("<Motion>", analyzepointermotion, add="+")
 
 tools = canvas.create_text(170, 8, text="Tools", font=("Lexend", 8), fill="#EAEAEA")
-toolsmenu = Canvas(app, width=160, height=264, bg="#111111", highlightthickness=1, highlightbackground="#555555")
+toolsmenu = Canvas(app, width=160, height=296, bg="#111111", highlightthickness=1, highlightbackground="#555555")
 toolsrows = []
-tool_name = ("Revolve", "Extrude", "Extrude Height", "Mirror", "Copy", "Rotate", "3D Print", "Connect")
+tool_name = ("Revolve", "Extrude", "Extrude Height", "Mirror", "Copy", "Rotate", "3D Print", "Connect", "Render")
 for i, name in enumerate(tool_name):
     y = 4 + i * 32
     box = toolsmenu.create_rectangle(4, y, 155, y +30, fill='', outline='')
@@ -3136,7 +3179,7 @@ def toolsmenuclick(event):
     if not (4<= event.x <= 155):
         return
     row = (event.y-4)//32
-    names = ("Revolve", "Extrude", "Extrude Height", "Mirror", "Copy", "Rotate", "3D Print", "Connect")
+    names = ("Revolve", "Extrude", "Extrude Height", "Mirror", "Copy", "Rotate", "3D Print", "Connect", "Render")
     if 0<= row < len(names):
         closetoolsmenu()
         runnamedcommand(names[row])
@@ -3150,11 +3193,11 @@ def opentoolsmenu():
     slidemenu(importmenu, 48, 104, False)
     slidemenu(filemenu, 8, 104, False)
     slidemenu(analyze_menu, 100, 72, False)
-    slidemenu(toolsmenu, 150, 264, True)
+    slidemenu(toolsmenu, 150, 296, True)
 def closetoolsmenu():
     global toolsclosejob
     toolsclosejob = None
-    slidemenu(toolsmenu, 150, 264, False)
+    slidemenu(toolsmenu, 150, 296, False)
 def toolsenter(event):
     global toolshoverjob
     canvas.itemconfig(tools, fill='#777777')
@@ -3176,7 +3219,7 @@ def toolsclick(event):
 def pointerontoolsmenu(event):
     x = event.x_root - app.winfo_rootx()
     y = event.y_root - app.winfo_rooty()
-    return (150 <= x <= 190 and 0 <= y <= 20) or (150 <= x <= 310 and 20 <= y <= 284)
+    return (150 <= x <= 190 and 0 <= y <= 20) or (150 <= x <= 310 and 20 <= y <= 316)
 def toolspointermotion(event):
     global toolsclosejob
     if toolsmenu in menusliding or not toolsmenu.winfo_manager():
@@ -4052,7 +4095,7 @@ def open_view_menu():
     slidemenu(filemenu, 8, 104, False)
     slidemenu(importmenu, 48, 104, False)
     slidemenu(analyze_menu, 100, 72, False)
-    slidemenu(toolsmenu, 150, 264, False)
+    slidemenu(toolsmenu, 150, 296, False)
     slidemenu(viewmenu, 101, 99, True, top=129, start_y=33)
 def closeviewmenu():
     global view_close_job

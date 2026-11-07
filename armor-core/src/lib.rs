@@ -156,6 +156,9 @@ impl ViewportRenderer {
     pub fn bool_union_selected(&mut self) -> Option<usize> {
         self.state.viewport.bool_union_selected()
     }
+    fn set_white_viewport(&mut self, enabled: bool) {
+        self.state.white_viewport = enabled;
+    }
     pub fn bool_difference_selected(&mut self) -> Option<usize> {
         self.state.viewport.bool_difference_selected()
     }

@@ -73,6 +73,7 @@ pub struct State {
     device: wgpu::Device,
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
+    pub white_viewport: bool,
     font_system: FontSystem,
     swash_cache: SwashCache,
     text_viewport: glyphon::Viewport,
@@ -429,6 +430,7 @@ impl State {
             text_renderer,
             text_buffer,
             is_surface_configured: true,
+            white_viewport: false,
             render_pipeline,
             graph_pipeline,
             window: Some(window),
@@ -694,6 +696,7 @@ impl State {
         Ok(Self {
             surface,
             reference_image,
+            white_viewport: false,
             device,
             queue,
             config,
@@ -849,12 +852,15 @@ impl State {
                     resolve_target: None,
                     depth_slice: None,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.025,
-                            g: 0.03,
-                            b: 0.02,
-                            a: 1.0,
-                        }),
+                        load: wgpu::LoadOp::Clear(if self.white_viewport {
+                            wgpu::Color{
+                                r: 1.0, g: 1.0, b: 1.0, a:1.0}
+                        } else {
+                            wgpu::Color {
+                                r: 0.025, g: 0.03, b: 0.02, a: 1.0
+                            }
+                        }
+                    ),
                         store: wgpu::StoreOp::Store,
                     },
                 })],
@@ -865,14 +871,15 @@ impl State {
             });
             render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
             self.reference_image.draw(&mut render_pass);
-            // Draw the grid before scene geometry. In Front view the grid's XY
-            // plane is coplanar with the drawing plane, so drawing it afterward
-            // can blend over the active polyline preview.
-            render_pass.set_pipeline(&self.graph_pipeline);
-            render_pass.set_vertex_buffer(0, self.graph_vertex_buffer.slice(..));
-            render_pass
-                .set_index_buffer(self.graph_index_buffer.slice(..), wgpu::IndexFormat::Uint16);
-            render_pass.draw_indexed(0..self.num_indices, 0, 0..1);
+            if !self.white_viewport {
+                render_pass.set_pipeline(&self.graph_pipeline);
+                render_pass.set_vertex_buffer(0, self.graph_vertex_buffer.slice(..));
+                render_pass.set_index_buffer(
+                    self.graph_index_buffer.slice(..),
+                    wgpu::IndexFormat::Uint16,
+                );
+                    render_pass.draw_indexed(0..self.num_indices, 0, 0..1);
+            }
             if !self.viewport.point_vertices.is_empty() {
                 render_pass.set_pipeline(&self.render_pipeline);
                 render_pass.set_vertex_buffer(0, self.point_buffer.slice(..));
