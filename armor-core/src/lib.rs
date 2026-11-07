@@ -120,6 +120,9 @@ pub fn handle_input(pos: (f64, f64), button: &str, vec: (f32, f32, f32)) -> PyRe
 
 #[pymethods]
 impl ViewportRenderer {
+    pub fn trim_at(&mut self, mouse_x: f32, mouse_y: f32) -> bool {
+        self.state.viewport.trim_at(mouse_x, mouse_y)
+    }
     pub fn bool_union(&mut self, id_a: usize, id_b: usize) -> Option<usize> {
         self.state.viewport.bool_union(id_a, id_b)
     }

@@ -1,5 +1,4 @@
 use cgmath::{InnerSpace, Vector3};
-use rfd::MessageDialogResult::No;
 
 use crate::exporter::Triangle;
 

@@ -163,6 +163,7 @@ pub struct Viewport {
     pub hist_entities: ShapeUndoStore<PolyLine>,
     pub hist_surfaces: ShapeUndoStore<NurbsSurfaceEntity>,
     pub hist_imported_meshes: ShapeUndoStore<ImportedMeshEntity>,
+    pub hist_solids: ShapeUndoStore<SolidEntity>,
     pub entities: Vec<PolyLine>,
     pub connected_groups: Vec<Vec<usize>>,
     pub active_polyline: Vec<Vector3<f32>>,
@@ -937,6 +938,7 @@ impl Viewport {
         self.hist_surfaces.save_undo();
         self.hist_imported_meshes.current = self.imported_meshes.clone();
         self.hist_imported_meshes.save_undo();
+        self.hist_solids.save_undo();
     }
     fn restore_history_state(&mut self) {
         self.selected_entity = self
@@ -993,14 +995,17 @@ impl Viewport {
         self.hist_surfaces.current = self.nurbs_surfaces.clone();
         self.hist_imported_meshes.current = self.imported_meshes.clone();
 
-        if !self.hist_entities.undo() {
+        let h_e = self.hist_entities.undo();
+        let h_su = self.hist_surfaces.undo();
+        let h_i = self.hist_imported_meshes.undo();
+        let h_so = self.hist_solids.undo();
+        if !h_e && !h_su && !h_i && !h_so {
             return false;
         }
-        let _ = self.hist_surfaces.undo();
-        let _ = self.hist_imported_meshes.undo();
         self.entities = self.hist_entities.current.clone();
         self.nurbs_surfaces = self.hist_surfaces.current.clone();
         self.imported_meshes = self.hist_imported_meshes.current.clone();
+        self.solids = self.hist_solids.current.clone();
         self.restore_history_state();
         true
     }
@@ -1009,11 +1014,13 @@ impl Viewport {
         self.hist_surfaces.current = self.nurbs_surfaces.clone();
         self.hist_imported_meshes.current = self.imported_meshes.clone();
 
-        if !self.hist_entities.redo() {
+        let h_e = self.hist_entities.redo();
+        let h_su = self.hist_surfaces.redo();
+        let h_i = self.hist_imported_meshes.redo();
+        let h_so = self.hist_solids.redo();
+        if !h_e && !h_su && !h_i && !h_so {
             return false;
         }
-        let _ = self.hist_surfaces.redo();
-        let _ = self.hist_imported_meshes.redo();
         self.entities = self.hist_entities.current.clone();
         self.nurbs_surfaces = self.hist_surfaces.current.clone();
         self.imported_meshes = self.hist_imported_meshes.current.clone();
@@ -1111,6 +1118,7 @@ impl Viewport {
             hist_entities: ShapeUndoStore::new(Vec::new()),
             hist_surfaces: ShapeUndoStore::new(Vec::new()),
             hist_imported_meshes: ShapeUndoStore::new(Vec::new()),
+            hist_solids: ShapeUndoStore::new(Vec::new()),
             entities: Vec::new(),
             connected_groups: Vec::new(),
             active_polyline: Vec::new(),
@@ -4038,6 +4046,9 @@ impl Viewport {
         self.rebuild_vertices();
         self.text_entities.clear();
         self.text_entities.clear();
+        self.solids.clear();
+        self.imported_meshes.clear();
+        self.nurbs_surfaces.clear();
     }
     fn polyline_distance_target(&self) -> Option<Vector3<f32>> {
         let distance = self.polyline_distance?;
