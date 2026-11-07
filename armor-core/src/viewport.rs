@@ -938,6 +938,7 @@ impl Viewport {
         self.hist_surfaces.save_undo();
         self.hist_imported_meshes.current = self.imported_meshes.clone();
         self.hist_imported_meshes.save_undo();
+        self.hist_solids.current = self.solids.clone();
         self.hist_solids.save_undo();
     }
     fn restore_history_state(&mut self) {
@@ -964,6 +965,7 @@ impl Viewport {
             .map(|entity| entity.id)
             .chain(self.nurbs_surfaces.iter().map(|surface| surface.id))
             .chain(self.imported_meshes.iter().map(|mesh| mesh.id))
+            .chain(self.solids.iter().map(|s| s.id))
             .max()
             .map(|id| id + 1)
             .unwrap_or(0);
@@ -994,7 +996,7 @@ impl Viewport {
         self.hist_entities.current = self.entities.clone();
         self.hist_surfaces.current = self.nurbs_surfaces.clone();
         self.hist_imported_meshes.current = self.imported_meshes.clone();
-
+        self.hist_solids.current = self.solids.clone();
         let h_e = self.hist_entities.undo();
         let h_su = self.hist_surfaces.undo();
         let h_i = self.hist_imported_meshes.undo();
@@ -1013,7 +1015,7 @@ impl Viewport {
         self.hist_entities.current = self.entities.clone();
         self.hist_surfaces.current = self.nurbs_surfaces.clone();
         self.hist_imported_meshes.current = self.imported_meshes.clone();
-
+        self.hist_solids.current = self.solids.clone();
         let h_e = self.hist_entities.redo();
         let h_su = self.hist_surfaces.redo();
         let h_i = self.hist_imported_meshes.redo();
@@ -1024,6 +1026,7 @@ impl Viewport {
         self.entities = self.hist_entities.current.clone();
         self.nurbs_surfaces = self.hist_surfaces.current.clone();
         self.imported_meshes = self.hist_imported_meshes.current.clone();
+        self.solids = self.hist_solids.current.clone();
         self.restore_history_state();
         true
     }

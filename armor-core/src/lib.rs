@@ -120,6 +120,27 @@ pub fn handle_input(pos: (f64, f64), button: &str, vec: (f32, f32, f32)) -> PyRe
 
 #[pymethods]
 impl ViewportRenderer {
+    pub fn start_arc(&mut self) {
+        self.state.viewport.start_arc();
+    }
+    pub fn being_arc_start(&mut self, x: f32, y: f32) -> bool {
+        self.state.viewport.begin_arc_start(x, y)
+    }
+    pub fn set_arc_end(&mut self, x: f32, y: f32) -> bool {
+        self.state.viewport.set_arc_end(x, y)
+    }
+    pub fn update_arc_preview(&mut self, x: f32, y: f32) -> bool {
+        self.state.viewport.set_arc_end(x, y)
+    }
+    pub fn set_arc_degrees(&mut self, deg: f32) -> bool {
+        self.state.viewport.set_arc_degrees(deg)
+    }
+    pub fn commit_arc(&mut self) -> bool {
+        self.state.viewport.commit_arc()
+    }
+    pub fn cancel_arc(&mut self) {
+        self.state.viewport.cancel_arc();
+    }
     pub fn trim_at(&mut self, mouse_x: f32, mouse_y: f32) -> bool {
         self.state.viewport.trim_at(mouse_x, mouse_y)
     }
