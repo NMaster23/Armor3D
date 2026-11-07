@@ -517,28 +517,39 @@ def importmeshcommand():
         return
     try:
         import trimesh
-        scene = trimesh.load_scene(path)
-        mesh = scene.to_mesh()
-        if mesh.is_empty or len(mesh.faces) == 0:
-            writehistory(">Import Mesh\nNo mesh faces found in the file")
+        loaded = trimesh.load(path, force='scene', process=False)
+        if isinstance(loaded, trimesh.Trimesh):
+            scene = trimesh.Scene(loaded)
+        else:
+            scene = loaded
+        mesh = scene.to_geometry()
+        if not isinstance(mesh, trimesh.Trimesh) or mesh.is_empty or len(mesh.faces) == 0:
+            writehistory("> Import Mesh\nNo mesh faces found in the file")
             return
+        facecount = len(mesh.faces)
+        maxfaces = 750_000
+        if facecount > maxfaces:
+            writehistory(f"> Import Mesh\nThis has {facecount:,} triangles, which is too large. Simplify it in a mesh editor and try again")
+            return
+        isgltf = Path(path).suffix.lower() in (".glb", '.gltf')
+        vertices = mesh.vertices
+        faces = mesh.faces
         triangles = []
-        isgltf = Path(path).suffix.lower() in (".glb", ".gltf")
-        for triangle in mesh.triangles:
-            points = []
-            for x, y, z in triangle:
+        for face in faces:
+            triangle = []
+            for vertex_index in face:
+                x, y, z = vertices[vertex_index]
                 if isgltf:
-                    points.append((float(x), float(y), float(z)))
+                    triangle.append((float(x), float(y), float(z)))
                 else:
-                    points.append((float(x), float(z), float(-y)))
-            triangles.append(tuple(points))
-        imported = renderer.import_mesh_triangles(
-            triangles, currentlayercolor())
+                    triangle.append((float(x), float(z), float(-y)))
+            triangles.append(tuple(triangle))
+        imported = renderer.import_mesh_triangles(triangles, currentlayercolor)
         renderer.render()
         if imported:
             importedfiles.append(Path(path).name)
             updatewindowtitle()
-        writehistory(f"> Import Mesh\nImported {imported} mesh triangles")
+        writehistory(f"> Imported Mesh\nImported {imported} mesh triangles")
     except ImportError as error:
         missing_module = (getattr(error, "name", None) or "trimesh").split(".")[0]
         package_name = {"PIL": "pillow"}.get(missing_module, missing_module)
@@ -645,23 +656,18 @@ def savedxcommands(path=None):
         doc = ezdxf.new("R2010")
         doc.units = units.MM
         doc.header["$MEASUREMENT"] = 1
-        doc.layers.add(
-            name='CUT',
-            color=7
-        )
+        doc.layers.add(name='CUT', color=7)
         modelspace = doc.modelspace()
         for object_id, vertices, color, height, selected in scene:
             if len(vertices) <2:
                 continue
             points = [
                 (float(x), float(-z))
-                for x, y, z in vertices
-            ]
+                for x, y, z in vertices]
             closed = (
                 len(points) >= 3
                 and abs(points[0][0] - points[-1][0]) < 0.0001
-                and abs(points[0][1] - points[-1][1]) < 0.0001
-            )
+                and abs(points[0][1] - points[-1][1]) < 0.0001 )
             if closed:
                 points = points[:-1]
             polyline = modelspace.add_lwpolyline(
