@@ -7,6 +7,7 @@ import ezdxf
 from ezdxf import units
 import math
 import rhino3dm
+from tkinter import colorchooser
 import threading
 import json
 import queue
@@ -3877,7 +3878,7 @@ if layer_color not in {color for name, color in colors}:
     layer_color = colors[0][1]
 savelayername = next((name for name, color in colors if color == layer_color), colors[0][0],)
 canvas.itemconfig(layername, text=savelayername)
-layermenu = Canvas(app, width=152, height=214, bg="#111111", highlightthickness=1, highlightbackground="#555555")
+layermenu = Canvas(app, width=152, height=254, bg="#111111", highlightthickness=1, highlightbackground="#555555")
 layer_rows = []
 for i, (name, color) in enumerate(colors):
     y = 4+i *30
@@ -3885,14 +3886,35 @@ for i, (name, color) in enumerate(colors):
     layermenu.create_rectangle(12, y+7, 26, y+21, fill=color, outline="#D8D8D8", width=1)
     label = layermenu.create_text(36, y+14, text=name, anchor='w', fill='#EAEAEA', font=("Iceland", 12))
     layer_rows.append((background, label))
+custom_background = layermenu.create_rectangle(4, 218, 148, 250, fill='', outline='')
+customlabel = layermenu.create_text(12, 234, text='Custom...', anchor='w', fill='#eaeaea', font=("Iceland", 12))
 def layermenumotion(event):
     hovered = (event.y-4)//30
     for i, (background, label) in enumerate(layer_rows):
         active = i == hovered and 4 <= event.x <=148
         layermenu.itemconfig(background, fill=HOVER_BG if active else "")
         layermenu.itemconfig(label, fill='#FFFFFF' if active else "#EAEAEA")
+    customactive = (
+        4<= event.x <= 148 and 214<=event.y <= 254)
+    layermenu.itemconfig(custom_background, fill=HOVER_BG if customactive else '')
+    layermenu.itemconfig(customlabel, fill='#FFFFFF' if customactive else "#EAEAEA")
+def choose_layer_color():
+    global layer_color
+    result = colorchooser.askcolor(color=layer_color, title="Choose layer color", parent=app)
+    pickedcolor = result[1]
+    layermenu.place_forget()
+    if not pickedcolor:
+        return
+    layer_color = pickedcolor.upper()
+    canvas.itemconfig(layer_swatch, fill=layer_color)
+    canvas.itemconfig(layername, text='Custom')
+    synclayerrenderer()
+    saveuisettings()
 def chooselayercolor(event):
     global layer_color
+    if 4<= event.x <= 148 and 214 <= event.y <= 254:
+        choose_layer_color()
+        return
     index = (event.y-4) // 30
     if 0 <= index < len(colors):
         layer_color  =colors[index][1]
