@@ -106,8 +106,15 @@ impl Camera {
         let up = right.cross(forward).normalize();
         let scale = (self.eye - self.target).magnitude() * 0.002;
         let movement = (-right * dx + up * dy) * scale;
-        self.eye += movement;
-        self.target += movement;
+        const MAX_PAN_COORD: f32 = 10__000.0;
+        let new_target = Point3::new(
+            (self.target.x + movement.x).clamp(-MAX_PAN_COORD, MAX_PAN_COORD),
+            (self.target.y + movement.y).clamp(-MAX_PAN_COORD, MAX_PAN_COORD),
+            (self.target.z + movement.z).clamp(-MAX_PAN_COORD, MAX_PAN_COORD),
+        );
+        let applied_movement = new_target - self.target;
+        self.target = new_target;
+        self.eye += applied_movement;
     }
 
     pub fn orbit(&mut self, dx: f32, dy: f32) {

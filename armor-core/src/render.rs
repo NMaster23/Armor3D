@@ -778,6 +778,17 @@ impl State {
         self.viewport
             .camera_controller
             .update_camera(&mut self.viewport.camera);
+        let target = self.viewport.camera.target;
+        let mut grid_vertices = GRAPH_VERTICES.to_vec();
+        for vertex in &mut grid_vertices[0..4] {
+            vertex.position[0] += target.x;
+            vertex.position[1] += target.y;
+        }
+        for vertex in &mut grid_vertices[4..8] {
+            vertex.position[0] += target.x;
+            vertex.position[2] += target.z;
+        }
+        self.queue.write_buffer(&self.graph_vertex_buffer, 0, bytemuck::cast_slice(&grid_vertices));
         self.camera_uniform.update_view_proj(&self.viewport.camera);
         self.queue.write_buffer(
             &self.camera_buffer,
