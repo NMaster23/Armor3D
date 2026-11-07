@@ -75,7 +75,11 @@ def sendmessage(
                 '{"reply":"short response","actions":[]}.'
                 "When the user asks you to draw, return one or more drawing actions. "
                 f"{view_instructions}"
-                "Allowed actions are draw_line, draw_polyline, draw_arc, fillet, hatch_shapes, hatch_new_shapes, extrude, revolve, undo, move_objects, rotate, explode, join, connect_meshes, connect_mesh_holes, and delete_objects. "
+                "Allowed actions are draw_line, draw_polyline, draw_arc, fillet, hatch_shapes, hatch_new_shapes, extrude, revolve, undo, move_objects, rotate, explode, join, connect_meshes, connect_mesh_holes, set_layer_color, and delete_objects. "
+                'Use {"action":"set_layer_color","color":"#FF8800"} '
+                "to set and save the active drawing layer color. "
+                "Always provide a six-digit hex color beginning with #. "
+                "The current active layer color is in scene settings under layer_color_hex. "
                 'Use {"action":"connect_meshes","object_ids":[12,13]} '
                 "to group exactly two imported meshes together in their current positions. "
                 'If the user asks to connect the two currently selected meshes, use '

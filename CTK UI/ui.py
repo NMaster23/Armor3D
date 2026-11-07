@@ -3868,16 +3868,13 @@ colors = (
     ("Blue",    "#0000FF"),
     ("Magenta", "#FF00FF"),
     ("Black",   "#000000"),)
-layer_color = uisettings.get("layer_color", "#FFFFFF")
-if layer_color not in {color for _, color in colors}:
+layer_color = str(uisettings.get("layer_color", "#FFFFFF")).upper()
+if not re.fullmatch(r"#[0-9A-F]{6}", layer_color):
     layer_color = "#FFFFFF"
-savelayername = next( name for name, color in colors if color == layer_color)
-layername = canvas.create_text( 60, 485, text=savelayername, font=("Iceland", 11), fill="#EAEAEA", anchor="center",)
-layer_swatch = canvas.create_rectangle(17, 477, 33, 493, fill=layer_color, outline="#D8D8D8", width=1,)
-if layer_color not in {color for name, color in colors}:
-    layer_color = colors[0][1]
-savelayername = next((name for name, color in colors if color == layer_color), colors[0][0],)
-canvas.itemconfig(layername, text=savelayername)
+savelayername = next((name for name, color in colors if color == layer_color), 'Custom')
+layername = canvas.create_text(60, 485, text=savelayername, font=("Iceland", 11), fill="#EAEAEA", anchor='center')
+layer_swatch = canvas.create_rectangle(17, 477, 33, 493, fill=layer_color, outline="#D8D8D8", width=1)
+
 layermenu = Canvas(app, width=152, height=254, bg="#111111", highlightthickness=1, highlightbackground="#555555")
 layer_rows = []
 for i, (name, color) in enumerate(colors):
@@ -3905,11 +3902,7 @@ def choose_layer_color():
     layermenu.place_forget()
     if not pickedcolor:
         return
-    layer_color = pickedcolor.upper()
-    canvas.itemconfig(layer_swatch, fill=layer_color)
-    canvas.itemconfig(layername, text='Custom')
-    synclayerrenderer()
-    saveuisettings()
+    setlayercolor(pickedcolor)
 def chooselayercolor(event):
     global layer_color
     if 4<= event.x <= 148 and 214 <= event.y <= 254:
@@ -3917,12 +3910,8 @@ def chooselayercolor(event):
         return
     index = (event.y-4) // 30
     if 0 <= index < len(colors):
-        layer_color  =colors[index][1]
-        canvas.itemconfig(layer_swatch, fill=layer_color)
-        canvas.itemconfig(layername, text=colors[index][0])
-        synclayerrenderer()
+        setlayercolor(colors[index][1])
         layermenu.place_forget()
-        saveuisettings()
 def synclayerrenderer():
     if renderer is None:
         return
@@ -3932,6 +3921,22 @@ def synclayerrenderer():
     blue = int(color[4:6], 16) / 255
     renderer.set_polyline_color(red, green, blue, 1.0)
     renderer.render()
+
+def setlayercolor(hex_color):
+    global layer_color
+    if not isinstance(hex_color, str):
+        return False
+    hex_color = hex_color.upper()
+    if not re.fullmatch(r"#[0-9A-F]{6}", hex_color):
+        return False
+    layer_color = hex_color
+    name = next((name for name, color in colors if color == layer_color),"Custom")
+    canvas.itemconfig(layer_swatch, fill=layer_color)
+    canvas.itemconfig(layername, text=name)
+    synclayerrenderer()
+    saveuisettings()
+    return True 
+
 def toggle_layer_menu(event=None):
     if layermenu.winfo_manager():
         layermenu.place_forget()
@@ -4415,6 +4420,13 @@ def executeaiactions(actions):
         if not isinstance(action, dict):
             continue
         action_type = action.get("action")
+        if action_type == 'set_layer_color':
+            color = action.get("color")
+            if setlayercolor(color):
+                results.append(f"Set the active layer color to {color.upper()}")
+            else:
+                results.append("Color must be a hex value like #AABBCC")
+            continue
         if action_type == 'undo':
             steps = action.get("steps", 1)
             if type(steps) is not int or not 1 <= steps <= 16:
@@ -4880,6 +4892,7 @@ def getaiscene():
                 "segment_lengths": segment_lengths,
                 "total_length": round(sum(segment_lengths), 5),
                 "area": area,
+                "layer_color_hex": layer_color,
                 "bounding_box": {
                     "minimum": minimum,
                     "maximum": maximum,
