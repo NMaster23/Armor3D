@@ -1,4 +1,4 @@
-use cgmath::{InnerSpace, Point3, Vector3};
+use cgmath::{EuclideanSpace, InnerSpace, Point3, Vector3};
 use crate::camera::Ray;
 
 use crate::Vertex;

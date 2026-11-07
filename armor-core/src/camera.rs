@@ -151,6 +151,7 @@ pub const OPENGL_TO_WGPU_MATRIX: cgmath::Matrix4<f32> = cgmath::Matrix4::from_co
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct CameraUniform {
     pub view_proj: [[f32; 4]; 4],
+    pub camera_position_mode: [f32; 4],
 }
 
 impl CameraUniform {
@@ -158,6 +159,7 @@ impl CameraUniform {
         use cgmath::SquareMatrix;
         Self {
             view_proj: cgmath::Matrix4::identity().into(),
+            camera_position_mode: [0.0; 4],
         }
     }
     pub fn update_view_proj(&mut self, camera: &Camera) {

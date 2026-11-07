@@ -288,7 +288,7 @@ impl State {
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 entries: &[wgpu::BindGroupLayoutEntry {
                     binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX,
+                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Uniform,
                         has_dynamic_offset: false,
@@ -615,7 +615,7 @@ impl State {
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 entries: &[wgpu::BindGroupLayoutEntry {
                     binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX,
+                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Uniform,
                         has_dynamic_offset: false,
@@ -790,6 +790,10 @@ impl State {
         }
         self.queue.write_buffer(&self.graph_vertex_buffer, 0, bytemuck::cast_slice(&grid_vertices));
         self.camera_uniform.update_view_proj(&self.viewport.camera);
+        let eye = self.viewport.camera.eye;
+        self.camera_uniform.camera_position_mode = [
+            eye.x, eye.y, eye.z, if self.white_viewport {1.0} else {0.0}
+        ];
         self.queue.write_buffer(
             &self.camera_buffer,
             0,
