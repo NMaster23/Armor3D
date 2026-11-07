@@ -1,4 +1,6 @@
 use std::f32::consts::PI;
+use cgmath::{InnerSpace, Vector3};
+
 use crate::csg::CSG;
 
 use crate::{Vertex, exporter::Triangle};
@@ -24,6 +26,171 @@ pub struct SolidEntity {
 }
 
 impl SolidEntity {
+    pub fn from_revolve(
+        id: usize,
+        points: &[Vector3<f32>],
+        axis_origin: Vector3<f32>,
+        axis_dir: Vector3<f32>,
+        angle_deg: f32,
+        subdivisions: u32,
+        color: [f32; 4],
+    ) -> Option<Self> {
+        let tris = Self::create_revolve(points, axis_origin, axis_dir, angle_deg, subdivisions)?;
+        Some(Self {
+            id,
+            origin: [0.0, 0.0, 0.0],
+            shape: BaseShape::CustomMesh { triangles: tris },
+            color,
+            selected: true,
+        })
+    }
+    pub fn create_revolve(
+        points: &[Vector3<f32>],
+        axis_origin: Vector3<f32>,
+        axis_dir: Vector3<f32>,
+        angle_deg: f32,
+        subdivisions: u32,
+    ) -> Option<Vec<Triangle>> {
+        if points.len() < 2 || subdivisions < 3 {
+            return None;
+        }
+        let dir = if axis_dir.magnitude2() > 1e-6 {
+            axis_dir.normalize()
+        } else {
+            Vector3::unit_z()
+        };
+        let total_angle = angle_deg.to_radians();
+        let is_full_circle = (angle_deg.abs() - 360.0).abs() < 1e-3;
+        let n_steps = (subdivisions as usize).max(8);
+        let n_pts = points.len();
+        let rotate_pt = |p: Vector3<f32>, theta: f32| -> Vector3<f32> {
+            let v = p - axis_origin;
+            let (s, c) = theta.sin_cos();
+            axis_origin + v * c + dir.cross(v) * s + dir * dir.dot(v) * (1.0 - c)
+        };
+        let num_rings = if is_full_circle {
+            n_steps
+        } else {
+            n_steps + 1
+        };
+        let mut rings: Vec<Vec<Vector3<f32>>> = Vec::with_capacity(num_rings);
+        for s in 0..num_rings {
+            let theta = total_angle * (s as f32 / n_steps as f32);
+            let mut ring = Vec::with_capacity(n_pts);
+            for pt in points {
+                ring.push(rotate_pt(*pt, theta));
+            }
+            rings.push(ring);
+        }
+        let mut tris = Vec::new();
+        for s in 0..n_steps {
+            let next_s = (s + 1) % rings.len();
+            if !is_full_circle && s + 1 >= rings.len() {
+                break;
+            }
+            let ring_a = &rings[s];
+            let ring_b = &rings[next_s];
+            for k in 0..n_pts - 1 {
+                let v00 = ring_a[k];
+                let v01 = ring_a[k + 1];
+                let v10 = ring_b[k];
+                let v11 = ring_b[k + 1];
+                let d0 = (v10 - v00).magnitude2();
+                let d1 = (v11 - v01).magnitude2();
+                if d0 > 1e-6 && d1 > 1e-6 {
+                    let norm1 = (v10 - v00).cross(v11 - v00);
+                    let n1 = if norm1.magnitude2() > 1e-6 {
+                        norm1.normalize()
+                    } else {
+                        dir
+                    };
+                    tris.push(Triangle {
+                        v0: [v00.x, v00.y, v00.z],
+                        v1: [v10.x, v10.y, v10.z],
+                        v2: [v11.x, v11.y, v11.z],
+                        normal: [n1.x, n1.y, n1.z],
+                    });
+                    let norm2 = (v11 - v00).cross(v01 - v00);
+                    let n2 = if norm2.magnitude2() > 1e-6 {
+                        norm2.normalize()
+                    } else {
+                        dir
+                    };
+                    tris.push(Triangle {
+                        v0: [v00.x, v00.y, v00.z],
+                        v1: [v11.x, v11.y, v11.z],
+                        v2: [v01.x, v01.y, v01.z],
+                        normal: [n2.x, n2.y, n2.z],
+                    });
+                } else if d0 > 1e-6 {
+                    let norm = (v11 - v00).cross(v01 - v00);
+                    let n = if norm.magnitude2() > 1e-6 {
+                        norm.normalize()
+                    } else {
+                        dir
+                    };
+                    tris.push(Triangle {
+                        v0: [v00.x,v00.y, v00.z],
+                        v1: [v11.x, v11.y, v11.z],
+                        v2: [v01.x, v01.y, v01.z],
+                        normal: [n.x, n.y, n.z],
+                    });
+                } else if d1 > 1e-6 {
+                    let norm = (v11 - v00).cross(v01 - v00);
+                    let n = if norm.magnitude2() > 1e-6 {
+                        norm.normalize()
+                    } else {
+                        dir
+                    };
+                    tris.push(Triangle {
+                        v0: [v00.x, v00.y, v00.z],
+                        v1: [v11.x, v11.y, v11.z],
+                        v2: [v01.x, v01.y, v01.z],
+                        normal: [n.x, n.y, n.z],
+                    });
+                }
+            }
+        }
+        if !is_full_circle && rings.len() > 1 && n_pts >= 3 {
+            let start_ring = &rings[0];
+            let end_ring = &rings[rings.len() - 1];
+            let v_ref = start_ring[0];
+            for i in 1..n_pts - 1 {
+                let v1 = start_ring[i];
+                let v2 = start_ring[i + 1];
+                let n = (v2 - v_ref).cross(v1 - v_ref);
+                let norm = if n.magnitude2() > 1e-6 {
+                    n.normalize()
+                } else {
+                    -dir
+                };
+                tris.push(Triangle {
+                    v0: [v_ref.x, v_ref.y, v_ref.z],
+                    v1: [v2.x, v2.y, v2.z],
+                    v2: [v1.x, v1.y, v1.z],
+                    normal: [norm.x, norm.y, norm.z],
+                });
+            }
+            let end_ref = end_ring[0];
+            for i in 1..n_pts - 1 {
+                let v1 = end_ring[i];
+                let v2 = end_ring[i + 1];
+                let n = (v1 - end_ref).cross(v2 - end_ref);
+                let norm = if n.magnitude2() > 1e-6 {
+                    n.normalize()
+                } else {
+                    dir
+                };
+                tris.push(Triangle {
+                    v0: [end_ref.x, end_ref.y, end_ref.z],
+                    v1: [v1.x, v1.y, v1.z],
+                    v2: [v2.x, v2.y, v2.z],
+                    normal: [norm.x, norm.y, norm.z],
+                });
+            }
+        }
+        Some(tris)
+    }
     pub fn to_verts(&self, color: [f32; 4]) -> Vec<Vertex> {
         let tris = self.to_tris();
         let mut verts = Vec::with_capacity(tris.len() * 3);
@@ -77,6 +244,94 @@ impl SolidEntity {
             selected: false,
         }
     }
+    pub fn from_extrusion(
+        id: usize,
+        points: &[Vector3<f32>],
+        h: f32,
+        axis: Option<Vector3<f32>>,
+        color: [f32; 4]
+    ) -> Option<Self> {
+        let tris = Self::create_extrusion(points, h, axis)?;
+        Some(Self {
+            id,
+            origin: [0.0, 0.0, 0.0],
+            shape: BaseShape::CustomMesh { triangles: tris },
+            color,
+            selected: true,
+        })
+    }
+    pub fn create_extrusion(
+        points: &[Vector3<f32>],
+        h: f32,
+        axis: Option<Vector3<f32>>,
+    ) -> Option<Vec<Triangle>> {
+        let pts = if points.len() > 1 && (points.first()? - points.last()?).magnitude2() < 1e-6 {
+            &points[..points.len() - 1]
+        } else {
+            points
+        };
+        if pts.len() < 3 {
+            return None;
+        }
+        let dir = match axis {
+            Some(a) if a.magnitude2() > 1e-6 => a.normalize(),
+            _ => Vector3::unit_z(),
+        };
+        let h_vec = dir * h;
+        let mut tris = Vec::new();
+        let n = pts.len();
+        for i in 0..n {
+            let j = (i + 1) % n;
+            let b0 = pts[i];
+            let b1 = pts[j];
+            let t0 = b0 + h_vec;
+            let t1 = b1 + h_vec;
+            let wall_cross = (b1 - b0).cross(h_vec);
+            let wall_norm = if wall_cross.magnitude2() > 1e-6 {
+                wall_cross.normalize()
+            } else {
+                Vector3::unit_y()
+            };
+            let norm = [wall_norm.x, wall_norm.y, wall_norm.z];
+            tris.push(Triangle {
+                v0: [b0.x, b0.y, b0.z],
+                v1: [b1.x, b1.y, b1.z],
+                v2: [t1.x, t1.y, t1.z],
+                normal: norm,
+            });
+            tris.push(Triangle {
+                v0: [b0.x, b0.y, b0.z],
+                v1: [t1.x, t1.y, t1.z],
+                v2: [t0.x, t0.y, t0.z],
+                normal: norm,
+            });
+        }
+        let b_norm = [(-dir).x, (-dir).y, (-dir).z];
+        for i in 1..n - 1 {
+            let b0 = pts[0];
+            let bi = pts[i];
+            let bj = pts[i + 1];
+            tris.push(Triangle {
+                v0: [b0.x, b0.y, b0.z],
+                v1: [bi.x, bi.y, bi.z],
+                v2: [bj.x, bj.y, bj.z],
+                normal: b_norm,
+            });
+        }
+        let t_norm = [dir.x, dir.y, dir.z];
+        for i in 1..n - 1 {
+            let t0 = pts[0] + h_vec;
+            let ti = pts[i] + h_vec;
+            let tj = pts[i + 1] + h_vec;
+            tris.push(Triangle {
+                v0: [t0.x, t0.y, t0.z],
+                v1: [ti.x, ti.y, ti.z],
+                v2: [tj.x, tj.y, tj.z],
+                normal: t_norm,
+            });
+        }
+        Some(tris)
+    }
     pub fn create_box(origin: [f32; 3], w: f32, h: f32, d: f32) -> Vec<Triangle> {
         let x0 = origin[0];
         let x1 = origin[0] + w;
@@ -94,7 +349,7 @@ impl SolidEntity {
             });
             list.push(Triangle {
                 v0,
-                v1,
+                v1: v2,
                 v2: v3,
                 normal,
             });

@@ -190,6 +190,7 @@ pub struct Viewport {
     pub move_mesh_snapshots: Vec<(usize, Arc<Vec<[Vector3<f32>; 3]>>)>,
     pub move_axis_snapshots: Vec<(usize, Vector3<f32>)>,
     pub move_snapshots: Vec<(usize, Vec<Vector3<f32>>)>,
+    pub move_solid_snapshots: Vec<(usize, [f32; 3])>,
     pub point_vertices: Vec<Vertex>,
     pub next_entity: usize,
     pub camera: Camera,
@@ -1148,6 +1149,7 @@ impl Viewport {
             curve_active: false,
             move_anchor: None,
             move_snapshots: Vec::new(),
+            move_solid_snapshots: Vec::new(),
             move_surface_snapshots: Vec::new(),
             move_mesh_snapshots: Vec::new(),
             point_vertices: Vec::new(),
@@ -2905,6 +2907,7 @@ impl Viewport {
         if !hit_selected && !hit_gumball {
             self.move_anchor = None;
             self.move_snapshots.clear();
+            self.move_solid_snapshots.clear();
             self.move_surface_snapshots.clear();
             self.move_mesh_snapshots.clear();
             return false;
@@ -2935,6 +2938,12 @@ impl Viewport {
                 .iter()
                 .filter(|mesh| mesh.selected)
                 .map(|mesh| (mesh.id, mesh.triangles.clone()))
+                .collect();
+            self.move_solid_snapshots = self
+                .solids
+                .iter()
+                .filter(|mesh| mesh.selected)
+                .map(|solid| (solid.id, solid.origin))
                 .collect();
         }
         self.move_anchor.is_some()
@@ -3006,6 +3015,13 @@ impl Viewport {
                         .map(|triangle| triangle.map(rotate_point))
                         .collect(),
                 );
+            }
+        }
+        for (solid_id, original_origin) in &self.move_solid_snapshots {
+            if let Some(solid) = self.solids.iter_mut().find(|s| s.id == *solid_id) {
+                let pt = Vector3::new(original_origin[0], original_origin[1],original_origin[2]);
+                let rotated = rotate_point(pt);
+                solid.origin = [rotated.x, rotated.y, rotated.z];
             }
         }
     }
@@ -3115,6 +3131,15 @@ impl Viewport {
                 );
             }
         }
+        for (solid_id, original_origin) in &self.move_solid_snapshots {
+            if let Some(solid) = self.solids.iter_mut().find(|s| s.id == *solid_id) {
+                solid.origin = [
+                    original_origin[0] + offset.x,
+                    original_origin[1] + offset.y,
+                    original_origin[2] + offset.z,
+                ];
+            }
+        }
         if let Some((axis, angle, pivot)) = pending_rotation {
             self.rotate_gumball_snapshots(axis, angle, pivot);}
         if let Some(gumball) = &mut self.gumball {
@@ -3136,6 +3161,7 @@ impl Viewport {
         self.move_snapshots.clear();
         self.move_surface_snapshots.clear();
         self.move_mesh_snapshots.clear();
+        self.move_solid_snapshots.clear();
     }
     pub fn world_to_screen(&self, world_pos: cgmath::Vector3<f32>) -> Option<cgmath::Vector2<f32>> {
         let view_proj = self.camera.build_view_projection_matrix();
@@ -5274,8 +5300,14 @@ impl Viewport {
                     surface_entity.surface = original_surface.clone();
                 }
             }
+            for (id, original_origin) in &self.move_solid_snapshots {
+                if let Some(solid) = self.solids.iter_mut().find(|s| s.id == *id) {
+                    solid.origin = *original_origin;
+                }
+            }
             self.move_anchor = None;
             self.move_snapshots.clear();
+            self.move_solid_snapshots.clear();
             self.move_surface_snapshots.clear();
             self.rebuild_vertices();
             return true;
@@ -5504,6 +5536,66 @@ impl Viewport {
         } else {
             None
         }
+    }
+    pub fn revolve_selected_curve_to_solid(
+        &mut self,
+        degrees: f32,
+        axis: &str,
+    ) -> Option<usize> {
+        let sel_id = self.selected_entity?;
+        let curve_entity = self.entities.iter().find(|e| e.id == sel_id)?.clone();
+        if curve_entity.vertices.len() < 2 {
+            return None;
+        }
+        let (axis_origin, axis_dir) = match axis {
+            "x" => (Vector3::new(0.0, 0.0, 0.0), Vector3::unit_x()),
+            "y" => (Vector3::new(0.0, 0.0, 0.0), Vector3::unit_y()),
+            _ => (Vector3::new(0.0, 0.0, 0.0), Vector3::unit_z()),
+        };
+        let id = self.next_entity;
+        self.next_entity += 1;
+        let solid = SolidEntity::from_revolve(
+            id,
+            &curve_entity.vertices,
+            axis_origin,
+            axis_dir,
+            degrees,
+            32,
+            [0.3, 0.7, 0.5, 1.0],
+        )?;
+        self.save_undo_state();
+        self.solids.push(solid);
+        self.selected_entity = Some(id);
+        self.rebuild_vertices();
+        Some(id)
+    }
+    pub fn extrude_selected_curve_to_solid(&mut self, height: f32) -> Option<usize> {
+        let sel_id = self.selected_entity?;
+        let curve_entity = self.entities.iter().find(|e| e.id == sel_id)?.clone();
+        if curve_entity.vertices.len() < 3 {
+            return None;
+        }
+        let view_direction = self.camera.eye - self.camera.target;
+        let fallback_axis = if self.front_view {
+            Vector3::unit_z()
+        } else {
+            Vector3::unit_y()
+        };
+        let axis = Self::extrusion_axis_for_vertices(&curve_entity.vertices, view_direction, fallback_axis);
+        let id = self.next_entity;
+        self.next_entity += 1;
+        let solid = SolidEntity::from_extrusion(
+            id,
+            &curve_entity.vertices,
+            height,
+            Some(axis),
+            [0.2, 0.6, 0.9, 1.0],
+        )?;
+        self.save_undo_state();
+        self.solids.push(solid);
+        self.selected_entity = Some(id);
+        self.rebuild_vertices();
+        Some(id)
     }
     pub fn solid_hit_test(&self, solid: &SolidEntity, mouse: Vector2<f32>) -> Option<f32> {
         let ray = self.camera.screen_to_ray(

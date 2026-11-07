@@ -1,10 +1,19 @@
-use std::{fs::File, io::BufWriter, os::windows::ffi::OsStrExt, path::PathBuf};
+use std::{fs::File, io::{BufWriter, Write}, os::windows::ffi::OsStrExt, path::PathBuf};
 use app_dirs2::*;
+use curl::easy::{Easy, List};
 use serde::{Deserialize, Serialize};
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 use window_vibrancy::apply_acrylic;
 
 const APP_INFO: AppInfo = AppInfo{name: "Armor3D", author: "NMCreator"};
+
+const DOWNLOAD_URL: &str = "https://release-assets.githubusercontent.com/github-production-release-asset/1373728226/56d8ed43-5768-400b-b1de-ba7fc1254b94?sp=r&sv=2018-11-09&sr=b&spr=https&se=2026-11-07T20%3A08%3A34Z&rscd=attachment%3B+filename%3DArmor3D.exe&rsct=application%2Foctet-stream&skoid=96c2d410-5711-43a1-aedd-ab1947aa7ab0&sktid=398a6654-997b-47e9-b12b-9515b896b4de&skt=2026-11-07T19%3A07%3A43Z&ske=2026-11-07T20%3A08%3A34Z&sks=b&skv=2018-11-09&sig=MriPuXBPjgfMQbGNevK%2B6Gy%2FVtpO70Az2Yu4J60vEUo%3D&jwt=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmVsZWFzZS1hc3NldHMuZ2l0aHVidXNlcmNvbnRlbnQuY29tIiwia2V5Ijoia2V5MSIsImV4cCI6MTc5NDA4MjM5MywibmJmIjoxNzk0MDc4NzkzLCJwYXRoIjoicmVsZWFzZWFzc2V0cHJvZHVjdGlvbi5ibG9iLmNvcmUud2luZG93cy5uZXQifQ.PKkCps786KeB_Atq9Lg4_mECV3Dj3yV-a0OnnXB82uk&response-content-disposition=attachment%3B%20filename%3DArmor3D.exe&response-content-type=application%2Foctet-stream";
+
+#[derive(Serialize, Clone)]
+pub struct Payload {
+    pub progress: f32,
+    pub msg: String,
+}
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct DefaultStartup {
@@ -48,7 +57,7 @@ fn greet(name: &str) -> String {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![greet, save_config, get_default_paths, check_disk_space, create_desktop_shortcut, launch_installed_app])
+        .invoke_handler(tauri::generate_handler![greet, save_config, get_default_paths, check_disk_space, create_desktop_shortcut, launch_installed_app, install_app])
         .setup(|app| {
             let window = app.get_webview_window("main").unwrap();
             {
@@ -128,5 +137,49 @@ fn launch_installed_app(exe_path: String) -> Result<(), String> {
     std::process::Command::new(exe_path)
         .spawn()
         .map_err(|e| format!("Error starting application: {}", e))?;
+    Ok(())
+}
+
+#[tauri::command]
+fn install_app(window: tauri::Window, target_dir: String) -> Result<(), String> {
+    let _ = window.emit("install-progress", Payload {
+        progress: 10.0,
+        msg: "Preparing Installation".to_string(),
+    });
+    let dest = PathBuf::from(&target_dir);
+    std::fs::create_dir_all(&dest).map_err(|e| e.to_string())?;
+    let file = File::create(&dest.join("Armor3D.exe")).map_err(|e| e.to_string())?;
+    let mut writer = BufWriter::new(file);
+    let mut easy = Easy::new();
+    easy.url(DOWNLOAD_URL).map_err(|e| e.to_string())?;
+    easy.follow_location(true).map_err(|e| e.to_string())?;
+    let mut headers = List::new();
+    let _ = headers.append("Armor3D Installer - Downloading EXE");
+    easy.http_headers(headers).map_err(|e| e.to_string())?;
+    let mut transfer = easy.transfer();
+    transfer.write_function(|d| {
+        writer.write_all(d).map_err(|_| curl::easy::WriteError::Pause)?;
+        Ok(d.len())
+    }).map_err(|e| e.to_string())?;
+    transfer.perform().map_err(|e| e.to_string())?;
+    drop(transfer);
+    let response_code = easy.response_code().map_err(|e| e.to_string())?;
+    if response_code != 200 {
+        return Err(format!("Error downloading EXE with error code: {}", response_code));
+    }
+    let _ = window.emit("install-progress", Payload {
+        progress: 50.0,
+        msg: "Finished EXE download".to_string(),
+    });
+    save_config()?;
+    let _ = window.emit("install-progress", Payload {
+        progress: 95.0,
+        msg: "Creating desktop shortcut".to_string(),
+    });
+    create_desktop_shortcut(dest.join("Armor3D.exe").to_string_lossy().to_string())?;
+    let _ = window.emit("install-progress", Payload {
+        progress: 100.0,
+        msg: "Installation complete".to_string(),
+    });
     Ok(())
 }

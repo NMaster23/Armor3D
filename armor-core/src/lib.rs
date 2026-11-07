@@ -10,6 +10,7 @@ pub mod csg;
 
 use cgmath::{InnerSpace, Quaternion, Vector3};
 use glyphon::Family;
+use glyphon::cosmic_text::skrifa::color::PaintCachedColorGlyph::Ok;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use render::State;
@@ -120,6 +121,9 @@ pub fn handle_input(pos: (f64, f64), button: &str, vec: (f32, f32, f32)) -> PyRe
 
 #[pymethods]
 impl ViewportRenderer {
+    pub fn revolve_selected_curve_to_solid(&mut self, degrees: f32, axis: &str) -> Option<usize> {
+        self.state.viewport.revolve_selected_curve_to_solid(degrees, axis)
+    }
     pub fn start_arc(&mut self) {
         self.state.viewport.start_arc();
     }
@@ -164,6 +168,9 @@ impl ViewportRenderer {
     }
     pub fn bool_intersection_selected(&mut self) -> Option<usize> {
         self.state.viewport.bool_intersection_selected()
+    }
+    pub fn extrude_selected_curve_to_solid(&mut self, height: f32) -> Option<usize> {
+        self.state.viewport.extrude_selected_curve_to_solid(height)
     }
     pub fn export_model(&mut self) -> PyResult<Option<String>> {
         let raw_triangles = self.state.viewport.extract_triangles();
@@ -583,7 +590,7 @@ impl ViewportRenderer {
     }
     fn pick_imported_mesh_point(
         &self, x: f32, y:f32
-    ) -> Option<(usize, (f32, f32, f32))>{
+    ) -> Option<(usize, (f32, f32, f32))> {
         let (id, point) = self.state.viewport
             .pick_imported_mesh_point(cgmath::Vector2::new(x, y))?;
         Some((id, (point.x, point.y, point.z)))

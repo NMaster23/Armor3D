@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import "./App.css";
 import { Card, ProgressBar, ScrollShadow, Typography } from "@heroui/react";
 import { invoke } from "@tauri-apps/api/core";
+import { Check } from "@gravity-ui/icons";
 
 const system_checks_text = [
   "Auditing your PATH variable and quietly judging your life choices",
@@ -36,6 +37,14 @@ const compiling_texts = [
   "Staring directly at the progress bar to make it move slower",
 ];
 
+const finishing_texts = [
+  "Convincing Windows Defender to install malware",
+  "Polishing the toolbar with a microfiber cloth",
+  "Bribing your GPU with extra VRAM",
+  "Asking the high council for .3dm",
+  "Ready for launch!"
+];
+
 function App() {
   const [state, setState] = useState(0);
   const [installingState, setInstallingState] = useState(0);
@@ -54,8 +63,10 @@ function App() {
       setInstallingState(0);
     } else if (progress > 33 && progress <= 66) {
       setInstallingState(1);
-    } else if (progress > 66 && progress <= 99) {
+    } else if (progress > 66 && progress <= 90) {
       setInstallingState(2);
+    } else if (progress > 90) {
+      setInstallingState(3);
     } else {
       invoke("save_config");
     }
@@ -74,6 +85,11 @@ function App() {
     } else if (installingState === 2) {
       const timer = setInterval(() => {
         setLoadText(compiling_texts[Math.floor(Math.random() * compiling_texts.length)]);
+      }, 1000);
+      return () => clearInterval(timer);
+    } else if (installingState === 3) {
+      const timer = setInterval(() => {
+        setLoadText(finishing_texts[Math.floor(Math.random() * finishing_texts.length)]);
       }, 1000);
       return () => clearInterval(timer);
     }
@@ -162,13 +178,20 @@ function App() {
           </div>
           <Card className="w-full p-0">
             <ScrollShadow className="max-h-[240px] p-4" orientation="vertical">
-              <div className="space-y-4">
-                {Array.from({length: 10}).map((_, idx) => (
-                  <p key={`scroll-shadow-lorem-content-${idx}`}>
-                    
-                  </p>
-                ))}
-              </div>
+              {(installingState === 0
+                ? system_checks_text
+                : installingState === 1
+                ? downloading_texts
+                : compiling_texts
+              ).map((text, idx) => (
+                <div key={idx} className="flex items-center space-x-3 text-sm">
+                  {text === loadText ? (
+                    <span className="text-cyan-400 animate-pulse font-bold">&gt;</span>
+                  ): (
+                    <Check className="w-4 h-4 text-green-400"/>
+                  )}
+                </div>
+              ))}
             </ScrollShadow>
           </Card>
         </div>
