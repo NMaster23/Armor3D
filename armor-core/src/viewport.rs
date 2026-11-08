@@ -1,3 +1,4 @@
+use crate::bvh::{Bvh, BvhTriangle};
 use crate::exporter::Triangle;
 use crate::objects::{BaseShape, SolidEntity};
 use crate::{Vertex, gumball};
@@ -5655,6 +5656,24 @@ impl Viewport {
             return false;
         }
     }
+    pub fn solid_hit_test(&self, solid: &SolidEntity, mouse: Vector2<f32>) -> Option<f32> {
+        let ray = self.camera.screen_to_ray(
+            mouse,
+            Vector2::new(self.width as f32, self.height as f32)
+        )?;
+        let tris = solid.to_tris();
+        let bvh_tris: Vec<BvhTriangle> = tris
+            .into_iter()
+            .map(|tri| {
+                BvhTriangle::new(
+                    Point3::new(tri.v0[0], tri.v0[1], tri.v0[2]),
+                    Point3::new(tri.v1[0], tri.v1[1], tri.v1[2]),
+                    Point3::new(tri.v2[0], tri.v2[1], tri.v2[2]),
+                )
+            }).collect();
+        let bvh = Bvh::build(bvh_tris);
+        bvh.ray_intersect(&ray)
+    }
     pub fn extract_triangles(&self) -> Vec<Triangle> {
         let mut triangles =Vec::new();
         let push_vert_tri = |verts: &[Vertex], tris: &mut Vec<Triangle>| {
@@ -5913,6 +5932,35 @@ impl Viewport {
         self.rebuild_vertices();
         Some(id)
     }
+    pub fn loft_selected_curves(&mut self, closed_caps: bool) -> Option<usize> {
+        let mut selected_curves: Vec<Vec<Vector3<f32>>> = self
+            .entities
+            .iter()
+            .filter(|e| e.selected && e.vertices.len() >= 2)
+            .map(|e| e.vertices.clone())
+            .collect();
+        if selected_curves.len() < 2 {
+            return None;
+        }
+        selected_curves.sort_by(|a, b| {
+            let avg_a: f32 = a.iter().map(|p| p.z).sum::<f32>() / a.len() as f32;
+            let avg_b: f32 = b.iter().map(|p| p.z).sum::<f32>() / b.len() as f32;
+            avg_a.partial_cmp(&avg_b).unwrap_or(std::cmp::Ordering::Equal)
+        });
+        let id = self.next_entity;
+        self.next_entity += 1;
+        let solid = SolidEntity::from_loft(
+            id,
+            &selected_curves,
+            closed_caps,
+            [0.2, 0.7, 0.85, 1.0],
+        )?;
+        self.save_undo_state();
+        self.solids.push(solid);
+        self.selected_entity = Some(id);
+        self.rebuild_vertices();
+        Some(id)
+    }
     pub fn extrude_selected_curve_to_solid(&mut self, height: f32) -> Option<usize> {
         let sel_id = self.selected_entity?;
         let curve_entity = self.entities.iter().find(|e| e.id == sel_id)?.clone();
@@ -5980,28 +6028,58 @@ impl Viewport {
             false
         }
     }
-    pub fn solid_hit_test(&self, solid: &SolidEntity, mouse: Vector2<f32>) -> Option<f32> {
-        let ray = self.camera.screen_to_ray(
-            mouse,
-            Vector2::new(self.width as  f32, self.height as f32)
-        )?;
+    pub fn section_selected_solid(
+        &mut self,
+        plane_origin: Vector3<f32>,
+        plane_norm: Vector3<f32>,
+    ) -> Vec<usize> {
+        let Some(sel_id) = self.selected_entity else {
+            return Vec::new()
+        };
+        let Some(solid) = self.solids.iter().find(|s| s.id == sel_id) else {
+            return Vec::new()
+        };
         let tris = solid.to_tris();
-        let mut min_t: Option<f32> = None;
-        for tri in tris {
-            let p0 = Point3::new(tri.v0[0], tri.v0[1], tri.v0[2]);
-            let p1 = Point3::new(tri.v1[0], tri.v1[1], tri.v1[2]);
-            let p2 = Point3::new(tri.v2[0], tri.v2[1], tri.v2[2]);
-            if let Some(t) = ray.intersect_triangle(p0, p1, p2) {
-                if let Some(cur) = min_t {
-                    if t < cur {
-                        min_t = Some(t);
-                    }
-                } else {
-                    min_t = Some(t);
-                }
+        let polys = SolidEntity::slice_with_plane(&tris, plane_origin, plane_norm);
+        let mut created_ids = Vec::new();
+        self.save_undo_state();
+        for p in polys {
+            if p.len() >= 2 {
+                let id = self.next_entity;
+                self.next_entity += 1;
+                self.entities.push(crate::viewport::PolyLine {
+                    id,
+                    vertices: p,
+                    color: [0.0, 1.0, 0.6, 1.0],
+                    selected: false,
+                    thickness: 2.0,
+                    height: 0.0
+                });
+                created_ids.push(id);
             }
         }
-        min_t
+        self.rebuild_vertices();
+        created_ids
+    }
+    pub fn countour_selected_solid(
+        &mut self,
+        start: Vector3<f32>,
+        dir: Vector3<f32>,
+        interval: f32,
+        count: usize,
+    ) -> Vec<usize> {
+        let dir = if direction.magnitude2() > 1e-6 {
+            direction.normalize()
+        } else {
+            Vector3::unit_z()
+        };
+        let mut all_created = Vec::new();
+        for k in 0..count {
+            let origin = start + dir * (k as f32 * interval);
+            let ids = self.section_selected_solid(origin, dir);
+            all_created.extend(ids);
+        }
+        all_created
     }
 }
 

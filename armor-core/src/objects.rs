@@ -640,4 +640,170 @@ impl SolidEntity {
         self.origin = [0.0, 0.0, 0.0];
         self.shape = BaseShape::CustomMesh { triangles: tris }
     }
+    pub fn create_loft(curve_slices: &[Vec<Vector3<f32>>], closed_caps: bool) -> Option<Vec<Triangle>> {
+        if curve_slices.len() < 2 {
+            return None;
+        }
+        let cleaned: Vec<Vec<Vector3<f32>>> = curve_slices
+            .iter()
+            .map(|pts| {
+                if pts.len() > 1 && (pts.first().unwrap() - pts.last().unwrap()).magnitude2() < 1e-6 {
+                    pts[..pts.len() - 1].to_vec()
+                } else {
+                    pts.clone()
+                }
+            }).collect();
+        let n = cleaned[0].len();
+        if n < 2 {
+            return None;
+        }
+        for c in &cleaned {
+            if c.len() != n {
+                return None;
+            }
+        }
+        let is_closed = closed_caps || (curve_slices[0].len() > 2 && {
+            let first = curve_slices[0].first().unwrap();
+            let last = curve_slices[0].last().unwrap();
+            (first - last).magnitude2() < 1e-6
+        });
+        let mut tris = Vec::new();
+        let num_slices = cleaned.len();
+        for s in 0..(num_slices - 1) {
+            let slice_a = &cleaned[s];
+            let slice_b = &cleaned[s + 1];
+            let count = if is_closed {
+                n
+            } else {
+                n - 1
+            };
+            for i in 0..count {
+                let next_i = (i + 1) % n;
+                let a0 = slice_a[i];
+                let a1 = slice_a[next_i];
+                let b0 = slice_b[i];
+                let b1 = slice_b[next_i];
+                let norm1 = (a1 - a0).cross(b0 - a0);
+                let n1 = if norm1.magnitude2() > 1e-6 {
+                    norm1.normalize()
+                } else {
+                    Vector3::unit_y()
+                };
+                tris.push(Triangle {
+                    v0: [a0.x, a0.y, a0.z],
+                    v1: [a1.x, a1.y, a1.z],
+                    v2: [b0.x, b0.y, b0.z],
+                    normal: [n1.x, n1.y, n1.z],
+                });
+                let norm2 = (b1 - b0).cross(a1 - b0);
+                let n2 = if norm2.magnitude2() > 1e-6 {
+                    norm2.normalize()
+                } else {
+                    Vector3::unit_y()
+                };
+                tris.push(Triangle {
+                    v0: [b0.x, b0.y, b0.z],
+                    v1: [a1.x, a1.y, a1.z],
+                    v2: [b1.x, b1.y, b1.z],
+                    normal: [n2.x, n2.y, n2.z],
+                });
+            }
+        }
+        if closed_caps && n >= 3 {
+            let bot = &cleaned[0];
+            let bot_norm = -Vector3::unit_z();
+            for i in 1..n - 1 {
+                tris.push(Triangle {
+                    v0: [bot[0].x, bot[0].y, bot[0].z],
+                    v1: [bot[i + 1].x, bot[i + 1].y, bot[i + 1].z],
+                    v2: [bot[i].x, bot[i].y, bot[i].z],
+                    normal: [bot_norm.x, bot_norm.y, bot_norm.z]
+                });
+            }
+            let top = &cleaned[num_slices - 1];
+            let top_norm = Vector3::unit_z();
+            for i in 1..n - 1 {
+                tris.push(Triangle {
+                    v0: [top[0].x, top[0].y, top[0].z],
+                    v1: [top[i].x, top[i].y, top[i].z],
+                    v2: [top[i + 1].x, top[i + 1].y, top[i + 1].z],
+                    normal: [top_norm.x, top_norm.y, top_norm.z],
+                });
+            }
+        }
+        Some(tris)
+    }
+    pub fn from_loft(
+        id: usize,
+        curve_slices: &[Vec<Vector3<f32>>],
+        closed_caps: bool,
+        color: [f32; 4],
+    ) -> Option<Self> {
+        let tris = Self::create_loft(curve_slices, closed_caps)?;
+        Some(Self {
+            id,
+            origin: [0.0, 0.0, 0.0],
+            shape: BaseShape::CustomMesh { triangles: tris },
+            color,
+            selected: true,
+        })
+    }
+    pub fn slice_with_plane(
+        tris: &[Triangle],
+        plane_origin: Vector3<f32>,
+        plane_norm: Vector3<f32>,
+    ) -> Vec<Vec<Vector3<f32>>> {
+        let n = if plane_norm.magnitude2() > 1e-6 {
+            plane_norm.normalize()
+        } else {
+            Vector3::unit_z()
+        };
+        let mut seg: Vec<(Vector3<f32>, Vector3<f32>)> = Vec::new();
+        for tri in tris {
+            let v = [
+                Vector3::new(tri.v0[0], tri.v0[1], tri.v0[2]),
+                Vector3::new(tri.v1[0], tri.v1[1], tri.v1[2]),
+                Vector3::new(tri.v2[0], tri.v2[1], tri.v2[2]),
+            ];
+            let d = [
+                (v[0] - plane_origin).dot(n),
+                (v[1] - plane_origin).dot(n),
+                (v[2] - plane_origin).dot(n),
+            ];
+            let mut cuts = Vec::with_capacity(2);
+            for i in 0..3 {
+                let j = (i + 1) % 3;
+                if (d[i] >= 0.0 && d[j] < 0.0) || (d[i] < 0.0 && d[j] >= 0.0) {
+                    let t = -d[i] / (d[j] - d[i]);
+                    cuts.push(v[i] + (v[j] - v[i]) * t);
+                }
+            }
+            if cuts.len() == 2 {
+                seg.push((cuts[0], cuts[1]));
+            }
+        }
+        let mut poly: Vec<Vec<Vector3<f32>>> = Vec::new();
+        let eps = 1e-4;
+        while let Some((start, end)) = seg.pop() {
+            let mut chain = vec![start, end];
+            let mut growing = true;
+            while growing {
+                growing = false;
+                let cur_end = *chain.last().unwrap();
+                if let Some(pos) = seg.iter().position(|(a, b)| {
+                    (a - cur_end).magnitude2() < eps || (b - cur_end).magnitude2() < eps
+                }) {
+                    let (a, b) = seg.swap_remove(pos);
+                    if (a - cur_end).magnitude2() < eps {
+                        chain.push(b);
+                    } else {
+                        chain.push(a);
+                    }
+                    growing = true;
+                }
+            }
+            poly.push(chain);
+        }
+        poly
+    }
 }
