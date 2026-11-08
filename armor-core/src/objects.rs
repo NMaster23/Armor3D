@@ -579,4 +579,65 @@ impl SolidEntity {
         let hollow_csg = outer_csg.difference(&inner_csg);
         Some(Self::from_csg(id, &hollow_csg, self.color))
     }
+    pub fn scale(&mut self, factor: [f32; 3]) {
+        let c = self.centroid();
+        let tris: Vec<Triangle> = self
+            .to_tris()
+            .into_iter()
+            .map(|mut tri| {
+                let s_v = |v: [f32; 3]| -> [f32; 3] {
+                    [
+                        c[0] + (v[0] - c[0]) * factor[0],
+                        c[1] + (v[1] - c[1]) * factor[1],
+                        c[2] + (v[2] - c[2]) * factor[2],
+                    ]
+                };
+                tri.v0 = s_v(tri.v0);
+                tri.v1 = s_v(tri.v1);
+                tri.v2 = s_v(tri.v2);
+                let d1 = [tri.v1[0] - tri.v0[0], tri.v1[1] - tri.v0[1], tri.v1[2] - tri.v0[2]];
+                let d2 = [tri.v2[0] - tri.v0[0], tri.v2[1] - tri.v0[1], tri.v2[2] - tri.v0[2]];
+                let cross = [
+                    d1[1] * d2[2] - d1[2] * d2[1],
+                    d1[2] * d2[0] - d1[0] * d2[2],
+                    d1[0] * d2[1] - d1[1] * d2[0],
+                ];
+                let len = (cross[0] * cross[0] + cross[1] * cross[1] + cross[2] * cross[2]).sqrt();
+                if len > 1e-6 {
+                    tri.normal = [cross[0] / len, cross[1] / len, cross[2] / len];
+                }
+                tri
+            }).collect();
+        self.origin = [0.0, 0.0, 0.0];
+        self.shape = BaseShape::CustomMesh { triangles: tris }
+    }
+    pub fn mirror(&mut self, axis: &str) {
+        let c = self.centroid();
+        let tris: Vec<Triangle> = self
+            .to_tris()
+            .into_iter()
+            .map(|mut tri| {
+                let m_v = |v: [f32; 3]| -> [f32; 3] {
+                    match axis {
+                        "x" => [2.0 * c[0] - v[0], v[1], v[2]],
+                        "y" => [v[0], 2.0 * c[1] - v[1], v[2]],
+                        _ => [v[0], v[1], 2.0 * c[2] - v[2]],
+                    }
+                };
+                let mut m_norm = tri.normal;
+                match axis {
+                    "x" => m_norm[0] = -m_norm[0],
+                    "y" => m_norm[1] = -m_norm[1],
+                    _ => m_norm[2] = -m_norm[2],
+                }
+                Triangle {
+                    v0: m_v(tri.v0),
+                    v1: m_v(tri.v2),
+                    v2: m_v(tri.v1),
+                    normal: m_norm,
+                }
+            }).collect();
+        self.origin = [0.0, 0.0, 0.0];
+        self.shape = BaseShape::CustomMesh { triangles: tris }
+    }
 }
