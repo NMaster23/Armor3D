@@ -2000,14 +2000,14 @@ def opentextdialog():
         button = Canvas(panel, width=110, height=34, bg='#111111', highlightthickness=0, cursor='hand2')
         box = button.create_rectangle(2, 2, 108, 32, fill='#111111', outline='#383838', width=1)
         text = button.create_text(55, 17, text=label, fill='#EAEAEA', font=("Iceland", 15))
-        def on_enter(_event):
-            button.itemconfig(box, fill='#242424', outline='#666666')
-            button.itemconfig(text, fill='#FFFFFF')
-        def on_leave(_event):
-            button.itemconfig(box, fill="#111111", outline='#383838')
+        def onenter(_event):
+            button.itemconfig(box, fill="#383838")
+            button.itemconfig(text, fill="#FFFFFF")
+        def onleave(_event):
+            button.itemconfig(box, fill="#111111")
             button.itemconfig(text, fill="#EAEAEA")
-        button.bind("<Enter>", on_enter)
-        button.bind("<Leave>", on_leave)
+        button.bind("<Enter>", onenter)
+        button.bind("<Leave>", onleave)
         button.bind("<Button-1>", lambda _event: callback())
         button.place(x=x, y=275)
     maketextbutton("Cancel", 310, close)
@@ -2017,7 +2017,6 @@ def opentextdialog():
     dialog.grab_set()
     text_entry.focus_force()
     refreshpreview()
-
 def starttrim(event=None):
     global activecommand
     activecommand = 'trim'
@@ -2029,7 +2028,6 @@ def starttrim(event=None):
     writehistory("> Trim\nAll drawing curves selected as cutters. Click a piece to remove.")
     viewport.configure(cursor='crosshair')
     viewport.focus_set()
-
 def startrender():
     global activecommand, pendingrendermode
     pendingrendermode = not whiteviewmode
@@ -3419,8 +3417,80 @@ materials_sidebar = ctk.CTkFrame(app, width=520, corner_radius=16, fg_color='#11
 materials_sidebar.pack_propagate(False)
 materialstitle = ctk.CTkLabel(materials_sidebar, text='Materials', font=("Iceland", 35))
 materialstitle.pack(pady=(24, 12))
-materialslist = ctk.CTkScrollableFrame(materials_sidebar, fg_color='#0B0B0B', corner_radius=8)
-materialslist.pack(fill='both', expand=True, padx=18, pady=(0, 18))
+
+materials_selected = "Stainless Steel"
+materialnames = [
+    "Stainless Steel", "Steel", "Aluminum", "Brass", "Copper", "Titanium",
+    "Cast Iron", "Tool Steel", "ABS Plastic", "PLA Plastic", "Nylon",
+    "Polycarbonate", "Acrylic", "Rubber", "Glass", "Carbon Fiber", "Wood",
+    "Ceramic", "Gold", "Silver",
+]
+MATERIAL_ROW_HEIGHT = 36
+material_hovered = None
+
+materials_list_frame = ctk.CTkFrame(materials_sidebar, fg_color="transparent")
+materials_list_frame.pack(fill="x", padx=18, pady=(0, 18))
+materials_canvas = Canvas(
+    materials_list_frame, height=280, bg="#0B0B0B", highlightthickness=0,
+    yscrollincrement=15,
+)
+materials_canvas.pack(side="left", fill="both", expand=True)
+materials_scrollbar = ctk.CTkScrollbar(
+    materials_list_frame, orientation="vertical", command=materials_canvas.yview,
+    fg_color="#0B0B0B", button_color="#383838", button_hover_color="#666666",
+)
+materials_scrollbar.pack(side="right", fill="y")
+materials_canvas.configure(yscrollcommand=materials_scrollbar.set)
+
+def draw_material_rows():
+    materials_canvas.delete("all")
+    width = max(1, materials_canvas.winfo_width())
+    for index, name in enumerate(materialnames):
+        top = index * MATERIAL_ROW_HEIGHT
+        selected = name == materials_selected
+        hovered = index == material_hovered
+        fill = "#555555" if hovered else "#353535" if selected else "#0B0B0B"
+        materials_canvas.create_rectangle(
+            4, top + 2, width - 4, top + MATERIAL_ROW_HEIGHT - 2,
+            fill=fill, outline="", tags=(f"material_{index}",), )
+        materials_canvas.create_text(
+            14, top + MATERIAL_ROW_HEIGHT / 2, text=name, anchor="w",
+            fill="#FFFFFF" if hovered or selected else "#EAEAEA",
+            font=("Lexend", 10), tags=(f"material_{index}",), )
+        materials_canvas.create_text(
+            width - 18, top + MATERIAL_ROW_HEIGHT / 2,
+            text="✓" if selected else "", anchor="e", fill="#FFFFFF",
+            font=("Lexend", 11), tags=(f"material_{index}",),)
+    materials_canvas.configure(scrollregion=(0, 0, width, len(materialnames) * MATERIAL_ROW_HEIGHT))
+def select_material_canvas(event):
+    global materials_selected
+    index = int(materials_canvas.canvasy(event.y) // MATERIAL_ROW_HEIGHT)
+    if 0 <= index < len(materialnames):
+        materials_selected = materialnames[index]
+        draw_material_rows()
+
+def hover_material_canvas(event):
+    global material_hovered
+    index = int(materials_canvas.canvasy(event.y) // MATERIAL_ROW_HEIGHT)
+    material_hovered = index if 0 <= index < len(materialnames) else None
+    draw_material_rows()
+
+def clear_material_hover(_event=None):
+    global material_hovered
+    material_hovered = None
+    draw_material_rows()
+
+def size_materials_list(event):
+    materials_canvas.configure(height=max(140, (event.height - 110) // 2))
+
+materials_canvas.bind("<Button-1>", select_material_canvas)
+materials_canvas.bind("<Motion>", hover_material_canvas)
+materials_canvas.bind("<Leave>", clear_material_hover)
+materials_canvas.bind( "<MouseWheel>", lambda event: materials_canvas.yview_scroll(-3 if event.delta > 0 else 3, "units"))
+materials_canvas.bind("<Configure>", lambda _event: draw_material_rows())
+materials_sidebar.bind("<Configure>", size_materials_list, add="+")
+app.after_idle(draw_material_rows)
+
 materialsopen = False
 materialsanimating = False
 
@@ -3442,7 +3512,7 @@ def togglematerials(event=None):
     width = max(280, int(app.winfo_width() * materialspanelratio))
     start_x, end_x = (width+16, 16) if opening else (16, width +16)
     if opening:
-        materials_sidebar.place(relx =1, x=start_x, y=0, anchor='ne', relwidth=panel_ratio, relheight=1)
+        materials_sidebar.place(relx=1, x=start_x, y=0, anchor='ne', relwidth=materialspanelratio, relheight=1)
         for line in materialsshadowlines:
             canvas.itemconfigure(line, state="normal")
         materials_sidebar.lift()
@@ -3450,7 +3520,7 @@ def togglematerials(event=None):
         global materialsopen, materialsanimating
         progress = 1 - (1-step/12) ** 3
         x = round(start_x + (end_x - start_x) * progress)
-        materials_sidebar.place(relx=1, x=x, y=0, anchor='ne', relwidth=panel_ratio, relheight=1)
+        materials_sidebar.place(relx=1, x=x, y=0, anchor='ne', relwidth=materialspanelratio, relheight=1)
         updatematerialsshadow(app.winfo_height(), x)
         if step < 12:
             app.after(16, lambda: animating(step +1))
@@ -3459,7 +3529,7 @@ def togglematerials(event=None):
             materialsopen = opening
             if not opening:
                 materials_sidebar.place_forget()
-                for line in shadow_lines:
+                for line in materialsshadowlines:
                     canvas.itemconfigure(line, state="hidden")
     animating(0)
 canvas.tag_bind(MATERIALS, "<Button-1>", togglematerials)
