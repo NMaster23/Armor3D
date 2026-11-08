@@ -152,3 +152,175 @@ pub async fn write_file(triangles: &[Triangle], file_type: &str) -> Option<FileO
         extension: final_ext,
     })
 }
+
+pub fn parse_stl(bytes: &[u8]) -> Result<Vec<Triangle>, Box<dyn Error>> {
+    if bytes.len() < 84 {
+        return Err("STL File is too small".into())
+    }
+    let num_tris = u32::from_le_bytes([bytes[80], bytes[81], bytes[82], bytes[83]]) as usize;
+    let expected_length = 84 + num_tris * 50;
+    if bytes.len() >= expected_length {
+        let mut tris = Vec::with_capacity(num_tris);
+        for i in 0..num_tris {
+            let offset = 84 + i * 50;
+            let read_f32 = |start: usize| -> f32 {
+                f32::from_le_bytes([bytes[start], bytes[start + 1], bytes[start + 2], bytes[start + 3]])
+            };
+            let norm = [read_f32(offset), read_f32(offset + 4), read_f32(offset + 8)];
+            let v0 = [read_f32(offset + 12), read_f32(offset + 16), read_f32(offset + 20)];
+            let v1 = [read_f32(offset + 24), read_f32(offset + 28), read_f32(offset + 32)];
+            let v2 = [read_f32(offset + 36), read_f32(offset + 40), read_f32(offset + 44)];
+            let n = if norm[0] == 0.0 && norm[1] == 0.0 && norm[2] == 0.0 {
+                let d1 = [v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2]];
+                let d2 = [v2[0] - v0[0], v2[1] - v0[1], v2[2] - v0[2]];
+                let cross = [
+                    d1[1] * d2[2] - d1[2] * d2[1],
+                    d1[2] * d2[0] - d1[0] * d2[2],
+                    d1[0] * d2[1] - d1[1] * d2[0],
+                ];
+                let len = (cross[0] * cross[0] + cross[1] * cross[1] + cross[2] * cross[2]).sqrt();
+                if len > 1e-6 {
+                    [cross[0] / len, cross[1] / len, cross[2] / len]
+                } else {
+                    [0.0, 0.0, 1.0]
+                }
+            } else {
+                norm
+            };
+            tris.push(Triangle {
+                v0,
+                v1,
+                v2,
+                normal: n,
+            });
+        }
+        return Ok(tris);
+    }
+    let text = std::str::from_utf8(bytes)?;
+    let mut tris = Vec::new();
+    let mut current_n = [0.0, 0.0, 1.0];
+    let mut current_verts: Vec<[f32; 3]> = Vec::new();
+    for line in text.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("facet normal") {
+            let parts: Vec<&str> = trimmed.split_whitespace().collect();
+            if parts.len() >= 5 {
+                if let (Ok(nx), Ok(ny), Ok(nz)) = (parts[2].parse(), parts[3].parse(), parts[4].parse()) {
+                    current_n = [nx, ny, nz];
+                }
+            }
+            current_verts.clear();
+        } else if trimmed.starts_with("vertex") {
+            let parts: Vec<&str> = trimmed.split_whitespace().collect();
+            if parts.len() >= 4 {
+                if let (Ok(x), Ok(y), Ok(z)) = (parts[1].parse(), parts[2].parse(), parts[3].parse()) {
+                    current_verts.push([x, y, z]);
+                }
+            }
+        } else if trimmed.starts_with("endfacet") {
+            if current_verts.len() == 3 {
+                tris.push(Triangle {
+                    v0: current_verts[0],
+                    v1: current_verts[1],
+                    v2: current_verts[2],
+                    normal: current_n,
+                });
+            }
+            current_verts.clear();
+        }
+    }
+    Ok(tris)
+}
+
+pub fn parse_obj(content: &str) -> Result<Vec<Triangle>, Box<dyn Error>> {
+    let mut verts: Vec<[f32; 3]> = Vec::new();
+    let mut tris: Vec<Triangle> = Vec::new();
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("v ") {
+            let parts: Vec<&str> = trimmed.split_whitespace().collect();
+            if parts.len() >= 4 {
+                if let (Ok(x), Ok(y), Ok(z)) = (parts[1].parse(), parts[2].parse(), parts[3].parse()) {
+                    verts.push([x, y, z]);
+                }
+            }
+        } else if trimmed.starts_with("f ") {
+            let parts: Vec<&str> = trimmed.split_whitespace().collect();
+            let mut face_indices: Vec<usize> = Vec::new();
+            for part in &parts[1..] {
+                let v_str = part.split('/').next().unwrap_or("");
+                if let Ok(idx) = v_str.parse::<i32>() {
+                    let a_idx = if idx > 0 {
+                        (idx as usize).saturating_sub(1)
+                    } else {
+                        (verts.len() as i32 + idx).max(0) as usize
+                    };
+                    if a_idx < verts.len() {
+                        face_indices.push(a_idx);
+                    }
+                }
+            }
+            if face_indices.len() >= 3 {
+                let v0 = verts[face_indices[0]];
+                for k in 1..face_indices.len() - 1 {
+                    let v1 = verts[face_indices[k]];
+                    let v2 = verts[face_indices[k + 1]];
+                    let d1 = [v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2]];
+                    let d2 = [v2[0] - v0[0], v2[1] - v0[1], v2[2] - v0[2]];
+                    let cross = [
+                        d1[1] * d2[2] - d1[2] * d2[1],
+                        d1[2] * d2[0] - d1[0] * d2[2],
+                        d1[0] * d2[1] - d1[1] * d2[0],
+                    ];
+                    let len = (cross[0] * cross[0] + cross[1] * cross[1] + cross[2] * cross[2]).sqrt();
+                    let normal = if len > 1e-6 {
+                        [cross[0] / len, cross[1] / len, cross[2] / len]
+                    } else {
+                        [0.0, 0.0, 1.0]
+                    };
+                    tris.push(Triangle {
+                        v0,
+                        v1,
+                        v2,
+                        normal,
+                    });
+                }
+            }
+        }
+    }
+    Ok(tris)
+}
+
+pub async fn read_mesh_file() -> Option<(Vec<Triangle>, String)> {
+    let handle = AsyncFileDialog::new()
+        .set_title("Import 3D Mesh")
+        .add_filter("Supported Formats (*.stl, *.obj)", &["stl", "obj"])
+        .pick_file()
+        .await?;
+    let path = handle.path();
+    let ext = path.extension()?.to_str()?.to_ascii_lowercase();
+    let file_name = path.file_name()?.to_string_lossy().to_string();
+    let bytes = std::fs::read(path).ok()?;
+    let tris = match ext.as_str() {
+        "stl" => parse_stl(&bytes).ok()?,
+        "obj" => {
+            let text = std::str::from_utf8(&bytes).ok()?;
+            parse_obj(text).ok()?
+        }
+        _ => return None,
+    };
+    Some((tris, file_name))
+}
+
+pub fn read_mesh_from_path(path: &std::path::Path) -> Result<Vec<Triangle>, Box<dyn Error>> {
+    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase();
+    let bytes = std::fs::read(path)?;
+    match ext.as_str() {
+        "stl" => parse_stl(&bytes),
+        "obj" => {
+            let text = std::str::from_utf8(&bytes)?;
+            parse_obj(text)
+        }
+        _ => Err("Unsupported format".into()),
+    }
+}

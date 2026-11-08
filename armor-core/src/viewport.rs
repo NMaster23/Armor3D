@@ -5462,6 +5462,28 @@ impl Viewport {
             inner_subdivisions,
         }, [0.7, 0.3, 0.8, 1.0])
     }
+    pub fn import_solid_mesh(&mut self, tris: Vec<crate::exporter::Triangle>, color: [f32; 4]) -> usize {
+        let id = self.next_entity;
+        self.next_entity += 1;
+        self.save_undo_state();
+        let solid = SolidEntity {
+            id,
+            origin: [0.0, 0.0, 0.0],
+            shape: BaseShape::CustomMesh { triangles: tris },
+            color,
+            selected: true,
+        };
+        for s in &mut self.solids {
+            s.selected = false;
+        }
+        for e in &mut self.entities {
+            e.selected = false;
+        }
+        self.solids.push(solid);
+        self.selected_entity = Some(id);
+        self.rebuild_vertices();
+        id
+    }
     pub fn bool_union(&mut self, id_a: usize, id_b: usize) -> Option<usize> {
         let s_a = self.solids.iter().find(|s| s.id == id_a)?.clone();
         let s_b = self.solids.iter().find(|s| s.id == id_b)?.clone();

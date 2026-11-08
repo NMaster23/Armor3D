@@ -10,7 +10,6 @@ pub mod csg;
 
 use cgmath::{InnerSpace, Quaternion, Vector3};
 use glyphon::Family;
-use glyphon::cosmic_text::skrifa::color::PaintCachedColorGlyph::Ok;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use render::State;
@@ -121,6 +120,24 @@ pub fn handle_input(pos: (f64, f64), button: &str, vec: (f32, f32, f32)) -> PyRe
 
 #[pymethods]
 impl ViewportRenderer {
+    pub fn import_model(&mut self) -> PyResult<Option<usize>> {
+        if let Some((tris, _name)) = pollster::block_on(crate::exporter::read_mesh_file()) {
+            let id = self.state.viewport.import_solid_mesh(tris, [0.7, 0.7, 0.75, 1.0]);
+            Ok(Some(id))
+        } else {
+            Ok(None)
+        }
+    }
+    pub fn import_model_from_path(&mut self, path: &str) -> PyResult<Option<usize>> {
+        let path_buf = std::path::PathBuf::from(path);
+        match crate::exporter::read_mesh_from_path(&path_buf) {
+            Ok(tris) => {
+                let id = self.state.viewport.import_solid_mesh(tris, [0.7, 0.7, 0.75, 1.0]);
+                Ok(Some(id))
+            }
+            Err(_) => Ok(None),
+        }
+    }
     pub fn revolve_selected_curve_to_solid(&mut self, degrees: f32, axis: &str) -> Option<usize> {
         self.state.viewport.revolve_selected_curve_to_solid(degrees, axis)
     }
