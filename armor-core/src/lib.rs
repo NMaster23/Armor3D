@@ -349,6 +349,7 @@ impl ViewportRenderer {
             "top" => self.state.viewport.set_top_view(),
             "perspective" => self.state.viewport.set_perspective_view(),
             "front" => self.state.viewport.set_front_view(),
+            "right" => self.state.viewport.set_right_view(),
             _=> return false,
         }
         true

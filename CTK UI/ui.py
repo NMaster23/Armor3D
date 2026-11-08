@@ -4225,9 +4225,9 @@ viewbutton_text = viewbutton.create_text(
     fill="#EAEAEA", font=("Iceland", 12))
 viewbutton.place(x=101, y=101)
 viewmenu = Canvas(
-    app, width=112, height=99, bg="#111111", highlightthickness=1, highlightbackground="#555555")
+    app, width=112, height=130, bg="#111111", highlightthickness=1, highlightbackground="#555555")
 view_rows = []
-for index, name in enumerate(("Perspective", "Top", "Front")):
+for index, name in enumerate(("Perspective", "Top", "Front", "Right")):
     y = 3+ index * 31
     box = viewmenu.create_rectangle(
         3, y, 108, y+29, fill='', outline='')
@@ -4250,11 +4250,11 @@ def open_view_menu():
     slidemenu(importmenu, 48, 104, False)
     slidemenu(analyze_menu, 100, 72, False)
     slidemenu(toolsmenu, 150, 296, False)
-    slidemenu(viewmenu, 101, 99, True, top=129, start_y=33)
+    slidemenu(viewmenu, 101, 130, True, top=129, start_y=33)
 def closeviewmenu():
     global view_close_job
     view_close_job = None
-    slidemenu(viewmenu, 101, 99, False)
+    slidemenu(viewmenu, 101, 130, False)
 def viewbuttonenter(event=None):
     global view_hover_job
     if view_hover_job is not None:
@@ -4274,17 +4274,13 @@ def view_button_click(event=None):
 def choose_view(event):
     global current_view
     index = (event.y - 3) // 31
-    views = ('perspective', 'top', 'front')
+    views = ('perspective', 'top', 'front', 'right')
     if not 0 <= index < len(views):
         return
     view = views[index]
     if renderer is not None and renderer.set_view(view):
         current_view = view
-        label = {
-            "perspective": "Perspective",
-            "top": "Top",
-            'front': "Front"
-        } [view]
+        label = {"perspective": "Perspective", "top": "Top", "front": "Front", "right": "Right",}[view]
         viewbutton.itemconfig(viewbutton_text, text=f"{label}  v")
         renderer.render()
     closeviewmenu()

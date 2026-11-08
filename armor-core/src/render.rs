@@ -758,6 +758,17 @@ impl State {
         show_extrude_popup: &mut bool,
         extrude_input: &mut f32,
     ) -> anyhow::Result<()> {
+        self.viewport
+            .camera_controller
+            .update_camera(&mut self.viewport.camera);
+        if self.viewport.right_view {
+            let target = self.viewport.camera.target;
+            let dy = target.y - self.viewport.right_grid_center.y;
+            let dz = target.z - self.viewport.right_grid_center.z;
+            if dy * dy + dz * dz > 25.0 {
+                self.viewport.rebuild_vertices();
+            }
+        }
         if self.viewport.redraw {
             let vertices = &self.viewport.point_vertices;
             if vertices.len() > self.point_buffer_capacity {
@@ -775,9 +786,6 @@ impl State {
             }
             self.viewport.redraw = false;
         }
-        self.viewport
-            .camera_controller
-            .update_camera(&mut self.viewport.camera);
         let target = self.viewport.camera.target;
         let mut grid_vertices = GRAPH_VERTICES.to_vec();
         for vertex in &mut grid_vertices[0..4] {
@@ -886,7 +894,7 @@ impl State {
             });
             render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
             self.reference_image.draw(&mut render_pass);
-            if !self.white_viewport {
+            if !self.white_viewport && !self.viewport.right_view {
                 render_pass.set_pipeline(&self.graph_pipeline);
                 render_pass.set_vertex_buffer(0, self.graph_vertex_buffer.slice(..));
                 render_pass.set_index_buffer(

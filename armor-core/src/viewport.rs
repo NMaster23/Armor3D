@@ -200,6 +200,8 @@ pub struct Viewport {
     pub camera_controller: CameraController,
     pub width: u32,
     pub front_view: bool,
+    pub right_view: bool,
+    pub right_grid_center: Vector3<f32>,
     pub height: u32,
     pub redraw: bool,
     pub grab_mode: bool,
@@ -1157,6 +1159,8 @@ impl Viewport {
             construction_snap_enabled: false,
             saved_perspective_view: None,
             front_view: false,
+            right_view: false,
+            right_grid_center: Vector3::zero(),
             grid_snap_enabled: false,
             grid_spacing: 0.1,
             ortho_enabled: false,
@@ -1218,7 +1222,9 @@ impl Viewport {
         let Some(index) = index else {
             return;
         };
-        let fallback_axis = if self.front_view {
+        let fallback_axis = if self.right_view {
+            Vector3::unit_x()
+        } else if self.front_view {
             Vector3::unit_z()
         } else {
             Vector3::unit_y()  
@@ -1302,6 +1308,7 @@ impl Viewport {
                 self.camera.up
             ));
         }
+        self.right_view = false;
         self.front_view = false;
         let distance = (self.camera.eye - self.camera.target).magnitude().max(2.0);
         self.camera.eye = cgmath::Point3::new(
@@ -1313,13 +1320,31 @@ impl Viewport {
         self.camera.orthographic = true;
         self.rebuild_vertices();
     }
+    pub fn set_right_view(&mut self) {
+        if !self.camera.orthographic {
+            self.saved_perspective_view = Some((
+                self.camera.eye, self.camera.target, self.camera.up
+            ));
+        }
+        self.front_view = false;
+        self.right_view = true;
+        let distance = (self.camera.eye - self.camera.target).magnitude().max(2.0);
+        self.camera.eye = cgmath::Point3::new(
+            self.camera.target.x + distance,
+            self.camera.target.y,
+            self.camera.target.z);
+        self.camera.up = Vector3::unit_y();
+        self.camera.orthographic = true;
+        self.rebuild_vertices();
+    }
     pub fn set_front_view(&mut self) {
         if !self.camera.orthographic {
             self.saved_perspective_view = Some((
                 self.camera.eye,
-                self.camera.target, self.camera.up
+                self.camera.target, self.camera.up,
             ));
         }
+        self.right_view = false;
         self.front_view = true;
         let distance = (self.camera.eye - self.camera.target).magnitude().max(2.0);
         self.camera.eye = cgmath::Point3::new(
@@ -1333,6 +1358,7 @@ impl Viewport {
     }
     pub fn set_perspective_view(&mut self) {
         self.front_view = false;
+        self.right_view = false;
         if let Some((eye, target, up)) = self.saved_perspective_view.take() {
             self.camera.eye = eye;
             self.camera.target = target;
@@ -3381,6 +3407,39 @@ impl Viewport {
     }
     pub fn rebuild_vertices(&mut self) {
         let mut new_vertices = Vec::new();
+        // The standard grid is drawn by the renderer on the XZ/XY planes.
+        // Right view gets its own YZ grid, centered around the current view target.
+        if self.right_view {
+            let spacing = self.grid_spacing.clamp(0.01, 10.0);
+            let extent = 20.0_f32;
+            let center_y = self.camera.target.y;
+            let center_z = self.camera.target.z;
+            self.right_grid_center = Vector3::new(0.0, center_y, center_z);
+            let first_y = ((center_y - extent) / spacing).floor() * spacing;
+            let last_y = ((center_y + extent) / spacing).ceil() * spacing;
+            let first_z = ((center_z - extent) / spacing).floor() * spacing;
+            let last_z = ((center_z + extent) / spacing).ceil() * spacing;
+            let grid_color = [0.30, 0.32, 0.35, 0.72];
+            let grid_x = POLYLINE_HEIGHT * 0.5;
+            let mut y = first_y;
+            while y <= last_y {
+                let line = [
+                    Vector3::new(grid_x, y, center_z - extent),
+                    Vector3::new(grid_x, y, center_z + extent),
+                ];
+                new_vertices.extend(self.tessellate_polyline(&line, 1.0, grid_color));
+                y += spacing;
+            }
+            let mut z = first_z;
+            while z <= last_z {
+                let line = [
+                    Vector3::new(grid_x, center_y - extent, z),
+                    Vector3::new(grid_x, center_y + extent, z),
+                ];
+                new_vertices.extend(self.tessellate_polyline(&line, 1.0, grid_color));
+                z += spacing;
+            }
+        }
         let marker_radius = self.world_width_for_pixels(3.5);
         let marker_color = [1.0, 1.0, 1.0, 1.0];
         for entity in &self.nurbs_surfaces {
@@ -3527,7 +3586,7 @@ impl Viewport {
             }
         }
         if let (Some(first), Some(second)) = (self.rectangle_first, self.rectangle_second) {
-            let rectangle = Self::rectangle_points(first, second);
+            let rectangle = Self::rectangle_points(first, second, self.right_view);
             new_vertices.extend(self.tessellate_polyline(
                 &rectangle,
                 POLYLINE_WIDTH_PIXELS,
@@ -3545,7 +3604,7 @@ impl Viewport {
             (self.arc_start, self.arc_end, self.arc_cursor)
         {
             let points =Self::arc_points(
-                start, end, cursor, self.arc_degrees, self.front_view
+                start, end, cursor, self.arc_degrees, self.front_view, self.right_view
             );
             if points.len() >= 2 {
                 new_vertices.extend(self.tessellate_polyline(
@@ -3554,7 +3613,7 @@ impl Viewport {
             }
         }
         if let (Some(center), Some(target)) = (self.circle_center, self.circle_target) {
-            let preview_points = Self::circle_points_from_target(center, target, 64);
+            let preview_points = Self::circle_points_from_target(center, target, 64, self.right_view);
             if preview_points.len() >= 2 {
                 new_vertices.extend(self.tessellate_polyline(
                     &preview_points,
@@ -3801,7 +3860,9 @@ impl Viewport {
         if selected_ids.is_empty() {
             return 0;
         }
-        let fallback_axis = if self.front_view {
+        let fallback_axis = if self.right_view {
+            Vector3::unit_x()
+        } else if self.front_view {
             Vector3::unit_z()
         } else {
             Vector3::unit_y()
@@ -3835,7 +3896,9 @@ impl Viewport {
         if !Self::is_closed_shape(&existing.vertices) {
             return false;
         }
-        let fallback_axis = if self.front_view {
+        let fallback_axis = if self.right_view {
+            Vector3::unit_x()
+        } else if self.front_view {
             Vector3::unit_z()
         } else {
             Vector3::unit_y()
@@ -3875,7 +3938,9 @@ impl Viewport {
         };
         let start_height = existing.height;
         let start_axis = existing.extrude_axis;
-        let fallback_axis = if self.front_view {
+        let fallback_axis = if self.right_view {
+            Vector3::unit_x()
+        } else if self.front_view {
             Vector3::unit_z()
         } else {
             Vector3::unit_y()
@@ -3949,13 +4014,17 @@ impl Viewport {
         }
 
         let half_width = self.world_width_for_pixels(thickness) * 0.5;
-        let lift = if self.front_view {
+        let lift = if self.right_view {
+            Vector3::new(POLYLINE_HEIGHT, 0.0, 0.0)
+        } else if self.front_view {
             Vector3::new(0.0, 0.0, POLYLINE_HEIGHT)
         } else {
             Vector3::new(0.0, POLYLINE_HEIGHT, 0.0)
         };
         let normal_for = |segment: Vector3<f32>| {
-            let flat = if self.front_view {
+            let flat = if self.right_view {
+                Vector3::new(0.0, segment.y, segment.z)
+            } else if self.front_view {
                 Vector3::new(segment.x, segment.y, 0.0)
             } else {
                 Vector3::new(segment.x, 0.0, segment.z)
@@ -3964,7 +4033,9 @@ impl Viewport {
                 None
             } else {
                 let direction = flat.normalize();
-                if self.front_view {
+                if self.right_view {
+                    Some(Vector3::new(0.0, -direction.z, direction.y))
+                } else if self.front_view {
                     Some(Vector3::new(-direction.y, direction.x, 0.0))
                 } else {
                     Some(Vector3::new(-direction.z, 0.0, direction.x))
@@ -4092,7 +4163,9 @@ impl Viewport {
         const SEGMENTS: usize = 16;
 
         let mut vertices = Vec::with_capacity(SEGMENTS * 3);
-        let center = if self.front_view {
+        let center = if self.right_view {
+            Vector3::new(point.x + POLYLINE_HEIGHT * 2.0, point.y, point.z)
+        } else if self.front_view {
             Vector3::new(point.x, point.y, point.z + POLYLINE_HEIGHT * 2.0)
         } else {
             Vector3::new(point.x, point.y + POLYLINE_HEIGHT * 2.0, point.z)
@@ -4102,7 +4175,9 @@ impl Viewport {
             let angle1 = index as f32 / SEGMENTS as f32 * std::f32::consts::TAU;
             let angle2 = (index + 1) as f32 / SEGMENTS as f32 * std::f32::consts::TAU;
 
-            let point1 = if self.front_view {
+            let point1 = if self.right_view {
+                Vector3::new(center.x, center.y + angle1.cos() * radius, center.z + angle1.sin() * radius)
+            } else if self.front_view {
                 Vector3::new(
                     center.x + angle1.cos() * radius,
                     center.y + angle1.sin() * radius,
@@ -4115,7 +4190,9 @@ impl Viewport {
                     center.z + angle1.sin() * radius,
                 )
             };
-            let point2 = if self.front_view {
+            let point2 = if self.right_view {
+                Vector3::new(center.x, center.y + angle2.cos() * radius, center.z + angle2.sin() * radius)
+            } else if self.front_view {
                 Vector3::new(
                     center.x + angle2.cos() * radius,
                     center.y + angle2.sin() * radius,
@@ -4369,7 +4446,14 @@ impl Viewport {
             return None;
         }
         let anchor = *self.active_polyline.last()?;
-        if self.front_view {
+        if self.right_view {
+            let difference = point - anchor;
+            if difference.y.abs() >= difference.z.abs() {
+                Some(Vector3::new(anchor.x, point.y, anchor.z))
+            } else {
+                Some(Vector3::new(anchor.x, anchor.y, point.z))
+            }
+        } else if self.front_view {
             let difference = point-anchor;
             if difference.x.abs() >= difference.y.abs() {
                 Some(Vector3::new(point.x, anchor.y, anchor.z))
@@ -4389,7 +4473,13 @@ impl Viewport {
         if !self.grid_snap_enabled {
             return point;
         }
-        if self.front_view {
+        if self.right_view {
+            Vector3::new(
+                0.0,
+                (point.y / self.grid_spacing).round() * self.grid_spacing,
+                (point.z / self.grid_spacing).round() * self.grid_spacing,
+            )
+        } else if self.front_view {
             Vector3::new(
                 (point.x / self.grid_spacing).round() * self.grid_spacing,
                 (point.y / self.grid_spacing).round() * self.grid_spacing,
@@ -4408,7 +4498,13 @@ impl Viewport {
         if !self.grid_snap_enabled {
             return offset;
         }
-        if self.front_view {
+        if self.right_view {
+            Vector3::new(
+                offset.x,
+                (offset.y / self.grid_spacing).round() * self.grid_spacing,
+                (offset.z / self.grid_spacing).round() * self.grid_spacing,
+            )
+        } else if self.front_view {
             Vector3::new(
                 (offset.x / self.grid_spacing).round() * self.grid_spacing,
                 (offset.y / self.grid_spacing).round() * self.grid_spacing,
@@ -4483,32 +4579,50 @@ impl Viewport {
         }
         self.rebuild_vertices();
     }
-    fn segment_intersection_xz(
+    fn segment_intersection_on_view_plane(
         first_start: Vector3<f32>,
         first_end: Vector3<f32>,
         second_start: Vector3<f32>,
         second_end: Vector3<f32>,
+        front_view: bool,
+        right_view: bool,
     ) -> Option<Vector3<f32>> {
-        let rx = first_end.x - first_start.x;
-        let rz = first_end.z - first_start.z;
-        let sx = second_end.x - second_start.x;
-        let sz = second_end.z - second_start.z;
-        let denominator = rx * sz - rz * sx;
+        let plane_point = |point: Vector3<f32>| {
+            if right_view {
+                (point.y, point.z)
+            } else if front_view {
+                (point.x, point.y)
+            } else {
+                (point.x, point.z)
+            }
+        };
+        let (a_x, a_y) = plane_point(first_start);
+        let (b_x, b_y) = plane_point(first_end);
+        let (c_x, c_y) = plane_point(second_start);
+        let (d_x, d_y) = plane_point(second_end);
+        let rx = b_x - a_x;
+        let ry = b_y - a_y;
+        let sx = d_x - c_x;
+        let sy = d_y - c_y;
+        let denominator = rx * sy - ry * sx;
         if denominator.abs() <= 0.000001 {
             return None;
         }
-        let qx = second_start.x - first_start.x;
-        let qz = second_start.z - first_start.z;
-        let t = (qx * sz - qz * sx) / denominator;
-        let u = (qx * rz - qz * rx) / denominator;
+        let qx = c_x - a_x;
+        let qy = c_y - a_y;
+        let t = (qx * sy - qy * sx) / denominator;
+        let u = (qx * ry - qy * rx) / denominator;
         if !(0.0..=1.0).contains(&t) || !(0.0..=1.0).contains(&u) {
             return None;
         }
-        Some(Vector3::new(
-            first_start.x + rx * t,
-            first_start.y + (first_end.y - first_start.y) * t,
-            first_start.z + rz * t,
-        ))
+        let (x, y) = (a_x + rx * t, a_y + ry * t);
+        Some(if right_view {
+            Vector3::new(0.0, x, y)
+        } else if front_view {
+            Vector3::new(x, y, 0.0)
+        } else {
+            Vector3::new(x, first_start.y, y)
+        })
     }
 
     pub fn get_snap_pos(&self, point: Vector3<f32>) -> (Vector3<f32>, bool, Option<&'static str>) {
@@ -4590,7 +4704,9 @@ impl Viewport {
                         if shares_endpoint {
                             continue;
                         }
-                        let Some(intersection) = Self::segment_intersection_xz(a, b, c, d) else {
+                        let Some(intersection) = Self::segment_intersection_on_view_plane(
+                            a, b, c, d, self.front_view, self.right_view,
+                        ) else {
                             continue;
                         };
                         let Some(screen) = self.world_to_screen(intersection) else {
@@ -4686,14 +4802,19 @@ impl Viewport {
         let ray_origin = near_world.truncate() / near_world.w;
         let far_point = far_world.truncate() / far_world.w;
         let ray_dir = (far_point - ray_origin).normalize();
-        if self.front_view {
-            if ray_dir.z.abs() > 1e-6 {
-                let t = -ray_origin.z / ray_dir.z;
+        if self.right_view {
+            if ray_dir.x.abs() > 1e-6 {
+                let t = -ray_origin.x / ray_dir.x;
                 return Some(ray_origin + ray_dir * t);
             }
-        } else if ray_dir.y.abs() > 1e-6 {
+        } else if self.front_view {
+            if ray_dir.z.abs() > 1e-6 {
+                let t = -ray_origin.z / ray_dir.z;
+                return Some(ray_origin +ray_dir * t);
+            }
+        } else {
             let t = -ray_origin.y / ray_dir.y;
-            return Some(ray_origin+ ray_dir * t);
+            return Some(ray_origin + ray_dir * t);
         }
         Some(Vector3::zero())
     }
@@ -4755,27 +4876,45 @@ impl Viewport {
         center: Vector3<f32>,
         target: Vector3<f32>,
         subdivisions: usize,
+        right_view: bool,
     ) -> Vec<Vector3<f32>> {
         let subdivisions = subdivisions.max(16);
         let delta = target - center;
-        let radius = (delta.x * delta.x + delta.z * delta.z).sqrt();
+        let radius = if right_view {
+            (delta.y * delta.y + delta.z * delta.z).sqrt()
+        } else {
+            (delta.x * delta.x + delta.z * delta.z).sqrt()
+        };
         if radius <= f32::EPSILON {
             return Vec::new();
         }
-        let start_angle = delta.z.atan2(delta.x);
+        let start_angle = if right_view { delta.z.atan2(delta.y) } else { delta.z.atan2(delta.x) };
         let mut points = Vec::with_capacity(subdivisions + 1);
         for index in 0..=subdivisions {
             let angle = start_angle + std::f32::consts::TAU * index as f32 / subdivisions as f32;
-            points.push(Vector3::new(
-                center.x + radius * angle.cos(),
-                center.y,
-                center.z + radius * angle.sin(),
-            ));
+            points.push(if right_view {
+                Vector3::new(center.x, center.y + radius * angle.cos(), center.z + radius * angle.sin())
+            } else {
+                Vector3::new(
+                    center.x + radius * angle.cos(),
+                    center.y,
+                    center.z + radius * angle.sin(),
+                )
+            });
         }
         points
     }
 
-    fn rectangle_points(first: Vector3<f32>, second: Vector3<f32>) -> Vec<Vector3<f32>> {
+    fn rectangle_points(first: Vector3<f32>, second: Vector3<f32>, right_view: bool) -> Vec<Vector3<f32>> {
+        if right_view {
+            return vec![
+                first,
+                Vector3::new(first.x, second.y, first.z),
+                Vector3::new(first.x, second.y, second.z),
+                Vector3::new(first.x, first.y, second.z),
+                first,
+            ];
+        }
         vec![
             first,
             Vector3::new(second.x, first.y, first.z),
@@ -4824,7 +4963,7 @@ impl Viewport {
         if width <= f32::EPSILON || height <= f32::EPSILON {
             return false;
         }
-        let points = Self::rectangle_points(first, second);
+        let points = Self::rectangle_points(first, second, self.right_view);
         self.rectangle_first = None;
         self.rectangle_second = None;
         self.polyline_active = false;
@@ -4861,7 +5000,11 @@ impl Viewport {
         let target = self.get_snap_pos(raw_point).0;
         self.circle_target = Some(target);
         let difference = target - center;
-        let radius = (difference.x * difference.x + difference.z * difference.z).sqrt();
+        let radius = if self.right_view {
+            (difference.y * difference.y + difference.z * difference.z).sqrt()
+        } else {
+            (difference.x * difference.x + difference.z * difference.z).sqrt()
+        };
         self.rebuild_vertices();
         Some(radius)
     }
@@ -4876,11 +5019,19 @@ impl Viewport {
             .circle_target
             .unwrap_or(center + Vector3::new(1.0, 0.0, 0.0));
         let offset = current_target - center;
-        let planar_length = (offset.x * offset.x + offset.z * offset.z).sqrt();
-        let direction = if planar_length > 0.0001 {
-            Vector3::new(offset.x / planar_length, 0.0, offset.z / planar_length)
+        let planar_length = if self.right_view {
+            (offset.y * offset.y + offset.z * offset.z).sqrt()
         } else {
-            Vector3::new(1.0, 0.0, 0.0)
+            (offset.x * offset.x + offset.z * offset.z).sqrt()
+        };
+        let direction = if planar_length > 0.0001 {
+            if self.right_view {
+                Vector3::new(0.0, offset.y / planar_length, offset.z / planar_length)
+            } else {
+                Vector3::new(offset.x / planar_length, 0.0, offset.z / planar_length)
+            }
+        } else {
+            if self.right_view { Vector3::unit_y() } else { Vector3::unit_x() }
         };
         self.circle_target = Some(center + direction * radius);
         self.rebuild_vertices();
@@ -4890,7 +5041,7 @@ impl Viewport {
         let (Some(center), Some(target)) = (self.circle_center, self.circle_target) else {
             return false;
         };
-        let points = Self::circle_points_from_target(center, target, subdivisions);
+        let points = Self::circle_points_from_target(center, target, subdivisions, self.right_view);
         self.circle_center = None;
         self.circle_target = None;
         if points.is_empty() {
@@ -4906,8 +5057,10 @@ impl Viewport {
         self.circle_target = None;
         self.rebuild_vertices();
     }
-    fn arc_points(center: Vector3<f32>, radius_point: Vector3<f32>, cursor: Vector3<f32>, degrees: f32, front_view: bool) -> Vec<Vector3<f32>> {
-        let (cx, cy, start_x, start_y, cursor_x, cursor_y) = if front_view {
+    fn arc_points(center: Vector3<f32>, radius_point: Vector3<f32>, cursor: Vector3<f32>, degrees: f32, front_view: bool, right_view: bool) -> Vec<Vector3<f32>> {
+        let (cx, cy, start_x, start_y, cursor_x, cursor_y) = if right_view {
+            (center.y, center.z, radius_point.y, radius_point.z, cursor.y, cursor.z)
+        } else if front_view {
             (
                 center.x, center.y, radius_point.x, radius_point.y, cursor.x, cursor.y
             )
@@ -4935,7 +5088,9 @@ impl Viewport {
             let angle = start_angle + sweep * i as f32 / segments as f32;
             let u = cx + radius * angle.cos();
             let v = cy +radius * angle.sin();
-            points.push(if front_view {
+            points.push(if right_view {
+                Vector3::new(center.x, u, v)
+            } else if front_view {
                 Vector3::new(u, v, center.z)
             } else {
                 Vector3::new(u, center.y, v)
@@ -5001,7 +5156,7 @@ impl Viewport {
             return false;
         };
         let points = Self::arc_points(
-            start, end, cursor, self.arc_degrees, self.front_view
+            start, end, cursor, self.arc_degrees, self.front_view, self.right_view
         );
         self.cancel_arc();
         if points.len() < 2 {
@@ -5037,8 +5192,12 @@ impl Viewport {
         if subdivisions < 3 || !radius.is_finite() || radius <= 0.0 {
             return;
         }
-        let target = center + Vector3::new(radius, 0.0, 0.0);
-        let points = Self::circle_points_from_target(center, target, subdivisions);
+        let target = center + if self.right_view {
+            Vector3::new(0.0, radius, 0.0)
+        } else {
+            Vector3::new(radius, 0.0, 0.0)
+        };
+        let points = Self::circle_points_from_target(center, target, subdivisions, self.right_view);
         if !points.is_empty() {
             self.add_polyline(points, self.polyline_color, POLYLINE_WIDTH_PIXELS);
         }
@@ -5761,7 +5920,9 @@ impl Viewport {
             return None;
         }
         let view_direction = self.camera.eye - self.camera.target;
-        let fallback_axis = if self.front_view {
+        let fallback_axis = if self.right_view {
+            Vector3::unit_x()
+        } else if self.front_view {
             Vector3::unit_z()
         } else {
             Vector3::unit_y()
