@@ -241,4 +241,20 @@ mod tests {
         };
         assert!(aabb.intersect_ray(&miss_ray).is_none());
     }
+    #[test]
+    fn test_bvh_tri_hit() {
+        let tri = BvhTriangle::new(
+            Point3::new(-1.0, -1.0, 0.0),
+            Point3::new(1.0, -1.0, 0.0),
+            Point3::new(0.0, 1.0, 0.0),
+        );
+        let bvh = Bvh::build(vec![tri]);
+        let ray = Ray {
+            origin: Point3::new(0.0, 0.0, -5.0),
+            direction: Vector3::new(0.0, 0.0, 1.0),
+        };
+        let hit = bvh.ray_intersect(&ray);
+        assert!(hit.is_some());
+        assert!((hit.unwrap() - 5.0).abs() < 1e-4);
+    }
 }
