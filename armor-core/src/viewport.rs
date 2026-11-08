@@ -13,6 +13,7 @@ use lyon::lyon_tessellation::{
 use lyon::math::point;
 use lyon::path::Path;
 use std::mem;
+use std::collections::HashMap;
 use std::sync::Arc;
 use winit::dpi::PhysicalPosition;
 use winit::event::MouseButton;
@@ -203,6 +204,8 @@ pub struct Viewport {
     pub front_view: bool,
     pub right_view: bool,
     pub right_grid_center: Vector3<f32>,
+    pub material_render_mode: bool,
+    pub object_materials: HashMap<usize, String>,
     pub height: u32,
     pub redraw: bool,
     pub grab_mode: bool,
@@ -1162,6 +1165,8 @@ impl Viewport {
             front_view: false,
             right_view: false,
             right_grid_center: Vector3::zero(),
+            material_render_mode: false,
+            object_materials: HashMap::new(),
             grid_snap_enabled: false,
             grid_spacing: 0.1,
             ortho_enabled: false,
@@ -3444,7 +3449,7 @@ impl Viewport {
         let marker_radius = self.world_width_for_pixels(3.5);
         let marker_color = [1.0, 1.0, 1.0, 1.0];
         for entity in &self.nurbs_surfaces {
-            let draw_color = if entity.selected { [1.0, 0.8, 0.0, 1.0] } else { entity.color };
+            let draw_color = self.object_draw_color(entity.id, entity.selected, entity.color);
             let points = &entity.surface.control_points;
             let is_imported_triangle = 
                 entity.surface.degree_u == 1
@@ -3473,11 +3478,7 @@ impl Viewport {
             new_vertices.extend(mesh_verts);
         }
         for mesh in &self.imported_meshes {
-            let draw_color = if mesh.selected {
-                [1.0, 0.8, 0.0, 1.0]
-            } else {
-                mesh.color
-            };
+            let draw_color = self.object_draw_color(mesh.id, mesh.selected, mesh.color);
             for triangle in mesh.triangles.iter() {
                 let [a, b, c] = *triangle;
                 let cross = (b - a).cross(c - a);
@@ -3496,11 +3497,7 @@ impl Viewport {
             }
         }
         for solid in &self.solids {
-            let draw_color = if solid.selected {
-                [1.0, 0.8, 0.0, 1.0]
-            } else {
-                solid.color
-            };
+            let draw_color = self.object_draw_color(solid.id, solid.selected, solid.color);
             new_vertices.extend(solid.to_verts(draw_color));   
         }
         for entity in &self.nurbs_curves {
@@ -3509,11 +3506,7 @@ impl Viewport {
             new_vertices.extend(self.tessellate_polyline(&curve_points, entity.thickness, draw_color));
         }
         for entity in &self.entities {
-            let draw_color = if entity.selected {
-                [1.0, 0.8, 0.0, 1.0]
-            } else {
-                entity.color
-            };
+            let draw_color = self.object_draw_color(entity.id, entity.selected, entity.color);
             let closed = Self::is_closed_shape(&entity.vertices);
             if entity.hatched && closed && entity.height.abs() <= f32::EPSILON {
                 if let Some(plane) = Self::hatch_plane(&entity.vertices) {
@@ -3555,7 +3548,10 @@ impl Viewport {
                                 contours.push(inner.vertices.as_slice());
                             }
                         }
-                        let fill_color = [draw_color[0], draw_color[1], draw_color[2], 0.45];
+                        let mut fill_color = [draw_color[0], draw_color[1], draw_color[2], 0.45];
+                        if draw_color[3] < 0.0 {
+                            fill_color[3] = draw_color[3];
+                        }
                         new_vertices.extend(Self::tessellate_fill_contours(&contours, fill_color));
                     }
                 }
@@ -3568,8 +3564,16 @@ impl Viewport {
                     entity.extrude_axis,
                 ));
             }
+            let outline_color = if self.material_render_mode
+                && self.object_materials.contains_key(&entity.id)
+                && !entity.selected
+            {
+                entity.color
+            } else {
+                draw_color
+            };
             let entity_vertices =
-                self.tessellate_polyline(&entity.vertices, entity.thickness, draw_color);
+                self.tessellate_polyline(&entity.vertices, entity.thickness, outline_color);
             new_vertices.extend_from_slice(&entity_vertices);
             if entity.show_markers && entity.height.abs() <= f32::EPSILON && Self::circle_control_points(&entity.vertices).is_none(){
                 let marker_count = if closed {
@@ -3736,7 +3740,7 @@ impl Viewport {
             }
         }
         for entity in &self.nurbs_surfaces {
-            let draw_color = if entity.selected { [1.0, 0.8, 0.0, 1.0] } else { entity.color };
+            let draw_color = self.object_draw_color(entity.id, entity.selected, entity.color);
             let mesh_verts = entity.surface.sample_mesh(entity.u_subdivisions, entity.v_subdivisions, draw_color);
             new_vertices.extend(mesh_verts);
             if entity.selected {
@@ -4580,6 +4584,55 @@ impl Viewport {
         }
         self.rebuild_vertices();
     }
+    pub fn set_object_material(&mut self, object_id: usize, material: Option<String>) -> bool {
+        if !self.entities.iter().any(|e| e.id == object_id)
+            && !self.solids.iter().any(|e| e.id == object_id)
+            && !self.imported_meshes.iter().any(|e| e.id == object_id)
+            && !self.nurbs_surfaces.iter().any(|e| e.id == object_id)
+        {
+            return false;}
+        if let Some(name) = material {
+            self.object_materials.insert(object_id, name);
+        } else {
+            self.object_materials.remove(&object_id);
+        }
+        self.rebuild_vertices();
+        true
+    }
+    fn object_draw_color(&self, object_id: usize, selected: bool, base: [f32; 4]) -> [f32; 4] {
+        if selected {
+            return [1.0, 0.8, 0.0, 1.0];
+        }
+        if self.material_render_mode {
+            if let Some(material) = self.object_materials.get(&object_id) {
+                if let Some(index) = Self::material_texture_index(material) {
+                    // Negative alpha encodes the texture-array layer for the shader.
+                    // The shader uses this only in Render mode and outputs opaque color.
+                    return [1.0, 1.0, 1.0, -((index + 1) as f32) / 8.0];
+                }
+            }
+        }
+        base
+    }
+
+    fn material_texture_index(name: &str) -> Option<usize> {
+        let name = name.to_ascii_lowercase();
+        if name.contains("concrete") { Some(0) }
+        else if name.contains("diamond") { Some(1) }
+        else if name.contains("fabric") { Some(2) }
+        else if name.contains("metal 050") || name.contains("metal050") { Some(3) }
+        else if name.contains("metal 063") || name.contains("metal063") { Some(4) }
+        else if name.contains("plastic") { Some(5) }
+        else if name.contains("rubber") { Some(6) }
+        else if name.contains("wood") { Some(7) }
+        else { None }
+    }
+
+    pub fn set_material_render_mode(&mut self, enabled: bool) {
+        self.material_render_mode = enabled;
+        self.rebuild_vertices();
+    }
+
     fn segment_intersection_on_view_plane(
         first_start: Vector3<f32>,
         first_end: Vector3<f32>,

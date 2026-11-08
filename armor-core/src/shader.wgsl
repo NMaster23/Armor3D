@@ -6,6 +6,11 @@ struct CameraUniform {
 @group(0) @binding(0)
 var<uniform> camera: CameraUniform;
 
+@group(1) @binding(0)
+var material_textures: texture_2d_array<f32>;
+@group(1) @binding(1)
+var material_sampler: sampler;
+
 struct VertexInput {
     @location(0) position: vec3<f32>,
     @location(1) tex_coords: vec3<f32>,
@@ -31,13 +36,30 @@ fn vs_main(model: VertexInput) -> VertexOutput {
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+    let has_material = camera.camera_position_mode.w > 0.5 && in.color.a < -0.01;
     if length(in.normal) <= 0.01 {
-        return in.color;
+        return vec4<f32>(in.color.rgb, 1.0);
     }
     let n = normalize(in.normal);
     let light_dir = normalize(vec3<f32>(0.45, 0.8, 0.35));
-    let diffuse = abs(dot(n, light_dir));
-    let base = in.color.rgb * (0.35+0.65 * diffuse);
+    let diffuse = 0.35 + 0.65 * abs(dot(n, light_dir));
+
+    if has_material {
+        let layer = i32(round(abs(in.color.a) * 8.0)) - 1;
+        let weights = pow(abs(n), vec3<f32>(4.0));
+        let blend = weights / max(weights.x + weights.y + weights.z, 0.0001);
+        let scale = 0.5;
+        let uv_x = in.world_position.zy * scale;
+        let uv_y = in.world_position.xz * scale;
+        let uv_z = in.world_position.xy * scale;
+        let color_x = textureSample(material_textures, material_sampler, uv_x, layer).rgb;
+        let color_y = textureSample(material_textures, material_sampler, uv_y, layer).rgb;
+        let color_z = textureSample(material_textures, material_sampler, uv_z, layer).rgb;
+        let albedo = color_x * blend.x + color_y * blend.y + color_z * blend.z;
+        return vec4<f32>(albedo * diffuse, 1.0);
+    }
+
+    let base = in.color.rgb * diffuse;
     if camera.camera_position_mode.w < 0.5 {
         return vec4<f32>(base, in.color.a); }
     let view_dir = normalize(camera.camera_position_mode.xyz - in.world_position);
