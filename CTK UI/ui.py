@@ -632,6 +632,8 @@ def import3dmcommand():
             importedfiles.append(Path(path).name)
             if currentfilepath is None:
                 currentfilepath = str(Path(path).resolve())
+            loadobjectmaterials()
+            refreshobjectrows()
             updatewindowtitle()
         writehistory( f"> Import 3DM\nImported {imported} objects" + (f"; skipped {skipped} unsupported objects" if skipped else ""))
     except Exception as error:
@@ -3418,8 +3420,9 @@ materials_sidebar.pack_propagate(False)
 materialstitle = ctk.CTkLabel(materials_sidebar, text='Materials', font=("Iceland", 35))
 materialstitle.pack(pady=(24, 12))
 
-materials_selected = "Stainless Steel"
+materials_selected = None
 materialnames = [
+    "None",
     "Stainless Steel", "Steel", "Aluminum", "Brass", "Copper", "Titanium",
     "Cast Iron", "Tool Steel", "ABS Plastic", "PLA Plastic", "Nylon",
     "Polycarbonate", "Acrylic", "Rubber", "Glass", "Carbon Fiber", "Wood",
@@ -3428,18 +3431,16 @@ materialnames = [
 MATERIAL_ROW_HEIGHT = 36
 material_hovered = None
 
-materials_list_frame = ctk.CTkFrame(materials_sidebar, fg_color="transparent")
+materials_list_frame = ctk.CTkFrame(materials_sidebar, fg_color="#0B0B0B", border_color="#666666", border_width=1, corner_radius=8,)
 materials_list_frame.pack(fill="x", padx=18, pady=(0, 18))
 materials_canvas = Canvas(
     materials_list_frame, height=280, bg="#0B0B0B", highlightthickness=0,
-    yscrollincrement=15,
-)
-materials_canvas.pack(side="left", fill="both", expand=True)
+    yscrollincrement=15,)
+materials_canvas.pack(side="left", fill="both", expand=True, padx=3, pady=3)
 materials_scrollbar = ctk.CTkScrollbar(
     materials_list_frame, orientation="vertical", command=materials_canvas.yview,
-    fg_color="#0B0B0B", button_color="#383838", button_hover_color="#666666",
-)
-materials_scrollbar.pack(side="right", fill="y")
+    fg_color="#0B0B0B", button_color="#383838", button_hover_color="#666666",)
+materials_scrollbar.pack(side="right", fill="y", padx=(0, 3), pady=3)
 materials_canvas.configure(yscrollcommand=materials_scrollbar.set)
 
 def draw_material_rows():
@@ -3466,7 +3467,7 @@ def select_material_canvas(event):
     global materials_selected
     index = int(materials_canvas.canvasy(event.y) // MATERIAL_ROW_HEIGHT)
     if 0 <= index < len(materialnames):
-        materials_selected = materialnames[index]
+        materials_selected = (None if materialnames[index] == "None" else materialnames[index])
         draw_material_rows()
 
 def hover_material_canvas(event):
@@ -3481,7 +3482,8 @@ def clear_material_hover(_event=None):
     draw_material_rows()
 
 def size_materials_list(event):
-    materials_canvas.configure(height=max(140, (event.height - 110) // 2))
+    available_height = max(220, event.height - 260)
+    materials_canvas.configure(height=max(110, int(available_height * 0.42)))
 
 materials_canvas.bind("<Button-1>", select_material_canvas)
 materials_canvas.bind("<Motion>", hover_material_canvas)
@@ -3490,6 +3492,96 @@ materials_canvas.bind( "<MouseWheel>", lambda event: materials_canvas.yview_scro
 materials_canvas.bind("<Configure>", lambda _event: draw_material_rows())
 materials_sidebar.bind("<Configure>", size_materials_list, add="+")
 app.after_idle(draw_material_rows)
+
+objectmaterials = {}
+def objectmaterialspath():
+    if not currentfilepath:
+        return None
+    return Path(currentfilepath).with_suffix(Path(currentfilepath).suffix + ".materials.json")
+def save_object_materials():
+    path = objectmaterialspath()
+    if path is None:
+        return
+    path.write_text(json.dumps({str(k): v for k, v in objectmaterials.items()}, indent=2), encoding='utf-8')
+def loadobjectmaterials():
+    global objectmaterials
+    path = objectmaterialspath()
+    if path is None or not path.exists():
+        objectmaterials = {}
+        return
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        objectmaterials = {int(k): v for k, v in data.items()}
+    except (OSError, ValueError, TypeError):
+        objectmaterials = {}
+selectedmaterialobjectid = None
+objectrowheight =30
+objectstitle = ctk.CTkLabel(materials_sidebar, text='Objects', font=("Segoe UI", 12), text_color="#EAEAEA")
+objectstitle.pack(anchor='w', padx=18, pady=(4, 6))
+objectlistframe = ctk.CTkFrame(materials_sidebar, fg_color='#0B0B0B', border_color='#666666', border_width=1, corner_radius=8)
+objectlistframe.pack(fill="both", expand=True, padx=18, pady=(0, 10))
+objectcanvas = Canvas(objectlistframe, bg="#0B0B0B", highlightthickness=0, yscrollincrement=30)
+objectcanvas.pack(side="left", fill="both", expand=True, padx=3, pady=3)
+objectscrollbar = ctk.CTkScrollbar(objectlistframe, orientation='vertical', command=objectcanvas.yview, fg_color='#0b0b0b', button_color='#383838', button_hover_color='#666666')
+objectscrollbar.pack(side="right", fill="y", padx=(0, 3), pady=3)
+objectcanvas.configure(yscrollcommand=objectscrollbar.set)
+applymaterialcanvas = Canvas(materials_sidebar, width=150, height=40, bg='#111111', highlightthickness=0, cursor='hand2')
+applymaterialcanvas.pack(anchor="center", pady=(0, 16))
+applymaterialbox = applymaterialcanvas.create_rectangle(2, 2, 148, 38, fill='#111111', outline="#555555")
+applymaterialtext = applymaterialcanvas.create_text(75, 20, text='Apply', fill='#EAEAEA', font=("Lexend", 11))
+def refreshobjectrows():
+    objectcanvas.delete('all')
+    if renderer is None:
+        rows = []
+    else:
+        rows = renderer.scene_data()
+    width = max(1, objectcanvas.winfo_width())
+    for index, row in enumerate(rows):
+        objectid = row[0]
+        selected = objectid == selectedmaterialobjectid
+        y = index * objectrowheight
+        bg = '#343434' if selected else "#0b0b0b"
+        tag = f"object_{objectid}"
+        objectcanvas.create_rectangle(4, y+1, width-4, y+objectrowheight -1, fill=bg, outline='', tags=(tag,))
+        objectcanvas.create_text(12,y + objectrowheight / 2,text=f"Object {index + 1}", anchor="w", fill="#EAEAEA", font=("Lexend", 10), tags=(tag,),)
+        objectcanvas.create_text(width-12, y+objectrowheight/2, text=objectmaterials.get(objectid) or 'None', anchor='e', fill='#BDBDBD', font=("Lexend", 10), tags=(tag))
+    objectcanvas.configure(scrollregion=(0, 0, width, len(rows) * objectrowheight))
+def selectmaterialobject(event):
+    global selectedmaterialobjectid
+    y = objectcanvas.canvasy(event.y)
+    index = int(y // objectrowheight)
+    rows = renderer.scene_data() if renderer is not None else []
+    if not 0 <= index < len(rows):
+        return
+    selectedmaterialobjectid = rows[index][0]
+    renderer.select_objects_by_ids([selectedmaterialobjectid])
+    renderer.render()
+    assigned = objectmaterials.get(selectedmaterialobjectid)
+    refreshobjectrows()
+def applyselectedmaterial(event=None):
+    if selectedmaterialobjectid is None:
+        return
+    if materials_selected is None:
+        objectmaterials.pop(selectedmaterialobjectid, None)
+    else:
+        objectmaterials[selectedmaterialobjectid] = materials_selected
+    save_object_materials()
+    refreshobjectrows()
+def applybuttonenter(_event):
+    applymaterialcanvas.itemconfigure(applymaterialbox, fill='#444444')
+    applymaterialcanvas.itemconfigure(applymaterialtext, fill='#FFFFFF')
+def apply_button_leave(_event):
+    applymaterialcanvas.itemconfigure(applymaterialbox, fill="#111111")
+    applymaterialcanvas.itemconfigure(applymaterialtext, fill="#EAEAEA")
+objectcanvas.bind("<Button-1>", selectmaterialobject)
+objectcanvas.bind("<Configure>", lambda _event: refreshobjectrows())
+objectcanvas.bind("<MouseWheel>", lambda event: objectcanvas.yview_scroll(-3 if event.delta > 0 else 3, 'units'))
+for item in (applymaterialbox, applymaterialtext):
+    applymaterialcanvas.tag_bind(item, '<Button-1>', applyselectedmaterial)
+    applymaterialcanvas.tag_bind(item, "<Enter>", applybuttonenter)
+    applymaterialcanvas.tag_bind(item, "<Leave>", apply_button_leave)
+materials_sidebar.bind("<Configure>", lambda _event: refreshobjectrows(), add='+')
+app.after_idle(refreshobjectrows)
 
 materialsopen = False
 materialsanimating = False
