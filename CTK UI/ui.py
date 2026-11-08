@@ -3119,7 +3119,7 @@ canvas.tag_bind(filez, "<Leave>", cancelfilehover, add="+")
 canvas.tag_bind(filez, "<Button-1>", file_click)
 
 
-coords_text = canvas.create_text(275, 8, text="X:  --  Y:  --  Z:  --", anchor='w', font=("Lexend", 8), fill="#EAEAEA")
+coords_text = canvas.create_text(330, 8, text="X:  --  Y:  --  Z:  --", anchor='w', font=("Lexend", 8), fill="#EAEAEA")
 def updatecoords():
     if renderer is None:
         return
@@ -3407,6 +3407,94 @@ def updatesendanimation():
     sendanimation["frame"] += 1
     sendanimation["job"] = app.after( 110,  updatesendanimation )
 
+MATERIALS = canvas.create_text(292, 8, text="Materials", font=("Lexend", 8), fill='#EAEAEA', anchor='center')
+def materials_hover(event):
+    hovering = 262 <= event.x <= 322 and 0 <= event.y <= 18
+    canvas.itemconfig(MATERIALS, fill="#777777" if hovering else "#EAEAEA")
+canvas.bind("<Motion>", materials_hover, add='+')
+canvas.bind( "<Leave>", lambda event: canvas.itemconfig(MATERIALS, fill="#EAEAEA"), add="+")
+materialspanelratio = panel_ratio
+materialsresizeratio = materialspanelratio
+materials_sidebar = ctk.CTkFrame(app, width=520, corner_radius=16, fg_color='#111111', border_color='#555555', border_width=4)
+materials_sidebar.pack_propagate(False)
+materialstitle = ctk.CTkLabel(materials_sidebar, text='Materials', font=("Iceland", 35))
+materialstitle.pack(pady=(24, 12))
+materialslist = ctk.CTkScrollableFrame(materials_sidebar, fg_color='#0B0B0B', corner_radius=8)
+materialslist.pack(fill='both', expand=True, padx=18, pady=(0, 18))
+materialsopen = False
+materialsanimating = False
+
+materialsshadowlines = [
+    canvas.create_line(0, 0, 0, 0, fill=color, width=2, smooth=True, splinesteps=20, state='hidden') for color in ("#282828", "#1d1d1d", "#151515")]
+def updatematerialsshadow(height, offset):
+    panelleft = app.winfo_width() - int(app.winfo_width() * materialspanelratio) + offset
+    for index, line in enumerate(materialsshadowlines):
+        x = panelleft -6 + index * 2
+        canvas.coords(line, x+16, 0, x+5, 5, x, 16, x, height-16, x+5, height-5, x+16, height)
+def togglematerials(event=None):
+    global materialsopen, materialsanimating
+    if materialsanimating:
+        return
+    opening = not materialsopen
+    if opening and sidebar.winfo_manager():
+        toggleai()
+    materialsanimating = True
+    width = max(280, int(app.winfo_width() * materialspanelratio))
+    start_x, end_x = (width+16, 16) if opening else (16, width +16)
+    if opening:
+        materials_sidebar.place(relx =1, x=start_x, y=0, anchor='ne', relwidth=panel_ratio, relheight=1)
+        for line in materialsshadowlines:
+            canvas.itemconfigure(line, state="normal")
+        materials_sidebar.lift()
+    def animating(step):
+        global materialsopen, materialsanimating
+        progress = 1 - (1-step/12) ** 3
+        x = round(start_x + (end_x - start_x) * progress)
+        materials_sidebar.place(relx=1, x=x, y=0, anchor='ne', relwidth=panel_ratio, relheight=1)
+        updatematerialsshadow(app.winfo_height(), x)
+        if step < 12:
+            app.after(16, lambda: animating(step +1))
+        else:
+            materialsanimating = False
+            materialsopen = opening
+            if not opening:
+                materials_sidebar.place_forget()
+                for line in shadow_lines:
+                    canvas.itemconfigure(line, state="hidden")
+    animating(0)
+canvas.tag_bind(MATERIALS, "<Button-1>", togglematerials)
+materialsresizehandle = Canvas(materials_sidebar, width=12, bg='#111111', highlightthickness=0, cursor='sb_h_double_arrow')
+materialsresizehandle.place(x=0, y=18, relheight=1, height=-36)
+def startmaterialsresize(event):
+    if materialsanimating:
+        return 'break'
+    dragmaterialsresize(event)
+    resizeguide.deiconify()
+    resizeguide.lift()
+    return 'break'
+def dragmaterialsresize(event):
+    global materialsresizeratio
+    if materialsanimating:
+        return
+    appwidth = max(1, canvas.winfo_width())
+    rightedge = app.winfo_rootx() + appwidth + 16
+    newwidth = rightedge - event.x_root
+    newwidth = max(320, min(appwidth-80, newwidth))
+    materialsresizeratio = newwidth / appwidth
+    guidex = int(rightedge - newwidth)
+    resizeguide.geometry(f"2x{app.winfo_height()}+{guidex}+{app.winfo_rooty()}")
+def finishmaterialsresize(event):
+    global materialspanelratio, materialsresizeratio
+    resizeguide.withdraw()
+    materialspanelratio = materialsresizeratio
+    if materials_sidebar.winfo_manager():
+        materials_sidebar.place(relx=1, x=16, y=0, anchor='ne', relwidth=materialspanelratio, relheight=1)
+        updatematerialsshadow(app.winfo_height(), 16)
+    saveuisettings()
+materialsresizehandle.bind("<ButtonPress-1>", startmaterialsresize)
+materialsresizehandle.bind("<B1-Motion>", dragmaterialsresize)
+materialsresizehandle.bind("<ButtonRelease-1>", finishmaterialsresize)
+
 def startfillet(event=None):
     global activecommand
     activecommand = 'fillet_select'
@@ -3629,6 +3717,8 @@ def toggleai(event=None):
     if animating:
         return
     opening = not sidebar.winfo_manager()
+    if opening and materials_sidebar.winfo_manager():
+        togglematerials()
     offscreen = app.winfo_width() * panel_ratio + 16
     start, end = (offscreen, 16) if opening else (16, offscreen)
     animating = True
@@ -3636,7 +3726,7 @@ def toggleai(event=None):
         sidebar.place(relx=1, x=start, y=0, anchor="ne",
                       relwidth=panel_ratio, relheight=1)
         resize_cmd_boxes(canvas.winfo_width())
-        for line in shadow_lines:
+        for line in materialsshadowlines:
             canvas.itemconfigure(line, state="normal")
     def animate(step):
         global animating, current_offset
