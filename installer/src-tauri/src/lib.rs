@@ -39,7 +39,7 @@ pub struct InstallPaths {
 }
 
 unsafe extern "system" {
-    fn GetDiskFreeSpaceExw(
+    fn GetDiskFreeSpaceExW(
         dir: *const u16,
         free_avalable: *mut u64,
         total: *mut u64,
@@ -112,7 +112,7 @@ fn check_disk_space(target_path: String) -> Result<u64, String> {
     let wide: Vec<u16> = std::ffi::OsStr::new(&target_path).encode_wide().chain(std::iter::once(0)).collect();
     let mut free_bytes: u64 = 0;
     let ret = unsafe {
-        GetDiskFreeSpaceExw(wide.as_ptr(), &mut free_bytes, std::ptr::null_mut(), std::ptr::null_mut())
+        GetDiskFreeSpaceExW(wide.as_ptr(), &mut free_bytes, std::ptr::null_mut(), std::ptr::null_mut())
     };
     if ret == 0 {
         return Ok(10 * 1024 * 1024 * 1024);
@@ -154,7 +154,7 @@ fn install_app(window: tauri::Window, target_dir: String) -> Result<(), String> 
     easy.url(DOWNLOAD_URL).map_err(|e| e.to_string())?;
     easy.follow_location(true).map_err(|e| e.to_string())?;
     let mut headers = List::new();
-    let _ = headers.append("Armor3D Installer - Downloading EXE");
+    let _ = headers.append("User-Agent: Armor3D-Installer ");
     easy.http_headers(headers).map_err(|e| e.to_string())?;
     let mut transfer = easy.transfer();
     transfer.write_function(|d| {

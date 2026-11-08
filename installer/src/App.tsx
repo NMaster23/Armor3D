@@ -3,6 +3,7 @@ import "./App.css";
 import { Card, ProgressBar, ScrollShadow, Typography } from "@heroui/react";
 import { invoke } from "@tauri-apps/api/core";
 import { Check } from "@gravity-ui/icons";
+import { listen } from "@tauri-apps/api/event";
 
 const system_checks_text = [
   "Auditing your PATH variable and quietly judging your life choices",
@@ -109,21 +110,27 @@ function App() {
     }, 40);
     return () => clearInterval(interval);
   }, []);
-  
   useEffect(() => {
     if (state === 1) {
-      const timer = setInterval(() => {
-        setProgress((prev) => {
-          if (prev >= 100) {
-            clearInterval(timer);
-            return 100;
-          }
-          return prev + 2;
+      const listenProgress = listen<{ progress: number; msg: string }>(
+        "install-progress",
+        (event) => {
+          setProgress(event.payload.progress);
+          setLoadText(event.payload.msg)
+        }
+      );
+      invoke<{ default_dir: string }>("get_default_paths")
+        .then((paths) => {
+          return invoke("install_app", { targetDir: paths.default_dir });
+        })
+        .catch((err) => {
+          setLoadText(`Installation failed: ${err}`);
         });
-      }, 50);
-      return () => clearInterval(timer);
+      return () => {
+        listenProgress.then((listen) => listen());
+      }
     }
-  }, [state]);
+  }, [state])
   return (
     <div
       className={`w-screen h-screen flex items-center justify-center bg-black/40 transition-opacity ease-in-out delay-150 duration-[1500ms] ${
@@ -190,10 +197,23 @@ function App() {
                   ): (
                     <Check className="w-4 h-4 text-green-400"/>
                   )}
+                  <span className="truncate">{text}</span>
                 </div>
               ))}
             </ScrollShadow>
           </Card>
+          {progress >= 100 && (
+            <button
+              onClick={async () => {
+                const paths = await invoke<{ default_dir: string }>("get_default_paths");
+                await invoke("launch_installed_app", {
+                  exePath: `${paths.default_dir}\\Armor3D.exe`,
+              });
+              }}
+              className="mt-6 w-full py-3 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-xl shadow-lg shadow-cyan-500/20 cursor-pointer active:scale-98 transition-all">
+                Launch Armor3D &rarr;
+              </button>
+          )}
         </div>
       )}
     </div>
