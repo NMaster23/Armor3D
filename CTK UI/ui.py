@@ -3421,13 +3421,37 @@ materialstitle = ctk.CTkLabel(materials_sidebar, text='Materials', font=("Icelan
 materialstitle.pack(pady=(24, 12))
 
 materials_selected = None
-materialnames = [
-    "None",
-    "Stainless Steel", "Steel", "Aluminum", "Brass", "Copper", "Titanium",
-    "Cast Iron", "Tool Steel", "ABS Plastic", "PLA Plastic", "Nylon",
-    "Polycarbonate", "Acrylic", "Rubber", "Glass", "Carbon Fiber", "Wood",
-    "Ceramic", "Gold", "Silver",
-]
+MATERIALS_DIR = Path(__file__).resolve().parent.parent / "Assets" / "Materials"
+material_catalog = {
+    "None": None,
+    "Concrete 049": "Concrete049",
+    "Diamond Plate": "DiamondPlate005B",
+    "Fabric 004": "Fabric004",
+    "Metal 050A": "Metal050A",
+    "Metal 063": "Metal063",
+    "Plastic 007": "Plastic007",
+    "Rubber 001": "Rubber001",
+    "Wood 051": "Wood051",}
+materialnames = list(material_catalog)
+def getmaterialmaps(materialname):
+    foldername = material_catalog.get(materialname)
+    if foldername is None:
+        return {}
+    folder =MATERIALS_DIR / foldername
+    if not folder.is_dir():
+        return {}
+    suffixes = {
+        "color": "_Color.",
+        "roughness": "_Roughness.",
+        "metalness": "_Metalness.",
+        "normal": "_Norma1GL.",
+        "ambient_occlusion": "_AmbientOcclusion.",}
+    maps = {}
+    for mapname, suffix in suffixes.items():
+        match = next(folder.glob(f"*{suffix}*"), None)
+        if match:
+            maps[mapname] = str(match)
+    return maps
 MATERIAL_ROW_HEIGHT = 36
 material_hovered = None
 
@@ -3514,6 +3538,11 @@ def loadobjectmaterials():
         objectmaterials = {int(k): v for k, v in data.items()}
     except (OSError, ValueError, TypeError):
         objectmaterials = {}
+    if renderer is not None:
+        for object_id, assignment in objectmaterials.items():
+            material_name = assignment.get("name") if isinstance(assignment, dict) else assignment
+            renderer.set_object_material(int(object_id), material_name or None)
+        renderer.render()
 selectedmaterialobjectid = None
 objectrowheight =30
 objectstitle = ctk.CTkLabel(materials_sidebar, text='Objects', font=("Segoe UI", 12), text_color="#EAEAEA")
@@ -3544,7 +3573,12 @@ def refreshobjectrows():
         tag = f"object_{objectid}"
         objectcanvas.create_rectangle(4, y+1, width-4, y+objectrowheight -1, fill=bg, outline='', tags=(tag,))
         objectcanvas.create_text(12,y + objectrowheight / 2,text=f"Object {index + 1}", anchor="w", fill="#EAEAEA", font=("Lexend", 10), tags=(tag,),)
-        objectcanvas.create_text(width-12, y+objectrowheight/2, text=objectmaterials.get(objectid) or 'None', anchor='e', fill='#BDBDBD', font=("Lexend", 10), tags=(tag))
+        assignment = objectmaterials.get(objectid)
+        material_name = assignment.get("name", "None") if isinstance(assignment, dict) else (assignment or "None")
+        objectcanvas.create_text(
+            width - 12, y + objectrowheight / 2, text=material_name,
+            anchor="e", fill="#BDBDBD", font=("Lexend", 10), tags=(tag,),
+        )
     objectcanvas.configure(scrollregion=(0, 0, width, len(rows) * objectrowheight))
 def selectmaterialobject(event):
     global selectedmaterialobjectid
@@ -3564,7 +3598,9 @@ def applyselectedmaterial(event=None):
     if materials_selected is None:
         objectmaterials.pop(selectedmaterialobjectid, None)
     else:
-        objectmaterials[selectedmaterialobjectid] = materials_selected
+        objectmaterials[selectedmaterialobjectid] = {"name": materials_selected, "maps": getmaterialmaps(materials_selected),}
+    renderer.set_object_material(selectedmaterialobjectid, materials_selected)
+    renderer.render()
     save_object_materials()
     refreshobjectrows()
 def applybuttonenter(_event):

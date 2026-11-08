@@ -16,6 +16,100 @@ use winit::dpi::PhysicalPosition;
 use winit::window::Window;
 
 const INITIAL_POINT_SIZE: usize = 16;
+const MATERIAL_TEXTURE_SIZE: u32 = 512;
+const MATERIAL_COLOR_MAPS: [&[u8]; 8] = [
+    include_bytes!("../../Assets/Materials/Concrete049/Concrete049_2K-PNG_Color.png"),
+    include_bytes!("../../Assets/Materials/DiamondPlate005B/DiamondPlate005B_2K-PNG_Color.png"),
+    include_bytes!("../../Assets/Materials/Fabric004/Fabric004_2K-PNG_Color.png"),
+    include_bytes!("../../Assets/Materials/Metal050A/Metal050A_2K-PNG_Color.png"),
+    include_bytes!("../../Assets/Materials/Metal063/Metal063_2K-JPG_Color.jpg"),
+    include_bytes!("../../Assets/Materials/Plastic007/Plastic007_2K-PNG_Color.png"),
+    include_bytes!("../../Assets/Materials/Rubber001/Rubber001_2K-PNG_Color.png"),
+    include_bytes!("../../Assets/Materials/Wood051/Wood051_2K-PNG_Color.png"),];
+fn create_material_texture_resources(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,) -> (wgpu::Texture, wgpu::TextureView, wgpu::Sampler, wgpu::BindGroupLayout, wgpu::BindGroup) {
+    let texture = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("Embedded CAD Material Color Maps"),
+        size: wgpu::Extent3d {
+            width: MATERIAL_TEXTURE_SIZE,
+            height: MATERIAL_TEXTURE_SIZE,
+            depth_or_array_layers: MATERIAL_COLOR_MAPS.len() as u32, },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Rgba8UnormSrgb,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        view_formats: &[], });
+    for (layer, encoded) in MATERIAL_COLOR_MAPS.iter().enumerate() {
+        let image = image::load_from_memory(encoded)
+            .expect("embedded material color map is valid")
+            .resize_exact(
+                MATERIAL_TEXTURE_SIZE,
+                MATERIAL_TEXTURE_SIZE,
+                image::imageops::FilterType::Lanczos3, )
+            .to_rgba8();
+        queue.write_texture(
+            wgpu::TexelCopyTextureInfoBase {
+                texture: &texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d { x: 0, y: 0, z: layer as u32 },
+                aspect: wgpu::TextureAspect::All,},
+            image.as_raw(),
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(MATERIAL_TEXTURE_SIZE * 4),
+                rows_per_image: Some(MATERIAL_TEXTURE_SIZE),},
+            wgpu::Extent3d {
+                width: MATERIAL_TEXTURE_SIZE,
+                height: MATERIAL_TEXTURE_SIZE,
+                depth_or_array_layers: 1,},
+        );
+    }
+    let view = texture.create_view(&wgpu::TextureViewDescriptor {
+        label: Some("Material Color Map Array View"),
+        dimension: Some(wgpu::TextureViewDimension::D2Array),
+        base_array_layer: 0,
+        array_layer_count: Some(MATERIAL_COLOR_MAPS.len() as u32),
+        ..Default::default()});
+    let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+        label: Some("Repeating Material Sampler"),
+        address_mode_u: wgpu::AddressMode::Repeat,
+        address_mode_v: wgpu::AddressMode::Repeat,
+        mag_filter: wgpu::FilterMode::Linear,
+        min_filter: wgpu::FilterMode::Linear,
+        mipmap_filter: wgpu::MipmapFilterMode::Linear,
+        ..Default::default() });
+    let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("Material Texture Array Layout"),
+        entries: &[
+            wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Texture {
+                    sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                    view_dimension: wgpu::TextureViewDimension::D2Array,
+                    multisampled: false, },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 1,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                count: None,
+            },
+        ],
+    });
+    let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("Material Texture Array Bind Group"),
+        layout: &layout,
+        entries: &[
+            wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&view) },
+            wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(&sampler) },
+        ],
+    });
+    (texture, view, sampler, layout, bind_group)
+}
 
 const FALLBACK_FONT: &'static [u8] = include_bytes!("..\\..\\Assets\\FiraSans-Regular.ttf");
 
@@ -96,6 +190,11 @@ pub struct State {
     camera_uniform: CameraUniform,
     camera_buffer: wgpu::Buffer,
     camera_bind_group: wgpu::BindGroup,
+    _material_texture: wgpu::Texture,
+    _material_texture_view: wgpu::TextureView,
+    _material_sampler: wgpu::Sampler,
+    _material_bind_group_layout: wgpu::BindGroupLayout,
+    material_bind_group: wgpu::BindGroup,
     cursor_pos: PhysicalPosition<f64>,
     holding_left: bool,
     pub entities: Vec<PolyLine>,
@@ -308,10 +407,20 @@ impl State {
             }],
             label: Some("camera_bind_group"),
         });
+        let (
+            material_texture,
+            material_texture_view,
+            material_sampler,
+            material_bind_group_layout,
+            material_bind_group,
+        ) = create_material_texture_resources(&device, &queue);
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
-                bind_group_layouts: &[Some(&camera_bind_group_layout)],
+                bind_group_layouts: &[
+                    Some(&camera_bind_group_layout),
+                    Some(&material_bind_group_layout),
+                ],
                 immediate_size: 0,
             });
         let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -445,6 +554,11 @@ impl State {
             camera_uniform,
             camera_buffer,
             camera_bind_group,
+            _material_texture: material_texture,
+            _material_texture_view: material_texture_view,
+            _material_sampler: material_sampler,
+            _material_bind_group_layout: material_bind_group_layout,
+            material_bind_group,
             cursor_pos: PhysicalPosition::new(0.0, 0.0),
             holding_left: false,
             entities: Vec::new(),
@@ -635,10 +749,20 @@ impl State {
             }],
             label: Some("camera_bind_group"),
         });
+        let (
+            material_texture,
+            material_texture_view,
+            material_sampler,
+            material_bind_group_layout,
+            material_bind_group,
+        ) = create_material_texture_resources(&device, &queue);
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
-                bind_group_layouts: &[Some(&camera_bind_group_layout)],
+                bind_group_layouts: &[
+                    Some(&camera_bind_group_layout),
+                    Some(&material_bind_group_layout),
+                ],
                 immediate_size: 0,
             });
         let create_pipeline = |module: &wgpu::ShaderModule, blend, depth_write: bool| {
@@ -721,6 +845,11 @@ impl State {
             camera_uniform,
             camera_buffer,
             camera_bind_group,
+            _material_texture: material_texture,
+            _material_texture_view: material_texture_view,
+            _material_sampler: material_sampler,
+            _material_bind_group_layout: material_bind_group_layout,
+            material_bind_group,
             cursor_pos: PhysicalPosition::new(0.0, 0.0),
             holding_left: false,
             entities: Vec::new(),
@@ -894,6 +1023,9 @@ impl State {
             });
             render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
             self.reference_image.draw(&mut render_pass);
+            // The grid and geometry pipelines share a layout that requires this group.
+            // Bind it before either pipeline draws.
+            render_pass.set_bind_group(1, &self.material_bind_group, &[]);
             if !self.white_viewport && !self.viewport.right_view {
                 render_pass.set_pipeline(&self.graph_pipeline);
                 render_pass.set_vertex_buffer(0, self.graph_vertex_buffer.slice(..));

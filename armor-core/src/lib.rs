@@ -208,6 +208,10 @@ impl ViewportRenderer {
     }
     fn set_white_viewport(&mut self, enabled: bool) {
         self.state.white_viewport = enabled;
+        self.state.viewport.set_material_render_mode(enabled);
+    }
+    pub fn set_object_material(&mut self, object_id: usize, material: Option<String>) -> bool {
+        self.state.viewport.set_object_material(object_id, material)
     }
     pub fn bool_difference_selected(&mut self) -> Option<usize> {
         self.state.viewport.bool_difference_selected()
