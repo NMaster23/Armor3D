@@ -538,4 +538,45 @@ impl SolidEntity {
         let (min, max) = self.bounding_box();
         return [(min[0] + max[0]) * 0.5, (min[1] + max[1]) * 0.5, (min[2] + max[2]) * 0.5];
     }
+    pub fn hollow(&self, id: usize, wall_thickness: f32) -> Option<Self> {
+        if wall_thickness <= 0.0 {
+            return None;
+        }
+        let (min, max) = self.bounding_box();
+        let size = [
+            (max[0] - min[0]).max(1e-4),
+            (max[1] - min[1]).max(1e-4),
+            (max[2] - min[2]).max(1e-4),
+        ];
+        let min_dim = size[0].min(size[1]).min(size[2]);
+        if wall_thickness * 2.0 >= min_dim {
+            return None;
+        }
+        let scale = [
+            (size[0] - 2.0 * wall_thickness) / size[0],
+            (size[1] - 2.0 * wall_thickness) / size[1],
+            (size[2] - 2.0 * wall_thickness) / size[2],
+        ];
+        let c = self.centroid();
+        let outer_csg = self.to_csg();
+        let inner_tris: Vec<Triangle> = self
+            .to_tris()
+            .into_iter()
+            .map(|mut tri| {
+                let s_v = |v: [f32; 3]| -> [f32; 3] {
+                    [
+                        c[0] + (v[0] - c[0]) * scale[0],
+                        c[1] + (v[1] - c[1]) * scale[1],
+                        c[2] + (v[2] - c[2]) * scale[2],
+                    ]
+                };
+                tri.v0 = s_v(tri.v0);
+                tri.v1 = s_v(tri.v1);
+                tri.v2 = s_v(tri.v2);
+                tri
+            }).collect();
+        let inner_csg = CSG::from_tris(&inner_tris);
+        let hollow_csg = outer_csg.difference(&inner_csg);
+        Some(Self::from_csg(id, &hollow_csg, self.color))
+    }
 }
