@@ -7,6 +7,7 @@ pub mod gumball;
 pub mod exporter;
 pub mod objects;
 pub mod csg;
+pub mod bvh;
 
 use cgmath::{InnerSpace, Quaternion, Vector3};
 use glyphon::Family;
