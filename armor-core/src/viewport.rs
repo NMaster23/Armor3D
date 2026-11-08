@@ -6053,7 +6053,10 @@ impl Viewport {
                     color: [0.0, 1.0, 0.6, 1.0],
                     selected: false,
                     thickness: 2.0,
-                    height: 0.0
+                    height: 0.0,
+                    hatched: false,
+                    extrude_axis: Vector3::unit_z(),
+                    show_markers: false,
                 });
                 created_ids.push(id);
             }
@@ -6061,15 +6064,15 @@ impl Viewport {
         self.rebuild_vertices();
         created_ids
     }
-    pub fn countour_selected_solid(
+    pub fn contour_selected_solid(
         &mut self,
         start: Vector3<f32>,
         dir: Vector3<f32>,
         interval: f32,
         count: usize,
     ) -> Vec<usize> {
-        let dir = if direction.magnitude2() > 1e-6 {
-            direction.normalize()
+        let dir = if dir.magnitude2() > 1e-6 {
+            dir.normalize()
         } else {
             Vector3::unit_z()
         };
