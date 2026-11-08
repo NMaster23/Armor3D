@@ -6084,6 +6084,162 @@ impl Viewport {
         }
         all_created
     }
+    pub fn array_linear_selected(&mut self, count: usize, delta: Vector3<f32>) -> Vec<usize> {
+        let Some(sel_id) = self.selected_entity else {
+            return Vec::new();
+        };
+        if count < 2 {
+            return Vec::new();
+        }
+        self.save_undo_state();
+        let mut created_ids = Vec::new();
+        if let Some(s) = self.solids.iter().find(|s| s.id == sel_id).cloned() {
+            for i in 1..count {
+                let id = self.next_entity;
+                self.next_entity += 1;
+                let offset = delta * (i as f32);
+                let mut n_s = s.clone();
+                n_s.id = id;
+                n_s.origin[0] += offset.x;
+                n_s.origin[1] += offset.y;
+                n_s.origin[2] += offset.z;
+                n_s.selected = false;
+                self.solids.push(n_s);
+                created_ids.push(id);
+            }
+        }
+        self.rebuild_vertices();
+        created_ids
+    }
+    pub fn array_polar_selected(
+        &mut self,
+        count: usize,
+        center: Vector3<f32>,
+        axis: Vector3<f32>,
+        total_angle_rad: f32,
+    ) -> Vec<usize> {
+        let Some(sel_id) = self.selected_entity else {
+            return Vec::new();
+        };
+        if count < 2 {
+            return Vec::new();
+        };
+        let axis = if axis.magnitude2() > 1e-6 {
+            axis.normalize()
+        } else {
+            Vector3::unit_z()
+        };
+        self.save_undo_state();
+        let mut created_ids = Vec::new();
+        if let Some(s) = self.solids.iter().find(|s| s.id == sel_id).cloned() {
+            let tris = s.to_tris();
+            for i in 1..count {
+                let angle = total_angle_rad * (i as f32 / count as f32);
+                let cos_a = angle.cos();
+                let sin_a = angle.sin();
+                let rot_pt = |p: [f32; 3]| -> [f32; 3] {
+                    let v = Vector3::new(p[0], p[1], p[2]);
+                    let rot = v * cos_a + axis.cross(v) * sin_a + axis * axis.dot(v) * (1.0 - cos_a);
+                    let final_p = center + rot;
+                    [final_p.x, final_p.y, final_p.z]
+                };
+                let rot_dir = |d: [f32; 3]| -> [f32; 3] {
+                    let v = Vector3::new(d[0], d[1], d[2]);
+                    let rot = v * cos_a + axis.cross(v) * sin_a + axis * axis.dot(v) * (1.0 -  cos_a);
+                    [rot.x, rot.y, rot.z]
+                };
+                let rot_tris: Vec<crate::exporter::Triangle> = tris
+                    .iter()
+                    .map(|t| {
+                        let v0 = rot_pt(t.v0);
+                        let v1 = rot_pt(t.v1);
+                        let v2 = rot_pt(t.v2);
+                        let norm = rot_dir(t.normal);
+                        crate::exporter::Triangle {
+                            v0,
+                            v1,
+                            v2,
+                            normal: norm,
+                        }
+                    }).collect();
+                let id = self.next_entity;
+                self.next_entity += 1;
+                self.solids.push(SolidEntity {
+                    id,
+                    origin: [0.0, 0.0, 0.0],
+                    shape: BaseShape::CustomMesh { triangles: rot_tris },
+                    color: s.color,
+                    selected: false,
+                });
+                created_ids.push(id);
+            }
+        }
+        self.rebuild_vertices();
+        created_ids
+    }
+    pub fn array_grid_selected(
+        &mut self,
+        c_x: usize,
+        c_y: usize,
+        c_z: usize,
+        spacing: Vector3<f32>,
+    ) -> Vec<usize> {
+        let Some(sel_id) = self.selected_entity else {
+            return Vec::new();
+        };
+        self.save_undo_state();
+        let mut created_ids = Vec::new();
+        if let Some(solid) = self.solids.iter().find(|s| s.id == sel_id).cloned() {
+            for ix in 0..c_x {
+                for iy in 0..c_y {
+                    for iz in 0..c_z {
+                        if ix == 0 && iy == 0 && iz == 0 {
+                            continue;
+                        }
+                        let id = self.next_entity;
+                        self.next_entity += 1;
+                        let mut n_solid = solid.clone();
+                        n_solid.id = id;
+                        n_solid.origin[0] += ix as f32 * spacing.x;
+                        n_solid.origin[1] += iy as f32 * spacing.y;
+                        n_solid.origin[2] += iz as f32 * spacing.z;
+                        n_solid.selected = false;
+                        self.solids.push(n_solid);
+                        created_ids.push(id);
+                    }
+                }
+            }
+        }
+        self.rebuild_vertices();
+        created_ids
+    }
+    pub fn sweep1_selected_curves(&mut self, closed_caps: bool) -> Option<usize> {
+        let selected: Vec<Vec<Vector3<f32>>> = self
+            .entities
+            .iter()
+            .filter(|e| e.selected && e.vertices.len() >= 2)
+            .map(|e| e.vertices.clone())
+            .collect();
+        if selected.len() < 2 {
+            return None;
+        }
+        let rail = &selected[0];
+        let profile = &selected[1];
+        let id = self.next_entity;
+        self.next_entity += 1;
+        let solid = SolidEntity::from_sweep1(
+            id,
+            rail,
+            profile,
+            closed_caps,
+            [0.3, 0.6, 0.95, 1.0],
+        )?;
+        self.save_undo_state();
+        self.solids.push(solid);
+        self.selected_entity = Some(id);
+        self.rebuild_vertices();
+        Some(id)
+    }
 }
 
 #[cfg(test)]

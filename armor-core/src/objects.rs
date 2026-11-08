@@ -1,4 +1,5 @@
 use std::f32::consts::PI;
+use cgmath::num_traits::Float;
 use cgmath::{InnerSpace, Vector3};
 
 use crate::csg::CSG;
@@ -805,5 +806,97 @@ impl SolidEntity {
             poly.push(chain);
         }
         poly
+    }
+    pub fn create_sweep1(
+        rail: &[Vector3<f32>],
+        profile: &[Vector3<f32>],
+        closed_caps: bool,
+    ) -> Option<Vec<Triangle>> {
+        if rail.len() < 2 || profile.len() < 2 {
+            return None;
+        }
+        let prof_center = profile.iter().copied().sum::<Vector3<f32>>() / (profile.len() as f32);
+        let local_prof: Vec<(f32, f32)> = profile
+            .iter()
+            .map(|p| (p.x - prof_center.x, p.y - prof_center.y))
+            .collect();
+        let num_rail = rail.len();
+        let num_prof = local_prof.len();
+        let mut tangents: Vec<Vector3<f32>> = Vec::with_capacity(num_rail);
+        for i in 0..num_rail {
+            let t = if i == 0 {
+                rail[1] - rail[0]
+            } else if i == num_rail - 1 {
+                rail[i] - rail[i - 1]
+            } else {
+                rail[i + 1] - rail[i - 1]
+            };
+            tangents.push(if t.magnitude2() > 1e-6 {
+                t.normalize()
+            } else {
+                Vector3::unit_z()
+            });
+        }
+        let mut norms: Vec<Vector3<f32>> = Vec::with_capacity(num_rail);
+        let mut binorms: Vec<Vector3<f32>> = Vec::with_capacity(num_rail);
+        let t0 = tangents[0];
+        let n0 = if t0.x.abs() < 0.9 {
+            Vector3::unit_x().cross(t0).normalize()
+        } else {
+            Vector3::unit_y().cross(t0).normalize()
+        };
+        let b0 = t0.cross(n0).normalize();
+        norms.push(n0);
+        binorms.push(b0);
+        for i in 1..num_rail {
+            let prev_t = tangents[i - 1];
+            let cur_t = tangents[i];
+            let rot_axis = prev_t.cross(cur_t);
+            let dot = prev_t.dot(cur_t).clamp(-1.0, 1.0);
+            if rot_axis.magnitude2() > 1e-6 {
+                let axis = rot_axis.normalize();
+                let angle = dot.acos();
+                let cos_a = angle.cos();
+                let sin_a = angle.sin();
+                let rot_vec = |v: Vector3<f32>| -> Vector3<f32> {
+                    v * cos_a + axis.cross(v) * sin_a + axis * axis.dot(v) * (1.0 - cos_a)
+                };
+                let new_n = rot_vec(norms[i - 1]).normalize();
+                let new_b = cur_t.cross(new_n).normalize();
+                norms.push(new_n);
+                binorms.push(new_b);
+            } else {
+                norms.push(norms[i - 1]);
+                binorms.push(binorms[i - 1]);
+            }
+        }
+        let mut rings: Vec<Vec<Vector3<f32>>> = Vec::with_capacity(num_rail);
+        for i in 0..num_rail {
+            let r = rail[i];
+            let n = norms[i];
+            let b = binorms[i];
+            let ring = local_prof
+                .iter()
+                .map(|&(u, v)| r + n * u + b * v)
+                .collect();
+            rings.push(ring);
+        }
+        Self::create_loft(&rings, closed_caps)
+    }
+    pub fn from_sweep1(
+        id: usize,
+        rail: &[Vector3<f32>],
+        profile: &[Vector3<f32>],
+        closed_caps: bool,
+        color: [f32; 4],
+    ) -> Option<Self> {
+        let tris = Self::create_sweep1(rail, profile, closed_caps)?;
+        Some(Self {
+            id,
+            origin: [0.0, 0.0, 0.0],
+            shape: BaseShape::CustomMesh { triangles: tris },
+            color,
+            selected: true,
+        })
     }
 }

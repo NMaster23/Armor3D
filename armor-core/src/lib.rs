@@ -121,6 +121,39 @@ pub fn handle_input(pos: (f64, f64), button: &str, vec: (f32, f32, f32)) -> PyRe
 
 #[pymethods]
 impl ViewportRenderer {
+    pub fn sweep1_selected_curves(&mut self, closed_caps: Option<bool>) -> Option<usize> {
+        self.state.viewport.sweep1_selected_curves(closed_caps.unwrap_or(true))
+    }
+    pub fn array_linear(&mut self, count: usize, delta: (f32, f32, f32)) -> Vec<usize> {
+        self.state.viewport.array_linear_selected(count, Vector3::new(delta.0, delta.1, delta.2))
+    }
+    pub fn array_polar(
+        &mut self,
+        count: usize,
+        center: (f32, f32, f32),
+        axis: (f32, f32, f32),
+        angle_deg: Option<f32>,
+    ) -> Vec<usize> {
+        let angle_rad = angle_deg.unwrap_or(360.0).to_radians();
+        self.state.viewport.array_polar_selected(
+            count,
+            Vector3::new(center.0, center.1, center.2),
+            Vector3::new(axis.0, axis.1, axis.2),
+            angle_rad,
+        )
+    }
+    pub fn array_grid(
+        &mut self,
+        count: (usize, usize, usize),
+        spacing: (f32, f32, f32),
+    ) -> Vec<usize> {
+        self.state.viewport.array_grid_selected(
+            count.0,
+            count.1,
+            count.2,
+            Vector3::new(spacing.0, spacing.1, spacing.2),
+        )
+    }
     pub fn section_selected_solid(&mut self, origin: (f32, f32, f32), norm: (f32, f32, f32)) -> Vec<usize> {
         let p_origin = Vector3::new(origin.0, origin.1, origin.2);
         let p_norm = Vector3::new(norm.0, norm.1, norm.2);
