@@ -5,7 +5,7 @@ use crate::gumball::Gumball;
 use crate::camera::{Camera, CameraController};
 use crate::nurbs::{NurbsControlPoint, NurbsCurve, NurbsSurface};
 use anyhow::Ok;
-use cgmath::{InnerSpace, Point3, Quaternion, Rotation, SquareMatrix, Vector2, Vector3, Vector4, Zero};
+use cgmath::{InnerSpace, Point3, Quaternion, Rad, Rotation, Rotation3, SquareMatrix, Vector2, Vector3, Vector4, Zero};
 use lyon::lyon_tessellation::{
     BuffersBuilder, FillOptions, FillRule, FillTessellator, FillVertex, VertexBuffers,
 };
@@ -112,6 +112,7 @@ pub struct ImportedMeshEntity {
 #[derive(Clone, Debug)]
 pub struct TextEntity {
     pub id: usize,
+    pub selected: bool,
     pub depth: f32,
     pub pos: Vector3<f32>,
     pub quat: Quaternion<f32>,
@@ -188,6 +189,7 @@ pub struct Viewport {
     pub move_anchor: Option<Vector3<f32>>,
     pub move_surface_snapshots: Vec<(usize, NurbsSurface)>,
     pub move_mesh_snapshots: Vec<(usize, Arc<Vec<[Vector3<f32>; 3]>>)>,
+    pub move_text_snapshots: Vec<(usize, Vector3<f32>, Quaternion<f32>, Vec<Vertex>)>,
     pub move_axis_snapshots: Vec<(usize, Vector3<f32>)>,
     pub move_snapshots: Vec<(usize, Vec<Vector3<f32>>)>,
     pub move_solid_snapshots: Vec<(usize, [f32; 3])>,
@@ -267,6 +269,24 @@ impl Viewport {
             .iter()
             .filter(|entity| entity.selected)
             .count()
+    }
+    fn text_hit_test(&self, text: &TextEntity, mouse: Vector2<f32>) -> bool {
+        for triangle in text.cached_vertices.chunks_exact(3) {
+            let point = |vertex: &Vertex| {
+                self.world_to_screen(Vector3::new(
+                    vertex.position[0],
+                    vertex.position[1],
+                    vertex.position[2],
+                ))
+            };
+            if let (Some(a), Some(b), Some(c)) = (
+                point(&triangle[0]), point(&triangle[1]), point(&triangle[2])) {
+                    if Self::point_in_triangle(mouse, a, b, c) {
+                        return true;
+                    }
+                }
+        }
+        false
     }
     pub fn join_selected(&mut self) -> usize {
         let selected: Vec<PolyLine> = self.entities
@@ -1152,6 +1172,7 @@ impl Viewport {
             move_solid_snapshots: Vec::new(),
             move_surface_snapshots: Vec::new(),
             move_mesh_snapshots: Vec::new(),
+            move_text_snapshots: Vec::new(),
             point_vertices: Vec::new(),
             next_entity: 0,
             camera,
@@ -1355,6 +1376,7 @@ impl Viewport {
             id,
             depth,
             pos,
+            selected: false,
             quat: quat.normalize(),
             color,
             text,
@@ -2219,7 +2241,6 @@ impl Viewport {
             if entity.vertices.len() < 2 {
                 continue;
             }
-
             let screen_vertices: Vec<cgmath::Vector2<f32>> = entity
                 .vertices
                 .iter()
@@ -2245,6 +2266,13 @@ impl Viewport {
                     min_dist_sq = distance;
                     closest = Some(entity.id);
                 }
+            }
+        }
+        for text in &self.text_entities {
+            if self.text_hit_test(text, mouse_px) {
+                closest = Some(text.id);
+                min_dist_sq = 0.0;
+                break;
             }
         }
         for curve in &self.nurbs_curves {
@@ -2289,6 +2317,13 @@ impl Viewport {
                 }
             }
         }
+        for text in &mut self.text_entities {
+            text.selected = if additive {
+                text.selected || closest == Some(text.id)
+            } else {
+                closest == Some(text.id)
+            };
+        }
         let connected_selection = closest
             .map(|id| self.connected_ids(id))
             .unwrap_or_default();
@@ -2318,6 +2353,11 @@ impl Viewport {
                     solid.selected = true;
                 }
             }
+            for text in &mut self.text_entities {
+                if connected_selection.contains(&text.id) {
+                    text.selected = true;
+                }
+            }
         } else {
             for entity in &mut self.entities {
                 entity.selected = connected_selection.contains(&entity.id);
@@ -2333,6 +2373,9 @@ impl Viewport {
             }
             for solid in &mut self.solids {
                 solid.selected = connected_selection.contains(&solid.id);
+            }
+            for text in &mut self.text_entities {
+                text.selected = text.id == closest.unwrap_or(usize::MAX);
             }
         }
         self.selected_entity = self
@@ -2357,7 +2400,8 @@ impl Viewport {
                     .iter()
                     .find(|s| s.selected)
                     .map(|s| s.id)  
-            });
+            })
+            .or_else(|| self.text_entities.iter().find(|t| t.selected).map(|t| t.id));
         if let Some(s) = self.nurbs_surfaces.iter().find(|s| s.selected) {
             let mut sum = Vector3::new(0.0, 0.0, 0.0);
             let mut count = 0.0;
@@ -2390,6 +2434,11 @@ impl Viewport {
             } else {
                 self.gumball = None;
             }
+        } else if let Some(text) = self.text_entities.iter().find(|text| text.selected) {
+            self.gumball = Some(Gumball::new(
+                Point3::new(text.pos.x, text.pos.y, text.pos.z),
+                0.25,
+            ));
         } else if let Some(solid) = self.solids.iter().find(|s| s.selected) {
             let origin = solid.centroid();
             self.gumball = Some(Gumball::new(Point3::new(origin[0], origin[1], origin[2]), 0.25))
@@ -2590,6 +2639,45 @@ impl Viewport {
             }
         }
 
+        for text in &self.text_entities {
+            let projected: Vec<Option<Vector2<f32>>> = text
+                .cached_vertices
+                .iter()
+                .map(|vertex| {
+                    self.world_to_screen(Vector3::new(
+                        vertex.position[0],
+                        vertex.position[1],
+                        vertex.position[2],
+                    ))
+                })
+                .collect();
+            let selected = if window_selection {
+                !projected.is_empty()
+                    && projected.iter().all(|point| {
+                        point
+                            .map(|point| Self::point_in_rect(point, min, max))
+                            .unwrap_or(false)
+                    })
+            } else {
+                projected.chunks_exact(3).any(|triangle| {
+                    let (Some(a), Some(b), Some(c)) =
+                        (triangle[0], triangle[1], triangle[2])
+                    else {
+                        return false;
+                    };
+                    Self::point_in_rect(a, min, max)
+                        || Self::point_in_rect(b, min, max)
+                        || Self::point_in_rect(c, min, max)
+                        || Self::segment_intersects_rect(a, b, min, max)
+                        || Self::segment_intersects_rect(b, c, min, max)
+                        || Self::segment_intersects_rect(c, a, min, max)
+                })
+            };
+            if selected {
+                selected_ids.push(text.id);
+            }
+        }
+
         let directly_selected_ids = selected_ids.clone();
         for id in directly_selected_ids {
             selected_ids.extend(self.connected_ids(id));
@@ -2618,6 +2706,13 @@ impl Viewport {
                 selected_ids.contains(&mesh.id)
             };
         }
+        for text in &mut self.text_entities {
+            text.selected = if additive {
+                text.selected || selected_ids.contains(&text.id)
+            } else {
+                selected_ids.contains(&text.id)
+            };
+        }
         self.selected_entity = self
             .entities
             .iter()
@@ -2634,7 +2729,19 @@ impl Viewport {
                     .iter()
                     .find(|item| item.selected)
                     .map(|item| item.id)
-            });
+            })
+            .or_else(|| self.text_entities.iter().find(|item| item.selected).map(|item| item.id));
+        let selected_text: Vec<Vector3<f32>> = self
+            .text_entities
+            .iter()
+            .filter(|text| text.selected)
+            .map(|text| text.pos)
+            .collect();
+        if !selected_text.is_empty() {
+            let center = selected_text.iter().copied().fold(Vector3::zero(), |sum, p| sum + p)
+                / selected_text.len() as f32;
+            self.gumball = Some(Gumball::new(Point3::new(center.x, center.y, center.z), 0.25));
+        }
         self.rebuild_vertices();
         self.entities
             .iter()
@@ -2650,6 +2757,7 @@ impl Viewport {
                 .iter()
                 .filter(|mesh| mesh.selected)
                 .count()
+            + self.text_entities.iter().filter(|text| text.selected).count()
     }
 
     pub fn delete_selected(&mut self) -> usize {
@@ -2883,6 +2991,11 @@ impl Viewport {
                         .unwrap_or(false)
             })
             || self
+                .text_entities
+                .iter()
+                .filter(|text| text.selected)
+                .any(|text| self.text_hit_test(text, mouse))
+            || self
                 .nurbs_surfaces
                 .iter()
                 .filter(|surface| surface.selected)
@@ -2910,6 +3023,7 @@ impl Viewport {
             self.move_solid_snapshots.clear();
             self.move_surface_snapshots.clear();
             self.move_mesh_snapshots.clear();
+            self.move_text_snapshots.clear();
             return false;
         }
         self.move_axis_snapshots = self
@@ -2938,6 +3052,12 @@ impl Viewport {
                 .iter()
                 .filter(|mesh| mesh.selected)
                 .map(|mesh| (mesh.id, mesh.triangles.clone()))
+                .collect();
+            self.move_text_snapshots = self
+                .text_entities
+                .iter()
+                .filter(|text| text.selected)
+                .map(|text| (text.id, text.pos, text.quat, text.cached_vertices.clone()))
                 .collect();
             self.move_solid_snapshots = self
                 .solids
@@ -3015,6 +3135,25 @@ impl Viewport {
                         .map(|triangle| triangle.map(rotate_point))
                         .collect(),
                 );
+            }
+        }
+        for (text_id, original_pos, original_quat, original_vertices) in &self.move_text_snapshots {
+            if let Some(text) = self.text_entities.iter_mut().find(|text| text.id == *text_id) {
+                text.pos = rotate_point(*original_pos);
+                text.quat = (Quaternion::from_axis_angle(axis.normalize(), Rad(angle))
+                    * *original_quat)
+                    .normalize();
+                text.cached_vertices = original_vertices
+                    .iter()
+                    .map(|vertex| {
+                        let mut rotated = *vertex;
+                        let point = rotate_point(Vector3::new(
+                            vertex.position[0], vertex.position[1], vertex.position[2],
+                        ));
+                        rotated.position = [point.x, point.y, point.z];
+                        rotated
+                    })
+                    .collect();
             }
         }
         for (solid_id, original_origin) in &self.move_solid_snapshots {
@@ -3131,6 +3270,21 @@ impl Viewport {
                 );
             }
         }
+        for (text_id, original_pos, _original_quat, original_vertices) in &self.move_text_snapshots {
+            if let Some(text) = self.text_entities.iter_mut().find(|text| text.id == *text_id) {
+                text.pos = *original_pos + offset;
+                text.cached_vertices = original_vertices
+                    .iter()
+                    .map(|vertex| {
+                        let mut moved = *vertex;
+                        moved.position[0] += offset.x;
+                        moved.position[1] += offset.y;
+                        moved.position[2] += offset.z;
+                        moved
+                    })
+                    .collect();
+            }
+        }
         for (solid_id, original_origin) in &self.move_solid_snapshots {
             if let Some(solid) = self.solids.iter_mut().find(|s| s.id == *solid_id) {
                 solid.origin = [
@@ -3161,6 +3315,7 @@ impl Viewport {
         self.move_snapshots.clear();
         self.move_surface_snapshots.clear();
         self.move_mesh_snapshots.clear();
+        self.move_text_snapshots.clear();
         self.move_solid_snapshots.clear();
     }
     pub fn world_to_screen(&self, world_pos: cgmath::Vector3<f32>) -> Option<cgmath::Vector2<f32>> {
@@ -3510,7 +3665,15 @@ impl Viewport {
             ));
         }
         for entity in &self.text_entities {
-            new_vertices.extend_from_slice(&entity.cached_vertices);
+            if entity.selected {
+                new_vertices.extend(entity.cached_vertices.iter().map(|vertex| {
+                    let mut highlighted = *vertex;
+                    highlighted.color = [1.0, 0.8, 0.0, 1.0];
+                    highlighted
+                }));
+            } else {
+                new_vertices.extend_from_slice(&entity.cached_vertices);
+            }
         }
         for entity in &self.nurbs_surfaces {
             let draw_color = if entity.selected { [1.0, 0.8, 0.0, 1.0] } else { entity.color };

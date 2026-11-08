@@ -274,6 +274,7 @@ impl ViewportRenderer {
     fn draw_text(&mut self, text: &str, pos: (f32, f32, f32), size: f32, font_name: &str, fontfamily: &str, depth: Option<f32>) -> bool {
         let entity = TextEntity {
             id: 0,
+            selected: false,
             depth: depth.unwrap_or(0.0),
             pos: Vector3::new(pos.0, pos.1, pos.2),
             quat: Quaternion::new(1.0, 0.0, 0.0, 0.0),
@@ -312,6 +313,10 @@ impl ViewportRenderer {
                 .nurbs_surfaces
                 .iter()
                 .filter(|surface| surface.selected)
+                .count()
+            + self.state.viewport.text_entities
+                .iter()
+                .filter(|text| text.selected)
                 .count()
             + self
                 .state

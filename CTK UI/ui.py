@@ -4315,8 +4315,6 @@ viewmenu.bind("<Button-1>", choose_view)
 app.bind_all("<Motion>", viewpointermotion, add='+')
 app.bind_all("<Button-1>", viewoutsideclick, add='+')
 
-
-
 def opensaveascommand():
     global activecommand
     activecommand = None
