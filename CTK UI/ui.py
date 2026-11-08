@@ -1476,6 +1476,7 @@ history_index = 0
 activecommand = None
 lastcommand = None
 whiteviewmode = False
+pendingrendermode = False
 mirrorpoint1= None
 polarcenter = None
 
@@ -2030,13 +2031,14 @@ def starttrim(event=None):
     viewport.focus_set()
 
 def startrender():
-    global activecommand
+    global activecommand, pendingrendermode
+    pendingrendermode = not whiteviewmode
     activecommand = 'render_confirm'
     command.delete(0, 'end')
-    question = ("Turn white viewport mode off? Yes or no?" if whiteviewmode else "Turn white viewport mode on? Type yes or no")
-    command.configure(state='normal', placeholder_text='', text_color="#FFFAFA")
-    command._entry.configure(state='normal', fg="#FFFAFA")
-    writehistory(f"> Render\n{question}\nType yes or no in the cmd bar, then press enter")
+    command.configure(state='normal', placeholder_text='', text_color='#EAEAEA')
+    command._entry.configure(state="normal", fg="#EAEAEA", insertbackground="#EAEAEA",)
+    target = 'on' if pendingrendermode else "off"
+    writehistory( f"> Render\nTurn white viewport mode {target}? Type yes or no, then press Enter")
     command._entry.focus_force()
 
 def startplaceholdercmd(name, message):
@@ -2374,15 +2376,19 @@ def runcmd(event):
         app.after_idle(viewport.focus_force)
         return "break"
     if activecommand == 'render_confirm':
+        global pendingrendermode
         answer = command.get().strip().lower()
-        if answer in ("yes", 'y', 'on'):
-            whiteviewmode = not whiteviewmode
-            renderer.set_white_viewport(whiteviewmode)
-            renderer.render()
+        if answer in ('yes', 'y', 'on'):
+            if pendingrendermode is not None:
+                whiteviewmode = pendingrendermode
+                renderer.set_white_viewport(whiteviewmode)
+                renderer.render()
             writehistory("White viewport mode on" if whiteviewmode else "White viewport mode off")
-        elif answer not in ('no', 'n', 'cancel'):
+        elif answer not in ("no", 'n', 'cancel'):
             writehistory("Type yes or no, then press enter")
+            command._entry.focus_force()
             return 'break'
+        pendingrendermode = None
         activecommand = None
         command.delete(0, 'end')
         command.configure(placeholder_text='Command:')
@@ -4285,11 +4291,14 @@ def choose_view(event):
         renderer.render()
     closeviewmenu()
 def pointeronviewmenu(event):
-    x = event.x_root - app.winfo_rootx()
-    y = event.y_root - app.winfo_rooty()
-    onbutton = 101 <= x <= 213 and 101 <= y <= 129
-    onmenu = 101 <= x <= 213 and 129 <= y <= 228
-    return onbutton or onmenu
+    x, y = event.x_root, event.y_root
+    bx, by = viewbutton.winfo_rootx(), viewbutton.winfo_rooty()
+    if bx <= x <= bx + viewbutton.winfo_width() and by <= y <= by + viewbutton.winfo_height():
+        return True
+    if viewmenu.winfo_manager():
+        mx, my = viewmenu.winfo_rootx(), viewmenu.winfo_rooty()
+        return (mx <= x <= mx + viewmenu.winfo_width() and my <= y <= my + viewmenu.winfo_height())
+    return False
 def viewpointermotion(event):
     global view_close_job
     if not viewmenu.winfo_manager():
