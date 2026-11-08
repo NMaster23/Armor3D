@@ -121,6 +121,22 @@ pub fn handle_input(pos: (f64, f64), button: &str, vec: (f32, f32, f32)) -> PyRe
 
 #[pymethods]
 impl ViewportRenderer {
+    pub fn section_selected_solid(&mut self, origin: (f32, f32, f32), norm: (f32, f32, f32)) -> Vec<usize> {
+        let p_origin = Vector3::new(origin.0, origin.1, origin.2);
+        let p_norm = Vector3::new(norm.0, norm.1, norm.2);
+        self.state.viewport.section_selected_solid(p_origin, p_norm)
+    }
+    pub fn contour_selected_solid(
+        &mut self,
+        start: (f32, f32, f32),
+        dir: (f32, f32, f32),
+        interval: f32,
+        count: usize,
+    ) -> Vec<usize> {
+        let p_start = Vector3::new(start.0, start.1, start.2);
+        let p_dir = Vector3::new(dir.0, dir.1, dir.2);
+        self.state.viewport.contour_selected_solid(p_start, p_dir, interval, count)
+    }
     pub fn loft_selected_curves(&mut self, closed_caps: Option<bool>) -> Option<usize> {
         self.state.viewport.loft_selected_curves(closed_caps.unwrap_or(true))
     }
