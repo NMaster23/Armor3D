@@ -120,6 +120,15 @@ pub fn handle_input(pos: (f64, f64), button: &str, vec: (f32, f32, f32)) -> PyRe
 
 #[pymethods]
 impl ViewportRenderer {
+    pub fn hollow_selected_solid(&mut self, wall_thickness: f32) -> Option<usize> {
+        self.state.viewport.hollow_selected_solid(wall_thickness)
+    }
+    pub fn scale_selected_solid(&mut self, fx: f32, fy: f32, fz: f32) -> bool {
+        self.state.viewport.scale_selected_solid(fx, fy, fz)
+    }
+    pub fn mirror_selected_solid(&mut self, axis: &str) -> bool {
+        self.state.viewport.mirror_selected_solid(axis)
+    }
     pub fn import_model(&mut self) -> PyResult<Option<usize>> {
         if let Some((tris, _name)) = pollster::block_on(crate::exporter::read_mesh_file()) {
             let id = self.state.viewport.import_solid_mesh(tris, [0.7, 0.7, 0.75, 1.0]);

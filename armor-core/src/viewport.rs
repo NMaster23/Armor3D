@@ -5619,6 +5619,43 @@ impl Viewport {
         self.rebuild_vertices();
         Some(id)
     }
+    pub fn hollow_selected_solid(&mut self, wall_thickness: f32) -> Option<usize> {
+        let sel_id = self.selected_entity?;
+        let solid = self.solids.iter().find(|s| s.id == sel_id)?.clone();
+        self.save_undo_state();
+        let new_solid = solid.hollow(sel_id, wall_thickness)?;
+        if let Some(s) = self.solids.iter_mut().find(|s| s.id == sel_id) {
+            *s = new_solid;
+        }
+        self.rebuild_vertices();
+        Some(sel_id)
+    }
+    pub fn scale_selected_solid(&mut self, fx: f32, fy: f32, fz: f32) -> bool {
+        let Some(sel_id) = self.selected_entity else {
+            return false;
+        };
+        self.save_undo_state();
+        if let Some(solid) = self.solids.iter_mut().find(|s| s.id == sel_id) {
+            solid.scale([fx, fy, fz]);
+            self.rebuild_vertices();
+            true
+        } else {
+            false
+        }
+    }
+    pub fn mirror_selected_solid(&mut self, axis: &str) -> bool {
+        let Some(sel_id) = self.selected_entity else {
+            return false;
+        };
+        self.save_undo_state();
+        if let Some(solid) = self.solids.iter_mut().find(|s| s.id == sel_id) {
+            solid.mirror(axis);
+            self.rebuild_vertices();
+            true
+        } else {
+            false
+        }
+    }
     pub fn solid_hit_test(&self, solid: &SolidEntity, mouse: Vector2<f32>) -> Option<f32> {
         let ray = self.camera.screen_to_ray(
             mouse,
