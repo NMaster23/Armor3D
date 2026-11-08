@@ -30,6 +30,8 @@ HOVER_BG = "#262626"
 HOVER_BORDER = "#D8D8D8"
 HOVER_TEXT = "#FFFFFF"
 pending_text = ''
+pendingtextfont = 'Arial'
+pendingtextsize = 1.0
 currentfilepath = None
 importedfiles = []
 circle_center = None
@@ -705,6 +707,7 @@ SETTINGSPATH = (Path(os.getenv("APPDATA") or Path.home())
 DEFAULTSETTINGS = {
     "grid_snap": False,
     "grid_spacing": 0.1,
+    "text_font": "Arial",
     "ortho": False,
     "osnap": False,
     "snap_modes": {
@@ -1083,7 +1086,7 @@ def viewport_mouse_down(event):
         if position is None:
             writehistory("Could not get a grid position; click in the viewport again")
             return
-        created = renderer.draw_text( pending_text, tuple(position), 1.0, "Arial", "sans", None,)
+        created = renderer.draw_text(pending_text, tuple(position), pendingtextsize, pendingtextfont, 'sans', None)
         if created:
             renderer.render()
             writehistory(f"Placed text: {pending_text}")
@@ -1881,15 +1884,138 @@ def startrectangle(event=None):
     viewport.configure(cursor='crosshair')
     viewport.focus_set()
 
-def starttext(event=None):         
-    global activecommand
-    if renderer is None:          
+def starttext(event=None):
+    if renderer is None:
         return
-    activecommand = 'text_input'
-    command.delete(0, 'end')
-    command.configure(placeholder_text='')
-    writehistory("> Text\nType your text in the command bar, then press enter")
-    app.after_idle(command._entry.focus_force)
+    opentextdialog()
+def opentextdialog():
+    global activecommand, pending_text, pendingtextfont, pendingtextsize
+    shade = Toplevel(app)
+    shade.overrideredirect(True)
+    shade.geometry(f"{app.winfo_width()}x{app.winfo_height()}"
+                   f"+{app.winfo_rootx()}+{app.winfo_rooty()}")
+    shade.attributes("-alpha", 0.55)
+    shade.configure(bg='black')
+    dialog = ctk.CTkToplevel(app)
+    dialog.withdraw()
+    dialog.overrideredirect(True)
+    dialog.configure(fg_color="#0B0B0B")
+    dialog.geometry(f"600x340+{app.winfo_rootx() + (app.winfo_width()-600)//2}+{app.winfo_rooty() + (app.winfo_height()-340)//2}")
+    panel = ctk.CTkFrame(dialog, fg_color="#111111", border_color="#555555", border_width=2, corner_radius=8)
+    panel.pack(fill='both', expand=True, padx=4, pady=4)
+    ctk.CTkLabel(panel, text='Create Text', font=("Lexend", 17)).place(x=22, y=16)
+    text_entry = ctk.CTkEntry(panel, width=250, placeholder_text='Type text here', text_color='#EAEAEA')
+    text_entry.place(x=24, y=62)
+    fonts= renderer.get_fonts() or ["Arial"]
+    savedfont = uisettings.get('text_font', "Arial")
+    if savedfont not in fonts:
+        savedfont = 'Arial' if "Arial" in fonts else fonts[0]
+    fontvar = ctk.StringVar(value=savedfont)
+    fontbutton = Canvas(panel, width=250, height=34, bg='#111111', highlightthickness=0, cursor='hand2')
+    fontbox = fontbutton.create_rectangle(2, 2, 248, 32, fill='#111111', outline='#383838', width=1)
+    fontlabel = fontbutton.create_text(12, 17, text=savedfont, anchor='w', fill='#EAEAEA', font=("Iceland", 14))
+    fontarrow = fontbutton.create_text(234, 17, text='v', fill='#EAEAEA', font=("Iceland", 12))
+    fontbutton.place(x=24, y=116)
+    row_height = 26
+    popupheight = min(156, max(row_height, len(fonts) * row_height))
+    fontpopup = Canvas(panel, width=250, height=popupheight, bg="#111111", highlightthickness=1, highlightbackground="#555555", yscrollincrement=row_height,)
+    fontpopup.configure(scrollregion=(0, 0, 250, len(fonts) * row_height))
+    fontrowboxes = []
+    for index, name in enumerate(fonts):
+        y= index * row_height
+        box = fontpopup.create_rectangle(2, y, 248, y+row_height, fill='#111111', outline="")
+        fontpopup.create_text(12, y+row_height //2, text=name, anchor='w', fill='#EAEAEA', font=("Iceland", 13))
+        fontrowboxes.append(box)
+    def choosefont(index):
+        if not 0 <= index < len(fonts):
+            return
+        selected = fonts[index]
+        fontvar.set(selected)
+        uisettings['text_font'] = selected
+        saveuisettings()
+        fontbutton.itemconfig(fontlabel, text=selected)
+        fontpopup.place_forget()
+        refreshpreview()
+    def fontpopupclick(event):
+        index = int(fontpopup.canvasy(event.y) // row_height)
+        choosefont(index)
+    def fontpopupmotion(event):
+        hovered = int(fontpopup.canvsy(event.y) // row_height)
+        for index, box in enumerate(fontrowboxes):
+            fontpopup.itemconfig(box, fill="242424" if index == hovered else "#111111")
+    def togglefontpopup(_event=None):
+        if fontpopup.winfo_ismapped():
+            fontpopup.place_forget()
+        else:
+            fontpopup.place(x=24, y=151)
+            fontpopup.tk.call("raise", fontpopup._w)
+    fontbutton.bind("<Button-1>", togglefontpopup)
+    fontpopup.bind("<Button-1>", fontpopupclick)
+    fontpopup.bind("<Motion>", fontpopupmotion)
+    fontpopup.bind("<MouseWheel>", lambda event: fontpopup.yview_scroll(-1 if event.delta > 0 else 1, 'units'))
+    sizevar = ctk.StringVar(value='1.0')
+    sizeentry = ctk.CTkEntry(panel, width=100, textvariable=sizevar, text_color="#EAEAEA")
+    sizeentry.place(x=24, y=168)
+    ctk.CTkLabel(panel, text='Size', font=("Lexend", 12)).place(x=135, y=170)
+    preview = ctk.CTkLabel(panel, text='Text Preview', width=280, height=180, fg_color="#0B0B0B", text_color="#EAEAEA")
+    preview.place(x=292, y=62)
+    def refreshpreview(*_):
+        text = text_entry.get() or "Text preview"
+        try:
+            previewsize = max(10, min(40, int(float(sizevar.get()) * 24)))
+        except ValueError:
+            previewsize = 16
+        preview.configure(text=text, font=(fontvar.get(), previewsize))
+    def close():
+        dialog.destroy()
+        shade.destroy()
+    def placetext():
+        global activecommand, pending_text, pendingtextfont, pendingtextsize
+        value = text_entry.get().strip()
+        try:
+            size = float(sizevar.get())
+        except ValueError:
+            size = 0
+        if not value:
+            text_entry.configure(border_color='#B9533c')
+            return
+        if not math.isfinite(size) or size <= 0:
+            sizeentry.configure(border_color='#B9533C')
+            return
+        pending_text = value
+        pendingtextfont = fontvar.get()
+        pendingtextsize = size
+        activecommand = 'text_place'
+        command.delete(0, 'end')
+        command.configure(placeholder_text='')
+        writehistory(f"> Text\\nClick in the viewport to place: {value}")
+        close()
+        app.after_idle(viewport.focus_force)
+    def ontextchange(_event=None):
+        refreshpreview()
+    text_entry.bind("<KeyRelease>", ontextchange)
+    sizevar.trace_add('write', refreshpreview)
+    def maketextbutton(label, x, callback):
+        button = Canvas(panel, width=110, height=34, bg='#111111', highlightthickness=0, cursor='hand2')
+        box = button.create_rectangle(2, 2, 108, 32, fill='#111111', outline='#383838', width=1)
+        text = button.create_text(55, 17, text=label, fill='#EAEAEA', font=("Iceland", 15))
+        def on_enter(_event):
+            button.itemconfig(box, fill='#242424', outline='#666666')
+            button.itemconfig(text, fill='#FFFFFF')
+        def on_leave(_event):
+            button.itemconfig(box, fill="#111111", outline='#383838')
+            button.itemconfig(text, fill="#EAEAEA")
+        button.bind("<Enter>", on_enter)
+        button.bind("<Leave>", on_leave)
+        button.bind("<Button-1>", lambda _event: callback())
+        button.place(x=x, y=275)
+    maketextbutton("Cancel", 310, close)
+    maketextbutton("Place", 440, placetext)
+    dialog.deiconify()
+    dialog.lift()
+    dialog.grab_set()
+    text_entry.focus_force()
+    refreshpreview()
 
 def starttrim(event=None):
     global activecommand
@@ -4042,6 +4168,7 @@ def saveuisettings():
         "grid_snap":gridsnapon,
         "grid_spacing": gridspacing,
         "osnap": onsapon,
+        "text_font": uisettings.get("text_font", "Arial"),
         "snap_modes": {
             name: enabled
             for name, enabled in snapenabled.items()
