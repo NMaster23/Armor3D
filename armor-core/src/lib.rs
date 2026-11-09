@@ -860,6 +860,9 @@ impl ViewportRenderer {
             })
             .collect()
     }
+    fn material_object_data(&self) -> Vec<(usize, bool)> {
+        self.state.viewport.material_object_data()
+    }
     fn scene_render_triangles(
         &self,
     ) -> Vec<((f32, f32, f32), (f32, f32, f32), (f32, f32, f32))> {

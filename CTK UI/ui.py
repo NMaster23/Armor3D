@@ -3445,13 +3445,17 @@ def getmaterialmaps(materialname):
         "color": "_Color.",
         "roughness": "_Roughness.",
         "metalness": "_Metalness.",
-        "normal": "_Norma1GL.",
+        "normal": "_NormalGL.",
         "ambient_occlusion": "_AmbientOcclusion.",}
     maps = {}
     for mapname, suffix in suffixes.items():
         match = next(folder.glob(f"*{suffix}*"), None)
         if match:
             maps[mapname] = str(match)
+    if materialname == "Metal 050A":
+        replacement_color = folder / "DiamondPlate009_2K-PNG_Color.png"
+        if replacement_color.is_file():
+            maps["color"] = str(replacement_color)
     return maps
 MATERIAL_ROW_HEIGHT = 36
 material_hovered = None
@@ -3564,7 +3568,7 @@ def refreshobjectrows():
     if renderer is None:
         rows = []
     else:
-        rows = renderer.scene_data()
+        rows = renderer.material_object_data()
     width = max(1, objectcanvas.winfo_width())
     for index, row in enumerate(rows):
         objectid = row[0]
@@ -3585,7 +3589,7 @@ def selectmaterialobject(event):
     global selectedmaterialobjectid
     y = objectcanvas.canvasy(event.y)
     index = int(y // objectrowheight)
-    rows = renderer.scene_data() if renderer is not None else []
+    rows = renderer.material_object_data() if renderer is not None else []
     if not 0 <= index < len(rows):
         return
     selectedmaterialobjectid = rows[index][0]
@@ -3637,6 +3641,8 @@ def togglematerials(event=None):
     opening = not materialsopen
     if opening and sidebar.winfo_manager():
         toggleai()
+    if opening:
+        refreshobjectrows()
     materialsanimating = True
     width = max(280, int(app.winfo_width() * materialspanelratio))
     start_x, end_x = (width+16, 16) if opening else (16, width +16)

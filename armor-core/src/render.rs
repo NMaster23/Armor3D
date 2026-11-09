@@ -20,7 +20,7 @@ const MATERIAL_COLOR_MAPS: [&[u8]; 9] = [
     include_bytes!("../../Assets/Materials/Concrete049/Concrete049_2K-PNG_Color.png"),
     include_bytes!("../../Assets/Materials/DiamondPlate005B/DiamondPlate005B_2K-PNG_Color.png"),
     include_bytes!("../../Assets/Materials/Fabric004/Fabric004_2K-PNG_Color.png"),
-    include_bytes!("../../Assets/Materials/Metal050A/Metal050A_2K-PNG_Color.png"),
+    include_bytes!("../../Assets/Materials/Metal050A/DiamondPlate009_2K-PNG_Color.png"),
     include_bytes!("../../Assets/Materials/Metal063/Metal063_2K-JPG_Color.jpg"),
     include_bytes!("../../Assets/Materials/Plastic007/Plastic007_2K-PNG_Color.png"),
     include_bytes!("../../Assets/Materials/Rubber001/Rubber001_2K-PNG_Color.png"),

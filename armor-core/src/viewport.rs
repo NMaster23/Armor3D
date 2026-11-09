@@ -2154,11 +2154,17 @@ impl Viewport {
         for curve in &mut self.nurbs_curves {
             curve.selected = expanded_ids.contains(&curve.id);
         }
+        for solid in &mut self.solids {
+            solid.selected = expanded_ids.contains(&solid.id);
+        }
         for surface in &mut self.nurbs_surfaces {
             surface.selected = expanded_ids.contains(&surface.id);
         }
         for mesh in &mut self.imported_meshes {
             mesh.selected = expanded_ids.contains(&mesh.id);
+        }
+        for text in &mut self.text_entities {
+            text.selected = expanded_ids.contains(&text.id);
         }
         self.selected_entity = self.entities
             .iter()
@@ -2177,6 +2183,19 @@ impl Viewport {
                     .map(|mesh| mesh.id)
             });
         self.rebuild_vertices();
+    }
+
+    pub fn material_object_data(&self) -> Vec<(usize, bool)> {
+        let mut objects = Vec::new();
+        objects.extend(self.entities.iter().map(|item| (item.id, item.selected)));
+        objects.extend(self.nurbs_curves.iter().map(|item| (item.id, item.selected)));
+        objects.extend(self.nurbs_surfaces.iter().map(|item| (item.id, item.selected)));
+        objects.extend(self.imported_meshes.iter().map(|item| (item.id, item.selected)));
+        objects.extend(self.solids.iter().map(|item| (item.id, item.selected)));
+        objects.extend(self.text_entities.iter().map(|item| (item.id, item.selected)));
+        objects.sort_unstable_by_key(|(id, _)| *id);
+        objects.dedup_by_key(|(id, _)| *id);
+        objects
     }
     pub fn trim_at(&mut self, mouse_x: f32, mouse_y: f32) -> bool {
         let mouse = Vector2::new(mouse_x, mouse_y);
@@ -3590,7 +3609,7 @@ impl Viewport {
             new_vertices.extend(solid.to_verts(draw_color));   
         }
         for entity in &self.nurbs_curves {
-            let draw_color = if entity.selected { [1.0, 0.8, 0.0, 1.0] } else { entity.color };
+            let draw_color = self.object_draw_color(entity.id, entity.selected, entity.color);
             let curve_points = entity.curve.sample(64);
             new_vertices.extend(self.tessellate_polyline(&curve_points, entity.thickness, draw_color));
         }
@@ -3818,11 +3837,14 @@ impl Viewport {
             ));
         }
         for entity in &self.text_entities {
-            if entity.selected {
+            let draw_color = self.object_draw_color(entity.id, entity.selected, entity.color);
+            let use_material_texture = self.material_render_mode
+                && self.object_materials.contains_key(&entity.id);
+            if entity.selected || use_material_texture {
                 new_vertices.extend(entity.cached_vertices.iter().map(|vertex| {
-                    let mut highlighted = *vertex;
-                    highlighted.color = [1.0, 0.8, 0.0, 1.0];
-                    highlighted
+                    let mut colored = *vertex;
+                    colored.color = draw_color;
+                    colored
                 }));
             } else {
                 new_vertices.extend_from_slice(&entity.cached_vertices);
@@ -4675,9 +4697,11 @@ impl Viewport {
     }
     pub fn set_object_material(&mut self, object_id: usize, material: Option<String>) -> bool {
         if !self.entities.iter().any(|e| e.id == object_id)
+            && !self.nurbs_curves.iter().any(|e| e.id == object_id)
             && !self.solids.iter().any(|e| e.id == object_id)
             && !self.imported_meshes.iter().any(|e| e.id == object_id)
             && !self.nurbs_surfaces.iter().any(|e| e.id == object_id)
+            && !self.text_entities.iter().any(|e| e.id == object_id)
         {
             return false;}
         if let Some(name) = material {
@@ -4689,9 +4713,6 @@ impl Viewport {
         true
     }
     fn object_draw_color(&self, object_id: usize, selected: bool, base: [f32; 4]) -> [f32; 4] {
-        if selected {
-            return [1.0, 0.8, 0.0, 1.0];
-        }
         if self.material_render_mode {
             if let Some(material) = self.object_materials.get(&object_id) {
                 if let Some(index) = Self::material_texture_index(material) {
@@ -4700,6 +4721,9 @@ impl Viewport {
                     return [1.0, 1.0, 1.0, -((index + 1) as f32) / 8.0];
                 }
             }
+        }
+        if selected {
+            return [1.0, 0.8, 0.0, 1.0];
         }
         base
     }

@@ -37,10 +37,13 @@ fn vs_main(model: VertexInput) -> VertexOutput {
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let has_material = camera.camera_position_mode.w > 0.5 && in.color.a < -0.01;
-    if length(in.normal) <= 0.01 {
+    if length(in.normal) <= 0.01 && !has_material {
         return vec4<f32>(in.color.rgb, 1.0);
     }
-    let n = normalize(in.normal);
+    var n = vec3<f32>(0.0, 1.0, 0.0);
+    if length(in.normal) > 0.01 {
+        n = normalize(in.normal);
+    }
     let light_position = vec3<f32>(0.0, 12.0, 0.0);
     let light_to_surface = in.world_position - light_position;
     let light_distance = length(light_to_surface);
