@@ -232,6 +232,95 @@ pub struct Viewport {
 }
 
 impl Viewport {
+    pub fn offset_curve_points(points: &[Vector3<f32>], dist: f32) -> Option<Vec<Vector3<f32>>> {
+        if points.len() < 2 {
+            return None;
+        }
+        let is_closed = (points.first().unwrap() - points.last().unwrap()).magnitude2() < 1e-6;
+        let pts = if is_closed && points.len() > 2 {
+            &points[..points.len() - 1]
+        } else {
+            points
+        };
+        let n = pts.len();
+        let mut seg_norms: Vec<Vector3<f32>> = Vec::with_capacity(n);
+        let seg_count = if is_closed {
+            n
+        } else {
+            n - 1
+        };
+        for i in 0..seg_count {
+            let next_i = (i + 1) % n;
+            let dir = pts[next_i] - pts[i];
+            let len = dir.magnitude();
+            if len < 1e-6 {
+                seg_norms.push(Vector3::unit_y());
+            } else {
+                let tan = dir / len;
+                seg_norms.push(Vector3::new(-tan.y, tan.x, 0.0));
+            }
+        }
+        let mut offset_pts: Vec<Vector3<f32>> = Vec::with_capacity(pts.len());
+        for i in 0..n {
+            let (n_prev, n_next) = if is_closed {
+                let prev_i = if i == 0 {
+                    n - 1
+                } else {
+                    i - 1
+                };
+                (seg_norms[prev_i], seg_norms[i])
+            } else {
+                if i == 0 {
+                    offset_pts.push(pts[0] + seg_norms[0] * dist);
+                    continue;
+                } else if i == n - 1 {
+                    offset_pts.push(pts[n - 1] + seg_norms[seg_norms.len() - 1] * dist);
+                    continue;
+                }
+                (seg_norms[i - 1], seg_norms[i])
+            };
+            let miter = n_prev + n_next;
+            let miter_len_sq = miter.magnitude2();
+            if miter_len_sq < 1e-6 {
+                offset_pts.push(pts[i] + n_next * dist);
+            } else {
+                let miter_dir = miter.normalize();
+                let cos_half = miter_dir.dot(n_next);
+                let scale = if cos_half.abs() > 0.1 {
+                    (dist / cos_half).clamp(-5.0 * dist.abs(), 5.0 * dist.abs())
+                } else {
+                    dist
+                };
+                offset_pts.push(pts[i] + miter_dir * scale);
+            }
+        }
+        if is_closed && !offset_pts.is_empty() {
+            offset_pts.push(offset_pts[0]);
+        }
+        Some(offset_pts)
+    }
+    pub fn offset_selected_curve(&mut self, dist: f32) -> Option<usize> {
+        let sel_id = self.selected_entity?;
+        let curve = self.entities.iter().find(|e| e.id == sel_id)?.clone();
+        let offset_verts = Self::offset_curve_points(&curve.vertices, dist)?;
+        let id = self.next_entity;
+        self.next_entity += 1;
+        self.save_undo_state();
+        self.entities.push(crate::viewport::PolyLine {
+            id,
+            vertices: offset_verts,
+            color: [1.0, 0.8, 0.2, 1.0],
+            thickness: curve.thickness,
+            selected: true,
+            height: curve.height,
+            hatched: false,
+            extrude_axis: curve.extrude_axis,
+            show_markers: false,
+        });
+        self.selected_entity = Some(id);
+        self.rebuild_vertices();
+        Some(id)
+    }
     pub fn duplicate_selected(&mut self, offset: Vector3<f32>) -> usize {
         let selected: Vec<PolyLine> = self
             .entities
@@ -6142,6 +6231,248 @@ impl Viewport {
             all_created.extend(ids);
         }
         all_created
+    }
+    pub fn array_linear_selected(&mut self, count: usize, delta: Vector3<f32>) -> Vec<usize> {
+        let Some(sel_id) = self.selected_entity else {
+            return Vec::new();
+        };
+        if count < 2 {
+            return Vec::new();
+        }
+        self.save_undo_state();
+        let mut created_ids = Vec::new();
+        if let Some(s) = self.solids.iter().find(|s| s.id == sel_id).cloned() {
+            for i in 1..count {
+                let id = self.next_entity;
+                self.next_entity += 1;
+                let offset = delta * (i as f32);
+                let mut n_s = s.clone();
+                n_s.id = id;
+                n_s.origin[0] += offset.x;
+                n_s.origin[1] += offset.y;
+                n_s.origin[2] += offset.z;
+                n_s.selected = false;
+                self.solids.push(n_s);
+                created_ids.push(id);
+            }
+        }
+        self.rebuild_vertices();
+        created_ids
+    }
+    pub fn array_polar_selected(
+        &mut self,
+        count: usize,
+        center: Vector3<f32>,
+        axis: Vector3<f32>,
+        total_angle_rad: f32,
+    ) -> Vec<usize> {
+        let Some(sel_id) = self.selected_entity else {
+            return Vec::new();
+        };
+        if count < 2 {
+            return Vec::new();
+        };
+        let axis = if axis.magnitude2() > 1e-6 {
+            axis.normalize()
+        } else {
+            Vector3::unit_z()
+        };
+        self.save_undo_state();
+        let mut created_ids = Vec::new();
+        if let Some(s) = self.solids.iter().find(|s| s.id == sel_id).cloned() {
+            let tris = s.to_tris();
+            for i in 1..count {
+                let angle = total_angle_rad * (i as f32 / count as f32);
+                let cos_a = angle.cos();
+                let sin_a = angle.sin();
+                let rot_pt = |p: [f32; 3]| -> [f32; 3] {
+                    let v = Vector3::new(p[0], p[1], p[2]);
+                    let rot = v * cos_a + axis.cross(v) * sin_a + axis * axis.dot(v) * (1.0 - cos_a);
+                    let final_p = center + rot;
+                    [final_p.x, final_p.y, final_p.z]
+                };
+                let rot_dir = |d: [f32; 3]| -> [f32; 3] {
+                    let v = Vector3::new(d[0], d[1], d[2]);
+                    let rot = v * cos_a + axis.cross(v) * sin_a + axis * axis.dot(v) * (1.0 -  cos_a);
+                    [rot.x, rot.y, rot.z]
+                };
+                let rot_tris: Vec<crate::exporter::Triangle> = tris
+                    .iter()
+                    .map(|t| {
+                        let v0 = rot_pt(t.v0);
+                        let v1 = rot_pt(t.v1);
+                        let v2 = rot_pt(t.v2);
+                        let norm = rot_dir(t.normal);
+                        crate::exporter::Triangle {
+                            v0,
+                            v1,
+                            v2,
+                            normal: norm,
+                        }
+                    }).collect();
+                let id = self.next_entity;
+                self.next_entity += 1;
+                self.solids.push(SolidEntity {
+                    id,
+                    origin: [0.0, 0.0, 0.0],
+                    shape: BaseShape::CustomMesh { triangles: rot_tris },
+                    color: s.color,
+                    selected: false,
+                });
+                created_ids.push(id);
+            }
+        }
+        self.rebuild_vertices();
+        created_ids
+    }
+    pub fn array_grid_selected(
+        &mut self,
+        c_x: usize,
+        c_y: usize,
+        c_z: usize,
+        spacing: Vector3<f32>,
+    ) -> Vec<usize> {
+        let Some(sel_id) = self.selected_entity else {
+            return Vec::new();
+        };
+        self.save_undo_state();
+        let mut created_ids = Vec::new();
+        if let Some(solid) = self.solids.iter().find(|s| s.id == sel_id).cloned() {
+            for ix in 0..c_x {
+                for iy in 0..c_y {
+                    for iz in 0..c_z {
+                        if ix == 0 && iy == 0 && iz == 0 {
+                            continue;
+                        }
+                        let id = self.next_entity;
+                        self.next_entity += 1;
+                        let mut n_solid = solid.clone();
+                        n_solid.id = id;
+                        n_solid.origin[0] += ix as f32 * spacing.x;
+                        n_solid.origin[1] += iy as f32 * spacing.y;
+                        n_solid.origin[2] += iz as f32 * spacing.z;
+                        n_solid.selected = false;
+                        self.solids.push(n_solid);
+                        created_ids.push(id);
+                    }
+                }
+            }
+        }
+        self.rebuild_vertices();
+        created_ids
+    }
+    pub fn sweep1_selected_curves(&mut self, closed_caps: bool) -> Option<usize> {
+        let selected: Vec<Vec<Vector3<f32>>> = self
+            .entities
+            .iter()
+            .filter(|e| e.selected && e.vertices.len() >= 2)
+            .map(|e| e.vertices.clone())
+            .collect();
+        if selected.len() < 2 {
+            return None;
+        }
+        let rail = &selected[0];
+        let profile = &selected[1];
+        let id = self.next_entity;
+        self.next_entity += 1;
+        let solid = SolidEntity::from_sweep1(
+            id,
+            rail,
+            profile,
+            closed_caps,
+            [0.3, 0.6, 0.95, 1.0],
+        )?;
+        self.save_undo_state();
+        self.solids.push(solid);
+        self.selected_entity = Some(id);
+        self.rebuild_vertices();
+        Some(id)
+    }
+    pub fn seg_intersect_2d(
+        p1: Vector3<f32>,
+        p2: Vector3<f32>,
+        q1: Vector3<f32>,
+        q2: Vector3<f32>,
+    ) -> Option<(f32, Vector3<f32>)> {
+        let r = p2 - p1;
+        let s = q2 - q1;
+        let det = r.x * s.y - r.y * s.x;
+        if det.abs() < 1e-6 {
+            return None;
+        }
+        let qp = q1 - p1;
+        let t = (qp.x * s.y - qp.y * s.x) / det;
+        let u = (qp.x * r.y - qp.y * r.x) / det;
+        if t > 1e-4 && t < (1.0 - 1e-4) && u > 1e-4 && u < (1.0 - 1e-4) {
+            let hit = p1 + r * t;
+            Some((t, hit))
+        } else {
+            None
+        }
+    }
+    pub fn split_select_curve(&mut self, cutter_id: usize) -> Vec<usize> {
+        let Some(target_id) = self.selected_entity else {
+            return Vec::new();
+        };
+        let Some(target_curve) = self.entities.iter().find(|e| e.id == target_id).cloned() else {
+            return Vec::new();
+        };
+        let Some(cutter_curve) = self.entities.iter().find(|e| e.id == cutter_id).cloned() else {
+            return Vec::new();
+        };
+        let mut sub_curves: Vec<Vec<Vector3<f32>>> = Vec::new();
+        let mut current_sub = Vec::new();
+        let n = target_curve.vertices.len();
+        if n < 2 {
+            return Vec::new();
+        }
+        current_sub.push(target_curve.vertices[0]);
+        for i in 0..n - 1 {
+            let p1 = target_curve.vertices[i];
+            let p2 = target_curve.vertices[i + 1];
+            let mut split_point: Option<Vector3<f32>> = None;
+            for j in 0..cutter_curve.vertices.len().saturating_sub(1) {
+                let q1 = cutter_curve.vertices[j];
+                let q2 = cutter_curve.vertices[j + 1];
+                if let Some((_, hit)) = Self::seg_intersect_2d(p1, p2, q1, q2) {
+                    split_point = Some(hit);
+                    break;
+                }
+            }
+            if let Some(hit) = split_point {
+                current_sub.push(hit);
+                sub_curves.push(current_sub);
+                current_sub = vec![hit, p2];
+            } else {
+                current_sub.push(p2);
+            }
+        }
+        sub_curves.push(current_sub);
+        if sub_curves.len() <= 1 {
+            return Vec::new();
+        }
+        self.save_undo_state();
+        self.entities.retain(|e| e.id != target_id);
+        let mut new_ids = Vec::new();
+        for verts in sub_curves {
+            if verts.len() >= 2 {
+                let id = self.next_entity;
+                self.next_entity += 1;
+                self.entities.push(crate::viewport::PolyLine {
+                    id,
+                    vertices: verts,
+                    color: target_curve.color,
+                    thickness: target_curve.thickness,
+                    selected: false,
+                    height: target_curve.height,
+                    hatched: false,
+                    extrude_axis: target_curve.extrude_axis,
+                    show_markers: false,
+                });
+            }
+        }
+        self.rebuild_vertices();
+        new_ids
     }
 }
 
