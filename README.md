@@ -71,11 +71,19 @@ Additional smaller improvements and bug fixes are most likely documented in the 
 
 Additional smaller improvements and bug fixes are most likely documented in the commit history.
 
+## Week 8 FINAL 
+- added render mode
+- improved text adding
+- material selection
+- added texture support for materials in the viewport's render mode
+- viewport textured floor and scene lighting
+- improved 3d mesh importing support
+
 ## Current limitations
 Armor3D does not yet include the full feature set of Rhino. There may be many incomplete features in the works - will fix in due time. The available features may not be polished, as this project is still in BETA. 
 
 ## Download
-Download the EXE from the [latest Armor3D release](https://github.com/NMaster23/Armor3D/releases/tag/v7). After that is completed, ignore the Windows security feature, and then you're in the app!
+Download the EXE from the [latest Armor3D release](https://github.com/NMaster23/Armor3D/releases/tag/v8). After that is completed, ignore the Windows security feature, and then you're in the app!
 
 ## Run locally
 This version is specifically built for Windows.
@@ -116,11 +124,10 @@ The viewport and 3D handling is implemented in Rust through the use of the WGPU 
 The Rust side provides the 2D and 3D grid, camera, polyline drawing and preview, tessellation, end and near snapping, selection, and shape movement. Python forwards viewport input and manages the surrounding controls. More CAD tools are still in progress.
 
 ## Next Steps
-- Add more AI capabilities
-- Imrpove model importing - widen the selection of applicable models
-- Correct final fixes
-- Add logo
-- Startup menu?
+- add more materials
+- more features
+- test large complex objects
+- increase selection of available models
 
 ## Week 1 theme
 Week 1 used a harvest-inspired palette of orange and green.
@@ -148,10 +155,15 @@ This week we could not implement the theme but next week we will try to include 
 - Fix revolve logic
 - Part of connect feature was made using AI assistance
 - Part of AI system prompt has been made with AI assistance
+- Improve render graphics
+- Implementing render textures
 - Rest of AI usage that has not been mentioned here is most likely in the commits
 
 ## AI-Updates.md
 - Any mention of this file is just an update log of all github commits. It is added to the gitignore. It just auto pulls the latest updates and adds an ai summary of it in the file. This is only on the main machine working on the rust backend. This is on no other machine.
+
+## Render objects
+Configure all objects to your liking first, using the materials side bar. After that, use the **Render** command to view your object with professional lighting, and textured floor. 
 
 ## Credits
 - Nishanth Prabhu - UI, design, and app integration

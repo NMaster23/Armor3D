@@ -3521,8 +3521,6 @@ impl Viewport {
     }
     pub fn rebuild_vertices(&mut self) {
         let mut new_vertices = Vec::new();
-        // The standard grid is drawn by the renderer on the XZ/XY planes.
-        // Right view gets its own YZ grid, centered around the current view target.
         if self.right_view {
             let spacing = self.grid_spacing.clamp(0.01, 10.0);
             let extent = 20.0_f32;
@@ -3838,9 +3836,9 @@ impl Viewport {
         }
         for entity in &self.text_entities {
             let draw_color = self.object_draw_color(entity.id, entity.selected, entity.color);
-            let use_material_texture = self.material_render_mode
+            let has_render_material = self.material_render_mode
                 && self.object_materials.contains_key(&entity.id);
-            if entity.selected || use_material_texture {
+            if entity.selected || has_render_material {
                 new_vertices.extend(entity.cached_vertices.iter().map(|vertex| {
                     let mut colored = *vertex;
                     colored.color = draw_color;
@@ -4716,8 +4714,6 @@ impl Viewport {
         if self.material_render_mode {
             if let Some(material) = self.object_materials.get(&object_id) {
                 if let Some(index) = Self::material_texture_index(material) {
-                    // Negative alpha encodes the texture-array layer for the shader.
-                    // The shader uses this only in Render mode and outputs opaque color.
                     return [1.0, 1.0, 1.0, -((index + 1) as f32) / 8.0];
                 }
             }
