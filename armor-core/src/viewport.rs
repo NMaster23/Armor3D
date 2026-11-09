@@ -232,6 +232,95 @@ pub struct Viewport {
 }
 
 impl Viewport {
+    pub fn offset_curve_points(points: &[Vector3<f32>], dist: f32) -> Option<Vec<Vector3<f32>>> {
+        if points.len() < 2 {
+            return None;
+        }
+        let is_closed = (points.first().unwrap() - points.last().unwrap()).magnitude2() < 1e-6;
+        let pts = if is_closed && points.len() > 2 {
+            &points[..points.len() - 1]
+        } else {
+            points
+        };
+        let n = pts.len();
+        let mut seg_norms: Vec<Vector3<f32>> = Vec::with_capacity(n);
+        let seg_count = if is_closed {
+            n
+        } else {
+            n - 1
+        };
+        for i in 0..seg_count {
+            let next_i = (i + 1) % n;
+            let dir = pts[next_i] - pts[i];
+            let len = dir.magnitude();
+            if len < 1e-6 {
+                seg_norms.push(Vector3::unit_y());
+            } else {
+                let tan = dir / len;
+                seg_norms.push(Vector3::new(-tan.y, tan.x, 0.0));
+            }
+        }
+        let mut offset_pts: Vec<Vector3<f32>> = Vec::with_capacity(pts.len());
+        for i in 0..n {
+            let (n_prev, n_next) = if is_closed {
+                let prev_i = if i == 0 {
+                    n - 1
+                } else {
+                    i - 1
+                };
+                (seg_norms[prev_i], seg_norms[i])
+            } else {
+                if i == 0 {
+                    offset_pts.push(pts[0] + seg_norms[0] * dist);
+                    continue;
+                } else if i == n - 1 {
+                    offset_pts.push(pts[n - 1] + seg_norms[seg_norms.len() - 1] * dist);
+                    continue;
+                }
+                (seg_norms[i - 1], seg_norms[i])
+            };
+            let miter = n_prev + n_next;
+            let miter_len_sq = miter.magnitude2();
+            if miter_len_sq < 1e-6 {
+                offset_pts.push(pts[i] + n_next * dist);
+            } else {
+                let miter_dir = miter.normalize();
+                let cos_half = miter_dir.dot(n_next);
+                let scale = if cos_half.abs() > 0.1 {
+                    (dist / cos_half).clamp(-5.0 * dist.abs(), 5.0 * dist.abs())
+                } else {
+                    dist
+                };
+                offset_pts.push(pts[i] + miter_dir * scale);
+            }
+        }
+        if is_closed && !offset_pts.is_empty() {
+            offset_pts.push(offset_pts[0]);
+        }
+        Some(offset_pts)
+    }
+    pub fn offset_selected_curve(&mut self, dist: f32) -> Option<usize> {
+        let sel_id = self.selected_entity?;
+        let curve = self.entities.iter().find(|e| e.id == sel_id)?.clone();
+        let offset_verts = Self::offset_curve_points(&curve.vertices, dist)?;
+        let id = self.next_entity;
+        self.next_entity += 1;
+        self.save_undo_state();
+        self.entities.push(crate::viewport::PolyLine {
+            id,
+            vertices: offset_verts,
+            color: [1.0, 0.8, 0.2, 1.0],
+            thickness: curve.thickness,
+            selected: true,
+            height: curve.height,
+            hatched: false,
+            extrude_axis: curve.extrude_axis,
+            show_markers: false,
+        });
+        self.selected_entity = Some(id);
+        self.rebuild_vertices();
+        Some(id)
+    }
     pub fn duplicate_selected(&mut self, offset: Vector3<f32>) -> usize {
         let selected: Vec<PolyLine> = self
             .entities
@@ -6292,6 +6381,92 @@ impl Viewport {
         self.selected_entity = Some(id);
         self.rebuild_vertices();
         Some(id)
+    }
+    pub fn seg_intersect_2d(
+        p1: Vector3<f32>,
+        p2: Vector3<f32>,
+        q1: Vector3<f32>,
+        q2: Vector3<f32>,
+    ) -> Option<(f32, Vector3<f32>)> {
+        let r = p2 - p1;
+        let s = q2 - q1;
+        let det = r.x * s.y - r.y * s.x;
+        if det.abs() < 1e-6 {
+            return None;
+        }
+        let qp = q1 - p1;
+        let t = (qp.x * s.y - qp.y * s.x) / det;
+        let u = (qp.x * r.y - qp.y * r.x) / det;
+        if t > 1e-4 && t < (1.0 - 1e-4) && u > 1e-4 && u < (1.0 - 1e-4) {
+            let hit = p1 + r * t;
+            Some((t, hit))
+        } else {
+            None
+        }
+    }
+    pub fn split_select_curve(&mut self, cutter_id: usize) -> Vec<usize> {
+        let Some(target_id) = self.selected_entity else {
+            return Vec::new();
+        };
+        let Some(target_curve) = self.entities.iter().find(|e| e.id == target_id).cloned() else {
+            return Vec::new();
+        };
+        let Some(cutter_curve) = self.entities.iter().find(|e| e.id == cutter_id).cloned() else {
+            return Vec::new();
+        };
+        let mut sub_curves: Vec<Vec<Vector3<f32>>> = Vec::new();
+        let mut current_sub = Vec::new();
+        let n = target_curve.vertices.len();
+        if n < 2 {
+            return Vec::new();
+        }
+        current_sub.push(target_curve.vertices[0]);
+        for i in 0..n - 1 {
+            let p1 = target_curve.vertices[i];
+            let p2 = target_curve.vertices[i + 1];
+            let mut split_point: Option<Vector3<f32>> = None;
+            for j in 0..cutter_curve.vertices.len().saturating_sub(1) {
+                let q1 = cutter_curve.vertices[j];
+                let q2 = cutter_curve.vertices[j + 1];
+                if let Some((_, hit)) = Self::seg_intersect_2d(p1, p2, q1, q2) {
+                    split_point = Some(hit);
+                    break;
+                }
+            }
+            if let Some(hit) = split_point {
+                current_sub.push(hit);
+                sub_curves.push(current_sub);
+                current_sub = vec![hit, p2];
+            } else {
+                current_sub.push(p2);
+            }
+        }
+        sub_curves.push(current_sub);
+        if sub_curves.len() <= 1 {
+            return Vec::new();
+        }
+        self.save_undo_state();
+        self.entities.retain(|e| e.id != target_id);
+        let mut new_ids = Vec::new();
+        for verts in sub_curves {
+            if verts.len() >= 2 {
+                let id = self.next_entity;
+                self.next_entity += 1;
+                self.entities.push(crate::viewport::PolyLine {
+                    id,
+                    vertices: verts,
+                    color: target_curve.color,
+                    thickness: target_curve.thickness,
+                    selected: false,
+                    height: target_curve.height,
+                    hatched: false,
+                    extrude_axis: target_curve.extrude_axis,
+                    show_markers: false,
+                });
+            }
+        }
+        self.rebuild_vertices();
+        new_ids
     }
 }
 

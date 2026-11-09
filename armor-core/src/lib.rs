@@ -121,6 +121,9 @@ pub fn handle_input(pos: (f64, f64), button: &str, vec: (f32, f32, f32)) -> PyRe
 
 #[pymethods]
 impl ViewportRenderer {
+    pub fn offset_selected_curve(&mut self, dist: f32) -> Option<usize> {
+        self.state.viewport.offset_selected_curve(dist)
+    }
     pub fn sweep1_selected_curves(&mut self, closed_caps: Option<bool>) -> Option<usize> {
         self.state.viewport.sweep1_selected_curves(closed_caps.unwrap_or(true))
     }
