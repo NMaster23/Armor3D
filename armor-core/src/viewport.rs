@@ -4616,16 +4616,22 @@ impl Viewport {
     }
 
     fn material_texture_index(name: &str) -> Option<usize> {
-        let name = name.to_ascii_lowercase();
-        if name.contains("concrete") { Some(0) }
-        else if name.contains("diamond") { Some(1) }
-        else if name.contains("fabric") { Some(2) }
-        else if name.contains("metal 050") || name.contains("metal050") { Some(3) }
-        else if name.contains("metal 063") || name.contains("metal063") { Some(4) }
-        else if name.contains("plastic") { Some(5) }
-        else if name.contains("rubber") { Some(6) }
-        else if name.contains("wood") { Some(7) }
-        else { None }
+        let key: String = name
+            .chars()
+            .filter(|character| character.is_ascii_alphanumeric())
+            .flat_map(char::to_lowercase)
+            .collect();
+        match key.as_str() {
+            "concrete049" => Some(0),
+            "diamondplate005b" => Some(1),
+            "fabric004" => Some(2),
+            "metal050a" => Some(3),
+            "metal063" => Some(4),
+            "plastic007" => Some(5),
+            "rubber001" => Some(6),
+            "wood051" => Some(7),
+            _ => None,
+        }
     }
 
     pub fn set_material_render_mode(&mut self, enabled: bool) {

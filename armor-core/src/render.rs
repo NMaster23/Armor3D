@@ -14,10 +14,9 @@ use std::sync::Arc;
 use wgpu::util::DeviceExt;
 use winit::dpi::PhysicalPosition;
 use winit::window::Window;
-
 const INITIAL_POINT_SIZE: usize = 16;
 const MATERIAL_TEXTURE_SIZE: u32 = 512;
-const MATERIAL_COLOR_MAPS: [&[u8]; 8] = [
+const MATERIAL_COLOR_MAPS: [&[u8]; 9] = [
     include_bytes!("../../Assets/Materials/Concrete049/Concrete049_2K-PNG_Color.png"),
     include_bytes!("../../Assets/Materials/DiamondPlate005B/DiamondPlate005B_2K-PNG_Color.png"),
     include_bytes!("../../Assets/Materials/Fabric004/Fabric004_2K-PNG_Color.png"),
@@ -25,7 +24,9 @@ const MATERIAL_COLOR_MAPS: [&[u8]; 8] = [
     include_bytes!("../../Assets/Materials/Metal063/Metal063_2K-JPG_Color.jpg"),
     include_bytes!("../../Assets/Materials/Plastic007/Plastic007_2K-PNG_Color.png"),
     include_bytes!("../../Assets/Materials/Rubber001/Rubber001_2K-PNG_Color.png"),
-    include_bytes!("../../Assets/Materials/Wood051/Wood051_2K-PNG_Color.png"),];
+    include_bytes!("../../Assets/Materials/Wood051/Wood051_2K-PNG_Color.png"),
+    include_bytes!("../../Assets/Materials/Fabric086/Fabric086_4K-JPG_Color.jpg"),
+];
 fn create_material_texture_resources(
     device: &wgpu::Device,
     queue: &wgpu::Queue,) -> (wgpu::Texture, wgpu::TextureView, wgpu::Sampler, wgpu::BindGroupLayout, wgpu::BindGroup) {
@@ -1005,8 +1006,7 @@ impl State {
                     depth_slice: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(if self.white_viewport {
-                            wgpu::Color{
-                                r: 1.0, g: 1.0, b: 1.0, a:1.0}
+                            wgpu::Color { r: 0.025, g: 0.03, b: 0.045, a: 1.0 }
                         } else {
                             wgpu::Color {
                                 r: 0.025, g: 0.03, b: 0.02, a: 1.0
@@ -1023,17 +1023,16 @@ impl State {
             });
             render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
             self.reference_image.draw(&mut render_pass);
-            // The grid and geometry pipelines share a layout that requires this group.
-            // Bind it before either pipeline draws.
             render_pass.set_bind_group(1, &self.material_bind_group, &[]);
-            if !self.white_viewport && !self.viewport.right_view {
+            if !self.viewport.right_view {
                 render_pass.set_pipeline(&self.graph_pipeline);
                 render_pass.set_vertex_buffer(0, self.graph_vertex_buffer.slice(..));
-                render_pass.set_index_buffer(
-                    self.graph_index_buffer.slice(..),
-                    wgpu::IndexFormat::Uint16,
-                );
+                render_pass.set_index_buffer(self.graph_index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+                if self.white_viewport {
+                    render_pass.draw_indexed(6..12, 0, 0..1);
+                } else {
                     render_pass.draw_indexed(0..self.num_indices, 0, 0..1);
+                }
             }
             if !self.viewport.point_vertices.is_empty() {
                 render_pass.set_pipeline(&self.render_pipeline);

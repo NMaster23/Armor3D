@@ -41,8 +41,14 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         return vec4<f32>(in.color.rgb, 1.0);
     }
     let n = normalize(in.normal);
-    let light_dir = normalize(vec3<f32>(0.45, 0.8, 0.35));
-    let diffuse = 0.35 + 0.65 * abs(dot(n, light_dir));
+    let light_position = vec3<f32>(0.0, 12.0, 0.0);
+    let light_to_surface = in.world_position - light_position;
+    let light_distance = length(light_to_surface);
+    let light_dir = normalize(light_position - in.world_position);
+    let spot_alignment = dot(normalize(light_to_surface), vec3<f32>(0.0, -1.0, 0.0));
+    let spot_cone = smoothstep(0.78, 0.91, spot_alignment);
+    let attenuation = spot_cone / (1.0 + 0.012 * light_distance * light_distance);
+    let diffuse = 0.18 + attenuation * abs(dot(n, light_dir));
 
     if has_material {
         let layer = i32(round(abs(in.color.a) * 8.0)) - 1;
@@ -56,7 +62,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let color_y = textureSample(material_textures, material_sampler, uv_y, layer).rgb;
         let color_z = textureSample(material_textures, material_sampler, uv_z, layer).rgb;
         let albedo = color_x * blend.x + color_y * blend.y + color_z * blend.z;
-        return vec4<f32>(albedo * diffuse, 1.0);
+        let view_dir = normalize(camera.camera_position_mode.xyz - in.world_position);
+        let half_dir = normalize(light_dir + view_dir);
+        let specular = pow(max(dot(n, half_dir), 0.0), 48.0) * attenuation * 0.55;
+        return vec4<f32>(albedo * diffuse + vec3<f32>(specular), 1.0);
     }
 
     let base = in.color.rgb * diffuse;
@@ -65,7 +74,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let view_dir = normalize(camera.camera_position_mode.xyz - in.world_position);
     let fresnel = pow(1.0 - abs(dot(n, view_dir)), 3.0);
     let half_dir = normalize(light_dir + view_dir);
-    let highlight = pow(max(dot(n, half_dir), 0.0), 40.0);
+    let highlight = pow(max(dot(n, half_dir), 0.0), 40.0) * attenuation;
     let environment = mix(
         vec3<f32>(0.18, 0.22, 0.30),
         vec3<f32>(0.85, 0.92, 1.0),

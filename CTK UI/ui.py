@@ -2036,6 +2036,7 @@ def startrender():
     activecommand = 'render_confirm'
     command.delete(0, 'end')
     command.configure(state='normal', placeholder_text='', text_color='#EAEAEA')
+    command._deactivate_placeholder()
     command._entry.configure(state="normal", fg="#EAEAEA", insertbackground="#EAEAEA",)
     target = 'on' if pendingrendermode else "off"
     writehistory( f"> Render\nTurn white viewport mode {target}? Type yes or no, then press Enter")
