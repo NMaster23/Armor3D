@@ -170,7 +170,8 @@ Configure all objects to your liking first, using the materials side bar. After 
 - Nihaal Mysore Bharath - Rust viewport and grid work
 
 ## DEMO
-<img width="1095" height="752" alt="image" src="https://github.com/user-attachments/assets/36fcd9d3-8df7-483b-8a83-bd694b4162a1" />
+<img width="1917" height="1016" alt="image" src="https://github.com/user-attachments/assets/ce717b7a-3042-4193-83d5-b353d44d0ea5" />
+<img width="1919" height="1027" alt="image" src="https://github.com/user-attachments/assets/0d434bfd-1ef0-4037-873e-fd576948d7cc" />
 
 
 
