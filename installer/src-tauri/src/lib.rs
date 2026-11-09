@@ -7,7 +7,7 @@ use window_vibrancy::apply_acrylic;
 
 const APP_INFO: AppInfo = AppInfo{name: "Armor3D", author: "NMCreator"};
 
-const DOWNLOAD_URL: &str = "https://release-assets.githubusercontent.com/github-production-release-asset/1373728226/56d8ed43-5768-400b-b1de-ba7fc1254b94?sp=r&sv=2018-11-09&sr=b&spr=https&se=2026-11-07T20%3A08%3A34Z&rscd=attachment%3B+filename%3DArmor3D.exe&rsct=application%2Foctet-stream&skoid=96c2d410-5711-43a1-aedd-ab1947aa7ab0&sktid=398a6654-997b-47e9-b12b-9515b896b4de&skt=2026-11-07T19%3A07%3A43Z&ske=2026-11-07T20%3A08%3A34Z&sks=b&skv=2018-11-09&sig=MriPuXBPjgfMQbGNevK%2B6Gy%2FVtpO70Az2Yu4J60vEUo%3D&jwt=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmVsZWFzZS1hc3NldHMuZ2l0aHVidXNlcmNvbnRlbnQuY29tIiwia2V5Ijoia2V5MSIsImV4cCI6MTc5NDA4MjM5MywibmJmIjoxNzk0MDc4NzkzLCJwYXRoIjoicmVsZWFzZWFzc2V0cHJvZHVjdGlvbi5ibG9iLmNvcmUud2luZG93cy5uZXQifQ.PKkCps786KeB_Atq9Lg4_mECV3Dj3yV-a0OnnXB82uk&response-content-disposition=attachment%3B%20filename%3DArmor3D.exe&response-content-type=application%2Foctet-stream";
+const DOWNLOAD_URL: &str = "https://github.com/NMaster23/Armor3D/releases/latest/download/Armor3D.exe";
 
 #[derive(Serialize, Clone)]
 pub struct Payload {
@@ -141,7 +141,7 @@ fn launch_installed_app(exe_path: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn install_app(window: tauri::Window, target_dir: String) -> Result<(), String> {
+fn install_app(window: tauri::Window, target_dir: String, create_shortcut: bool) -> Result<(), String> {
     let _ = window.emit("install-progress", Payload {
         progress: 10.0,
         msg: "Preparing Installation".to_string(),
@@ -172,11 +172,13 @@ fn install_app(window: tauri::Window, target_dir: String) -> Result<(), String> 
         msg: "Finished EXE download".to_string(),
     });
     save_config()?;
-    let _ = window.emit("install-progress", Payload {
-        progress: 95.0,
-        msg: "Creating desktop shortcut".to_string(),
-    });
-    create_desktop_shortcut(dest.join("Armor3D.exe").to_string_lossy().to_string())?;
+    if create_shortcut {
+        let _ = window.emit("install-progress", Payload {
+            progress: 95.0,
+            msg: "Creating desktop shortcut".to_string(),
+        });
+        create_desktop_shortcut(dest.join("Armor3D.exe").to_string_lossy().to_string())?;
+    }
     let _ = window.emit("install-progress", Payload {
         progress: 100.0,
         msg: "Installation complete".to_string(),

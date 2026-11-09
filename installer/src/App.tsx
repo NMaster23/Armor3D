@@ -4,6 +4,7 @@ import { Card, ProgressBar, ScrollShadow, Typography } from "@heroui/react";
 import { invoke } from "@tauri-apps/api/core";
 import { Check } from "@gravity-ui/icons";
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 
 const system_checks_text = [
   "Auditing your PATH variable and quietly judging your life choices",
@@ -55,8 +56,16 @@ function App() {
   const [isButton, setIsButton] = useState(false);
   const [loadText, setLoadText] = useState("Preparing...");
   const [progress, setProgress] = useState(0.0);
+  const [installPath, setInstallPath] = useState("");
+  const [freeGB, setFreeGB] = useState(0);
+  const [createShortcut, setCreateShortcut] = useState(true);
   useEffect(() => {
     const timer = setTimeout(() => setIsLoaded(true), 50);
+    invoke<{ default_dir: string }>("get_default_paths").then(async (paths) => {
+      setInstallPath(paths.default_dir);
+      const freeBytes = await invoke<number>("check_disk_space", { targetPath: paths.default_dir });
+      setFreeGB(Math.round((freeBytes / (1024 * 1024 * 1024) * 10) / 10));
+    }).catch((err) => console.error(err));
     return () => clearTimeout(timer);
   }, []);
   useEffect(() => {
@@ -121,7 +130,7 @@ function App() {
       );
       invoke<{ default_dir: string }>("get_default_paths")
         .then((paths) => {
-          return invoke("install_app", { targetDir: paths.default_dir });
+          return invoke("install_app", { targetDir: paths.default_dir, createShortcut: createShortcut });
         })
         .catch((err) => {
           setLoadText(`Installation failed: ${err}`);
@@ -148,6 +157,21 @@ function App() {
               <span className="inline-block w-[10px] h-[0.85em] bg-blue-400 ml-3 align-middle rounded-sm animate-pulse" />
             )}
           </h1>
+          {installPath && (
+            <div className="flex items-center gap-4 text-xs font-mono text-zinc-400 bg-zinc-900/80 px-4 py-2 rounded-xl mt-6">
+              <span className="truncate max-w-[320px] text-zinc-300">{installPath}</span>
+              <span className="text-zinc-400 font-semibold">{freeGB} GB Free</span>
+            </div>
+          )}
+          <label className="flex items-center gap-2 mt-4 text-xz text-zinc-400 cursor-pointer select-none">
+            <input 
+              type="checkbox"
+              checked={createShortcut}
+              onChange={(e) => setCreateShortcut(e.target.checked)}
+              className="rounded w-3.5 h-3.5 cursor-pointer"
+            />
+            <span>Create a Desktop Shortcut</span>
+          </label>
           <div
             onClick={() => {
               if (isButton) {
@@ -189,7 +213,9 @@ function App() {
                 ? system_checks_text
                 : installingState === 1
                 ? downloading_texts
-                : compiling_texts
+                : installingState === 2
+                ? compiling_texts
+                : finishing_texts
               ).map((text, idx) => (
                 <div key={idx} className="flex items-center space-x-3 text-sm">
                   {text === loadText ? (
@@ -209,6 +235,7 @@ function App() {
                 await invoke("launch_installed_app", {
                   exePath: `${paths.default_dir}\\Armor3D.exe`,
               });
+              await getCurrentWebviewWindow().close();
               }}
               className="mt-6 w-full py-3 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-xl shadow-lg shadow-cyan-500/20 cursor-pointer active:scale-98 transition-all">
                 Launch Armor3D &rarr;

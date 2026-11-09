@@ -121,6 +121,9 @@ pub fn handle_input(pos: (f64, f64), button: &str, vec: (f32, f32, f32)) -> PyRe
 
 #[pymethods]
 impl ViewportRenderer {
+    pub fn split_selected_curve(&mut self, cutter_id: usize) -> Vec<usize> {
+        self.state.viewport.split_select_curve(cutter_id)
+    }
     pub fn offset_selected_curve(&mut self, dist: f32) -> Option<usize> {
         self.state.viewport.offset_selected_curve(dist)
     }
